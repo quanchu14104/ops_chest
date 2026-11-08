@@ -158,6 +158,15 @@ export type WidgetSpec =
       title: string;
       items: { label: string; value: number | null; fmt: WidgetFmt; prev: number | null; lower_is_better: boolean }[];
       note: string | null;
+    }
+  | {
+      kind: "form";
+      form: "receive_po";
+      title: string;
+      meta: { po_id: number; code: string; supplier: string; expected_date: string };
+      lines: { line_id: number; sku: string; name: string; qty: number; received_qty: number | null; default_expiry: string }[];
+      submit: { method: string; path: string };
+      note: string | null;
     };
 
 export type ChartSpec = {

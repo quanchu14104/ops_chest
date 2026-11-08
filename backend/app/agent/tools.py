@@ -11,14 +11,15 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.agent import widgets as W
-from app.models import Proposal, Supplier, User
+from app.models import Proposal, PurchaseOrder, Supplier, User
 from app.proposals import builders
 from app.proposals.views import acceptance_stats, to_dict
 from app.services import charts, inventory, replenish, reports
+from app.services.receiving import default_expiry  # chi lay HSD goi y; viec nhan hang that di qua REST
 
 
 @dataclass
@@ -244,6 +245,31 @@ def _kpi(ctx: ToolContext, days: int = 30) -> ToolOutput:
                      **{k: r["previous"]["kpi"][k] for k in keep}},
         "agent_acceptance": acceptance_stats(ctx.db),
     }, ui=ui)
+
+
+@tool("open_receive_form", "read", "Show the goods-receipt FORM in the chat for one purchase order awaiting delivery (status SENT). Staff fill actual qty + expiry and press confirm in the UI. This only displays the form; it records nothing.",
+      {"po": {"type": "string", "description": "PO code (e.g. PO-20261107-NCC01) or numeric id"}}, ["po"])
+def _open_receive_form(ctx: ToolContext, po: str) -> ToolOutput:
+    ref = str(po).strip()
+    q = select(PurchaseOrder).options(joinedload(PurchaseOrder.supplier))
+    found = ctx.db.scalar(q.where(PurchaseOrder.id == int(ref))) if ref.isdigit() else None
+    found = found or ctx.db.scalar(q.where(func.upper(PurchaseOrder.code) == ref.upper()))
+    if not found:
+        return ToolOutput({"error": f"Không tìm thấy đơn hàng '{po}'"})
+    if found.status != "SENT":
+        return ToolOutput({"error": f"Đơn {found.code} đang ở trạng thái {found.status}, không còn chờ giao nên không nhận hàng được."})
+    lines = [{"line_id": l.id, "sku": l.product.sku, "name": l.product.name, "qty": l.qty,
+              "received_qty": l.received_qty, "default_expiry": default_expiry(l.product.shelf_life_days).isoformat()}
+             for l in found.lines]
+    form = W.form("receive_po", f"Nhận hàng {found.code} · {found.supplier.name}", lines,
+                  {"method": "POST", "path": f"/purchase-orders/{found.id}/receive"},
+                  note="Ghi hạn sử dụng in trên bao bì cho từng lô (ô HSD điền sẵn theo hạn chuẩn, hãy sửa nếu khác).",
+                  meta={"po_id": found.id, "code": found.code, "supplier": found.supplier.name,
+                        "expected_date": found.expected_date.isoformat()})
+    # Chi tra tom tat cho LLM; form day du chi di theo kenh UI
+    return ToolOutput({"form_shown": True, "po": found.code, "supplier": found.supplier.name, "lines": len(lines),
+                       "message": "Đã hiện form nhận hàng trong chat. Nhân viên điền số lượng và HSD rồi bấm xác nhận; "
+                                  "chưa có hàng nào được nhận."}, ui=[form])
 
 
 # ---------------- CHART ----------------

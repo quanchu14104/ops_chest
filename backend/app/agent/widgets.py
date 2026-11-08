@@ -31,5 +31,13 @@ def kpis(title: str, items: list[dict], *, note: str | None = None) -> dict:
     return {"type": "widget", "kind": "kpis", "title": title, "items": items, "note": note}
 
 
+def form(form_id: str, title: str, lines: list[dict], submit: dict, *, note: str | None = None,
+         meta: dict | None = None) -> dict:
+    """Form nhap lieu trong chat. Tool CHI phat form; ghi du lieu that do nguoi dung bam nut, UI goi
+    `submit` (endpoint REST co kiem quyen). `lines`: {line_id, sku, name, qty, received_qty?, default_expiry}."""
+    return {"type": "widget", "kind": "form", "form": form_id, "title": title, "meta": meta or {},
+            "lines": lines, "submit": submit, "note": note}
+
+
 def kpi(label: str, value: Any, fmt: str = "num", prev: Any = None, lower_is_better: bool = False) -> dict:
     return {"label": label, "value": value, "fmt": fmt, "prev": prev, "lower_is_better": lower_is_better}
