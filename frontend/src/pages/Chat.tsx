@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, streamChat, type ChartSpec, type ChatEvent, type Proposal, type TurnMetrics, type WidgetSpec } from "../api";
 import ChartView from "../components/ChartView";
 import ProposalCard from "../components/ProposalCard";
+import Briefing from "../components/Briefing";
 import Widget from "../components/Widgets";
 
 type ToolCall = { id: string; name: string; ok?: boolean; error?: string | null };
@@ -240,7 +241,7 @@ function AssistantTurn({ turn, streaming }: { turn: Turn; streaming: boolean }) 
   );
 }
 
-export default function Chat() {
+export default function Chat({ home = false }: { home?: boolean }) {
   const { sid } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -291,6 +292,8 @@ export default function Chat() {
       setBusy(false);
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       qc.invalidateQueries({ queryKey: ["pending-count"] });
+      qc.invalidateQueries({ queryKey: ["proposals", "inbox"] });
+      qc.invalidateQueries({ queryKey: ["briefing"] });
     }
   };
 
@@ -301,7 +304,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="chat">
+    <div className={`chat ${home ? "in-home" : ""}`}>
       <div className="card tight sessions">
         <button className="primary" style={{ marginBottom: 8, textAlign: "center" }} onClick={() => nav("/chat")}>
           + Hội thoại mới
@@ -319,6 +322,7 @@ export default function Chat() {
       </div>
       <div className="thread">
         <div className="messages">
+          {turns.length === 0 && home && <Briefing onAsk={send} disabled={busy} />}
           {turns.length === 0 && (
             <div className="card">
               <h2>Ops Chest có thể giúp gì hôm nay?</h2>

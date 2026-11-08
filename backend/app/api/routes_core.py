@@ -16,6 +16,7 @@ from app.config import settings
 from app.db import get_db
 from app.models import AuditLog, Proposal, PurchaseOrder, Supplier, User
 from app.proposals.views import acceptance_stats
+from app.services import briefing as briefing_svc
 from app.services import charts, inventory, receiving, replenish, reports
 from app.services.history import abc_xyz_classes
 from app.services.receiving import ReceiveError
@@ -69,6 +70,11 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user))
         "agent_acceptance": acceptance_stats(db),
         "daily": reports.sales_series(db, today() - timedelta(days=30), today() - timedelta(days=1)),
     }
+
+
+@router.get("/briefing")
+def briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return briefing_svc.build(db)
 
 
 @router.get("/inventory/summary")

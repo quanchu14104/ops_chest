@@ -7,9 +7,9 @@ import { dateVi } from "./format";
 import Approvals from "./pages/Approvals";
 import Audit from "./pages/Audit";
 import Catalog from "./pages/Catalog";
-import Chat from "./pages/Chat";
 import Dashboard from "./pages/Dashboard";
 import Expiring from "./pages/Expiring";
+import Home from "./pages/Home";
 import Orders from "./pages/Orders";
 import Reports from "./pages/Reports";
 
@@ -104,16 +104,20 @@ function Shell({ user }: { user: User }) {
     queryFn: () => api<unknown[]>("/proposals?status=PENDING&limit=200"),
     refetchInterval: 30_000,
   });
-  const links: [string, string, number?][] = [
-    ["/", "Tổng quan"],
-    ["/chat", "Trò chuyện"],
+  // Chat là cửa vào; các trang dữ liệu là đường dự phòng và để xem tổng quan
+  const main: [string, string, number?][] = [
+    ["/", "Trợ lý", undefined],
     ["/approvals", "Hộp duyệt", pending.data?.length],
+  ];
+  const data: [string, string][] = [
+    ["/stats", "Số liệu tổng quan"],
     ["/expiring", "Hàng cận date"],
     ["/orders", "Đặt & nhận hàng"],
     ["/reports", "Phân tích"],
     ["/catalog", "Hàng hóa & NCC"],
     ["/audit", "Nhật ký"],
   ];
+  const onAssistant = location.pathname === "/" || location.pathname.startsWith("/chat");
   return (
     <div className="app">
       <aside className="sidebar">
@@ -125,10 +129,16 @@ function Shell({ user }: { user: User }) {
           </div>
         </div>
         <nav className="nav">
-          {links.map(([to, label, count]) => (
-            <NavLink key={to} to={to} end={to === "/"}>
+          {main.map(([to, label, count]) => (
+            <NavLink key={to} to={to} end={to === "/"} className={to === "/" ? (onAssistant ? "active" : "") : undefined}>
               {label}
               {count ? <span className="count">{count}</span> : null}
+            </NavLink>
+          ))}
+          <div className="nav-section">Dữ liệu</div>
+          {data.map(([to, label]) => (
+            <NavLink key={to} to={to}>
+              {label}
             </NavLink>
           ))}
         </nav>
@@ -157,9 +167,10 @@ function Shell({ user }: { user: User }) {
       <main className="main">
         <ErrorBoundary resetKey={location.pathname}>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/chat/:sid" element={<Chat />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/chat" element={<Home />} />
+          <Route path="/chat/:sid" element={<Home />} />
+          <Route path="/stats" element={<Dashboard />} />
           <Route path="/approvals" element={<Approvals />} />
           <Route path="/expiring" element={<Expiring />} />
           <Route path="/orders" element={<Orders />} />
