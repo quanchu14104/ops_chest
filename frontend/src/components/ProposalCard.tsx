@@ -1,7 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, getUser, type Proposal } from "../api";
 import { STATUS_LABEL, TYPE_LABEL, dateTimeVi, dateVi, money, num, pct } from "../format";
+
+// "Hỏi lại": đưa ngữ cảnh đề xuất vào ô chat. Chat đang mở (trang Trợ lý) nghe sự kiện này và điền sẵn;
+// nếu không ai nhận (vd đang ở Hộp duyệt) thì chuyển sang /chat kèm bản nháp qua router state.
+export const ASK_EVENT = "opschest:ask";
+export type AskDetail = { text: string; handled: boolean };
 
 type Edits = { lines?: { product_id: number; qty: number }[]; items?: Record<string, unknown>[]; note?: string };
 
@@ -18,6 +24,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
   const [p, setP] = useState(initial);
   const qc = useQueryClient();
   const user = getUser();
+  const nav = useNavigate();
   const canDecide = user?.role === "manager" && (p.status === "PENDING" || p.status === "FAILED");
   const [open, setOpen] = useState(!compact);
   const [qty, setQty] = useState<Record<string, number>>({});
@@ -63,6 +70,13 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
     onError: (e: Error) => setError(e.message),
   });
 
+  const ask = () => {
+    const text = `Vì sao có đề xuất #${p.id} (${TYPE_LABEL[p.type]}: ${p.title})? `;
+    const ev = new CustomEvent<AskDetail>(ASK_EVENT, { detail: { text, handled: false } });
+    window.dispatchEvent(ev);
+    if (!ev.detail.handled) nav("/chat", { state: { draft: text } });
+  };
+
   const pl = p.payload;
   const warnings = (p.evidence?.warnings as string[] | undefined) ?? [];
   const editable = canDecide && !approve.isPending;
@@ -89,11 +103,16 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
           ⚠ {w}
         </div>
       ))}
-      {compact && (
-        <button className="sm" onClick={() => setOpen((o) => !o)}>
-          {open ? "Thu gọn" : "Xem chi tiết"}
+      <div className="row">
+        {compact && (
+          <button className="sm" onClick={() => setOpen((o) => !o)}>
+            {open ? "Thu gọn" : "Xem chi tiết"}
+          </button>
+        )}
+        <button className="sm" onClick={ask} title="Đưa đề xuất này vào ô chat để hỏi tiếp hoặc nhờ sửa">
+          Hỏi lại
         </button>
-      )}
+      </div>
 
       {open && p.type === "PURCHASE_ORDER" && (
         <div className="table-wrap" style={{ marginTop: 8 }}>

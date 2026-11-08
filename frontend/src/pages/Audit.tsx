@@ -12,6 +12,8 @@ const ACTION: Record<string, string> = {
   PROPOSAL_FAILED: "Thực hiện lỗi",
   PROPOSAL_REJECTED: "Từ chối",
   PROPOSAL_EXPIRED: "Hết hiệu lực",
+  PROPOSAL_SUPERSEDED: "Thay bằng bản sửa",
+  PROPOSAL_REVISED: "Tạo bản sửa",
   PO_RECEIVED: "Nhận hàng",
   RECEIVE_SHORT_DATED: "Cảnh báo hàng giao cận date",
 };

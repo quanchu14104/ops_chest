@@ -176,7 +176,7 @@ export type ChartSpec = {
 export type Proposal = {
   id: number;
   type: "PURCHASE_ORDER" | "MARKDOWN" | "RETURN" | "DISPOSE" | "DELIST";
-  status: "PENDING" | "APPROVED" | "EXECUTED" | "FAILED" | "REJECTED" | "EXPIRED";
+  status: "PENDING" | "APPROVED" | "EXECUTED" | "FAILED" | "REJECTED" | "EXPIRED" | "SUPERSEDED";
   title: string;
   rationale: string;
   evidence: Record<string, unknown>;

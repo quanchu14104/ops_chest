@@ -327,5 +327,23 @@ def _propose_delist(ctx: ToolContext, sku: str) -> ToolOutput:
     return _prop_out(p, created)
 
 
+@tool("revise_proposal", "propose", "Revise a PENDING proposal when the user asks to change it (e.g. 'giảm còn 30 thùng', 'giảm giá 30% thôi'). Creates a NEW pending proposal and marks the old one superseded; the manager must still approve. Only PENDING purchase orders (sku_qty: new qty per SKU) and markdowns (markdown_pct: 0.3 = 30%).",
+      {"proposal_id": {"type": "integer"},
+       "sku_qty": {"type": "array", "description": "purchase orders: new quantity per SKU",
+                   "items": {"type": "object", "properties": {"sku": {"type": "string"}, "qty": {"type": "integer"}},
+                             "required": ["sku", "qty"]}},
+       "markdown_pct": {"type": "number", "description": "markdowns: new discount, 0.3 = 30%"}}, ["proposal_id"])
+def _revise(ctx: ToolContext, proposal_id: int, sku_qty: list[dict] | None = None,
+            markdown_pct: float | None = None) -> ToolOutput:
+    try:
+        p = builders.revise(ctx.db, int(proposal_id), "agent", {str(x["sku"]): int(x["qty"]) for x in sku_qty or []},
+                            markdown_pct, ctx.chat_session_id)
+    except (builders.ReviseError, KeyError, TypeError, ValueError) as e:
+        ctx.db.rollback()
+        return ToolOutput({"error": str(e)})
+    ctx.db.commit()
+    return _prop_out(p, True, {"replaces": proposal_id})
+
+
 def schemas() -> list[dict]:
     return [t.schema() for t in REGISTRY.values()]

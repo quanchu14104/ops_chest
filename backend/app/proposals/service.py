@@ -1,4 +1,4 @@
-"""Vong doi de xuat: PENDING -> (sua) -> APPROVED -> EXECUTED | FAILED; hoac REJECTED / EXPIRED."""
+"""Vong doi de xuat: PENDING -> (sua) -> APPROVED -> EXECUTED | FAILED; hoac REJECTED / EXPIRED / SUPERSEDED (da duoc agent thay bang ban sua)."""
 from __future__ import annotations
 
 import copy
@@ -37,6 +37,8 @@ def _lock(db: Session, pid: int) -> Proposal:
 def _check_open(db: Session, p: Proposal, allow_failed: bool = False) -> None:
     allowed = ("PENDING", "FAILED") if allow_failed else ("PENDING",)
     if p.status not in allowed:
+        if p.status == "SUPERSEDED":
+            raise ProposalError(409, "Đề xuất này đã được thay bằng bản sửa mới, hãy duyệt bản mới.")
         raise ProposalError(409, f"Đề xuất đang ở trạng thái {p.status}, không thể thao tác.")
     if p.status == "PENDING" and p.expires_at and _now() > p.expires_at:
         p.status = "EXPIRED"
