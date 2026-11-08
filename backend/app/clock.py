@@ -16,7 +16,11 @@ def today() -> date:
 
 
 def now() -> datetime:
-    return datetime.now(ZoneInfo(settings.timezone))
+    """Gio hien tai. Khi co ngay co dinh (SIM_TODAY/test) thi giu gio that nhung dung NGAY co dinh,
+    de han hieu luc cua de xuat (cuoi ngay `today()`) khong het han khi dong ho that di qua ngay do."""
+    real = datetime.now(ZoneInfo(settings.timezone))
+    fixed = _override if _override is not None else settings.sim_today
+    return real.replace(year=fixed.year, month=fixed.month, day=fixed.day) if fixed else real
 
 
 def set_today(d: date | None) -> None:

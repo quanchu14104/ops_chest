@@ -21,8 +21,12 @@ def _fresh(db, p):
 
 def _mk_po(db):
     """Dat lai moi de xuat PO cua ngay (don PENDING cu co the con tu test khac) roi tao don moi."""
-    for p in db.scalars(select(Proposal).where(Proposal.type == "PURCHASE_ORDER", Proposal.status == "PENDING")):
-        p.status = "EXPIRED"
+    for p in db.scalars(select(Proposal).where(Proposal.type == "PURCHASE_ORDER")):
+        if p.status == "PENDING":
+            p.status = "EXPIRED"
+        # Go dedupe_key de builder luon tao de xuat MOI (neu khong, no tra lai de xuat cu da EXECUTED tu test khac)
+        if p.dedupe_key and not p.dedupe_key.startswith("old-"):
+            p.dedupe_key = f"old-{p.id}"
     db.commit()
     for sup in db.scalars(select(Supplier).order_by(Supplier.code)):
         p, _, _ = builders.purchase_order(db, sup, "agent")
