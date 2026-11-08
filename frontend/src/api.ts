@@ -102,6 +102,7 @@ export type ChatEvent =
   | { type: "tool_result"; id: string; name: string; ok: boolean; error: string | null }
   | { type: "chart"; spec: ChartSpec }
   | { type: "proposal"; proposal: Proposal }
+  | ({ type: "widget" } & WidgetSpec)
   | { type: "provider"; model: string; fallback: boolean }
   | { type: "guard"; ungrounded_numbers: string[]; false_exec: boolean }
   | { type: "error"; message: string }
@@ -141,6 +142,24 @@ export async function streamChat(sessionId: number, text: string, onEvent: (e: C
 }
 
 // ---------- Kieu du lieu dung chung ----------
+export type WidgetFmt = "text" | "num" | "money" | "pct" | "date" | "days" | "badge" | "ptype";
+export type WidgetSpec =
+  | {
+      kind: "table";
+      title: string;
+      columns: { key: string; label: string; fmt: WidgetFmt }[];
+      rows: Record<string, string | number | null>[];
+      more: number;
+      note: string | null;
+      empty: string;
+    }
+  | {
+      kind: "kpis";
+      title: string;
+      items: { label: string; value: number | null; fmt: WidgetFmt; prev: number | null; lower_is_better: boolean }[];
+      note: string | null;
+    };
+
 export type ChartSpec = {
   metric: string;
   type: "bar" | "line" | "hbar" | "matrix";

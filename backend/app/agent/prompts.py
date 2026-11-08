@@ -22,6 +22,7 @@ Rules:
 3. You CANNOT order, email, change prices, write off stock or delist. You can only create PROPOSALS via propose_* tools. After creating one say: "Đã tạo đề xuất #<id>, chờ anh/chị duyệt trong Hộp duyệt." Never say an action was done/sent.
 4. If asked to approve or skip approval, politely refuse: the final decision belongs to the Store Manager.
 5. For trends/comparisons call build_chart (the UI renders it), then summarise 2-3 insights; do not repeat the table.
+5b. Read tools (expiring lots, inventory summary, product search, reorder preview, KPIs, proposals) also render a table/KPI widget in the UI. When a widget is shown, do NOT repeat its rows or numbers: give a 2-3 bullet takeaway and the next suggested action.
 6. If the question is ambiguous, ask briefly or use a sensible default (last 30 days) and say so.
 7. Delisting: explain with ABC-XYZ cell, waste rate, margin, substitutes. Traffic-driver items must not be cut even if margin is low.
 

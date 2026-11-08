@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, streamChat, type ChartSpec, type ChatEvent, type Proposal, type TurnMetrics } from "../api";
+import { api, streamChat, type ChartSpec, type ChatEvent, type Proposal, type TurnMetrics, type WidgetSpec } from "../api";
 import ChartView from "../components/ChartView";
 import ProposalCard from "../components/ProposalCard";
+import Widget from "../components/Widgets";
 
 type ToolCall = { id: string; name: string; ok?: boolean; error?: string | null };
 type Block =
@@ -11,6 +12,7 @@ type Block =
   | { kind: "tools"; calls: ToolCall[] }
   | { kind: "chart"; spec: ChartSpec }
   | { kind: "proposal"; proposal: Proposal }
+  | { kind: "widget"; spec: WidgetSpec }
   | { kind: "guard"; numbers: string[]; falseExec: boolean };
 type Turn = { role: "user" | "assistant"; blocks: Block[]; model?: string; fallback?: boolean; metrics?: TurnMetrics };
 
@@ -23,6 +25,7 @@ type ServerMsg = {
   ui_events: (
     | { type: "chart"; spec: ChartSpec }
     | { type: "proposal"; proposal: Proposal }
+    | ({ type: "widget" } & WidgetSpec)
     | { type: "guard"; ungrounded_numbers: string[]; false_exec: boolean }
   )[];
 };
@@ -58,6 +61,12 @@ const SUGGESTIONS = [
   "Có mặt hàng nào nên ngừng nhập không? Giải thích lý do",
 ];
 
+// Bo truong `type` cua su kien SSE, phan con lai la WidgetSpec
+function widgetSpec(e: { type: "widget" } & WidgetSpec): WidgetSpec {
+  const { type: _type, ...spec } = e;
+  return spec as WidgetSpec;
+}
+
 function fromServer(msgs: ServerMsg[]): Turn[] {
   const turns: Turn[] = [];
   let cur: Turn | null = null;
@@ -88,6 +97,7 @@ function fromServer(msgs: ServerMsg[]): Turn[] {
       for (const u of m.ui_events) {
         if (u.type === "chart") cur.blocks.push({ kind: "chart", spec: u.spec });
         else if (u.type === "proposal") cur.blocks.push({ kind: "proposal", proposal: u.proposal });
+        else if (u.type === "widget") cur.blocks.push({ kind: "widget", spec: widgetSpec(u) });
       }
     }
   }
@@ -120,6 +130,9 @@ function apply(turn: Turn, e: ChatEvent): Turn {
       break;
     case "proposal":
       blocks.push({ kind: "proposal", proposal: e.proposal });
+      break;
+    case "widget":
+      blocks.push({ kind: "widget", spec: widgetSpec(e) });
       break;
     case "guard":
       blocks.push({ kind: "guard", numbers: e.ungrounded_numbers, falseExec: e.false_exec });
@@ -198,6 +211,7 @@ function AssistantTurn({ turn, streaming }: { turn: Turn; streaming: boolean }) 
               ))}
             </div>
           );
+        if (b.kind === "widget") return <div key={i} style={{ marginBottom: 8 }}><Widget spec={b.spec} /></div>;
         if (b.kind === "chart") return <div key={i} style={{ marginBottom: 8 }}><ChartView spec={b.spec} /></div>;
         if (b.kind === "guard")
           return (

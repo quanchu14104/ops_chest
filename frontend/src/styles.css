@@ -253,3 +253,11 @@ tbody tr:hover td { background: var(--surface-2); }
   .chat .sessions { display: none; }
   .chat .messages { min-height: 60vh; }
 }
+
+/* ---------- widget trong chat ---------- */
+.badge.bad { background: color-mix(in srgb, var(--critical) 14%, transparent); color: var(--critical); }
+.badge.warn { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-strong); }
+.widget .widget-title { font-weight: 600; margin-bottom: 8px; }
+.widget .widget-scroll { overflow-x: auto; }
+.widget .widget-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.widget .widget-kpis .kpi .value { font-size: 20px; }

@@ -14,6 +14,7 @@ from typing import Any, Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.agent import widgets as W
 from app.models import Proposal, Supplier, User
 from app.proposals import builders
 from app.proposals.views import acceptance_stats, to_dict
@@ -80,7 +81,18 @@ SKU = {"type": "string", "description": "e.g. COM002"}
 # ---------------- READ ----------------
 @tool("get_inventory_summary", "read", "Current stock overview: SKU counts, stock value by category, out-of-stock SKUs, value expiring within 3 days, pending proposals.")
 def _inventory_summary(ctx: ToolContext) -> ToolOutput:
-    return ToolOutput(inventory.inventory_summary(ctx.db))
+    s = inventory.inventory_summary(ctx.db)
+    ui = [W.kpis("Tồn kho hiện tại", [
+        W.kpi("Giá trị tồn kho", s["total_value"], "money"),
+        W.kpi("SKU hết hàng", s["out_of_stock_skus"], "num", lower_is_better=True),
+        W.kpi("Sắp hết hạn (≤3 ngày)", s["value_expiring_within_3_days"], "money", lower_is_better=True),
+        W.kpi("Đã quá hạn trên kệ", s["value_already_expired_on_shelf"], "money", lower_is_better=True),
+        W.kpi("Đề xuất chờ duyệt", s["pending_proposals"], "num"),
+        W.kpi("Đơn đang chờ giao", s["purchase_orders_awaiting_delivery"], "num"),
+    ]), W.table("Tồn kho theo nhóm hàng", [
+        W.col("category", "Nhóm"), W.col("skus", "SKU", "num"), W.col("units", "Số lượng", "num"),
+        W.col("value", "Giá trị", "money"), W.col("out_of_stock", "Hết hàng", "num")], s["by_category"])]
+    return ToolOutput(s, ui=ui)
 
 
 @tool("search_products", "read", "Find products by name/SKU/category. Returns SKU, prices, on-hand qty.",
@@ -88,9 +100,13 @@ def _inventory_summary(ctx: ToolContext) -> ToolOutput:
 def _search_products(ctx: ToolContext, query: str | None = None, category: str | None = None) -> ToolOutput:
     prods = inventory.find_products(ctx.db, query, category, limit=25)
     lots = inventory.active_lots(ctx.db, [p.id for p in prods])
-    return ToolOutput([{"sku": p.sku, "name": p.name, "category": p.category, "status": p.status,
-                        "unit_price": p.unit_price, "unit_cost": p.unit_cost, "supplier": p.supplier.name,
-                        "on_hand": sum(l.qty_remaining for l in lots.get(p.id, []))} for p in prods])
+    rows = [{"sku": p.sku, "name": p.name, "category": p.category, "status": p.status,
+             "unit_price": p.unit_price, "unit_cost": p.unit_cost, "supplier": p.supplier.name,
+             "on_hand": sum(l.qty_remaining for l in lots.get(p.id, []))} for p in prods]
+    ui = [W.table("Kết quả tìm sản phẩm", [
+        W.col("sku", "SKU"), W.col("name", "Tên"), W.col("category", "Nhóm"), W.col("on_hand", "Tồn", "num"),
+        W.col("unit_price", "Giá bán", "money"), W.col("supplier", "NCC")], rows, empty="Không tìm thấy sản phẩm.")]
+    return ToolOutput(rows, ui=ui)
 
 
 @tool("get_product_detail", "read", "One SKU: lots with expiry, incoming POs, 28-day sales, 14-day forecast, ABC-XYZ cell.", {"sku": SKU}, ["sku"])
@@ -109,8 +125,16 @@ def _expiring(ctx: ToolContext, days: int = 7, category: str | None = None) -> T
                                  "expected_waste", "value_at_risk", "supplier")}
             | ({"best": {"label": it["options"][0]["label"], "gain": it["options"][0]["delta_vs_keep"]}}
                if it["options"] else {}) for it in risky]
+    rows = [{**l, "best_label": (l.get("best") or {}).get("label"), "best_gain": (l.get("best") or {}).get("gain")}
+            for l in lots]
+    ui = [W.table(f"Lô cận date trong {days} ngày tới",
+                  [W.col("name", "Hàng"), W.col("days_left", "Còn hạn", "days"), W.col("qty", "SL", "num"),
+                   W.col("status", "Trạng thái", "badge"), W.col("value_at_risk", "Giá vốn rủi ro", "money"),
+                   W.col("best_label", "Phương án tốt nhất")],
+                  sorted(rows, key=lambda x: x["days_left"]), total=len(lots),
+                  empty="Không có lô nào có nguy cơ hủy.")]
     return ToolOutput({"as_of": r["as_of"], "summary": r["summary"], "total_value_at_risk": r["total_value_at_risk"],
-                       "lots": lots[:20], "more": max(0, len(lots) - 20)})
+                       "lots": lots[:20], "more": max(0, len(lots) - 20)}, ui=ui)
 
 
 @tool("get_stock_flow", "read", "Stock in (received) / out (sold, wasted, returned) over time. Default last 30 days.",
@@ -176,7 +200,11 @@ def _preview(ctx: ToolContext, supplier: str) -> ToolOutput:
     s["lines"] = [{k: l[k] for k in ("sku", "name", "qty", "on_hand", "forecast_cover", "line_value", "abc_xyz")}
                   | {"mode": l["explain"]["mode"], "capped_by_shelf_life": l["explain"]["capped_by_shelf_life"]}
                   for l in s["lines"]]
-    return ToolOutput(s)
+    ui = [W.table(f"Dự kiến đặt {sup.name} (chỉ xem trước, chưa tạo đề xuất)", [
+        W.col("name", "Hàng"), W.col("qty", "SL đặt", "num"), W.col("on_hand", "Tồn", "num"),
+        W.col("forecast_cover", "Dự báo phủ", "num"), W.col("line_value", "Thành tiền", "money"),
+        W.col("abc_xyz", "ABC-XYZ")], s["lines"])]
+    return ToolOutput(s, ui=ui)
 
 
 @tool("list_proposals", "read", "List proposals by status (PENDING, EXECUTED, REJECTED, ...).",
@@ -185,9 +213,14 @@ def _list_props(ctx: ToolContext, status: str = "PENDING", type: str | None = No
     q = select(Proposal).where(Proposal.status == status.upper()).order_by(Proposal.id.desc()).limit(20)
     if type:
         q = q.where(Proposal.type == type.upper())
-    return ToolOutput([{"id": p.id, "type": p.type, "status": p.status, "title": p.title, "est_value": p.est_value,
-                        "created_at": p.created_at.isoformat(), "decided_by": p.decided_by,
-                        "decision_note": p.decision_note} for p in ctx.db.scalars(q)])
+    rows = [{"id": p.id, "type": p.type, "status": p.status, "title": p.title, "est_value": p.est_value,
+             "created_at": p.created_at.isoformat(), "decided_by": p.decided_by,
+             "decision_note": p.decision_note} for p in ctx.db.scalars(q)]
+    ui = [W.table(f"Đề xuất ({status.upper()})", [
+        W.col("id", "#", "num"), W.col("type", "Loại", "ptype"), W.col("title", "Nội dung"),
+        W.col("est_value", "Giá trị", "money"), W.col("created_at", "Tạo lúc", "date")], rows,
+        empty="Không có đề xuất nào.")]
+    return ToolOutput(rows, ui=ui)
 
 
 @tool("get_kpi_dashboard", "read", "KPIs of the last N days vs the previous N days, plus how often the manager accepted agent proposals.", {"days": {"type": "integer", "default": 30}})
@@ -195,13 +228,22 @@ def _kpi(ctx: ToolContext, days: int = 30) -> ToolOutput:
     r = reports.kpi_compare(ctx.db, days)
     keep = ("revenue", "gross_profit", "waste_cost", "waste_rate", "oos_rate", "lost_margin", "markdown_loss",
             "return_credit", "inventory_days")
+    cur, prev = r["current"]["kpi"], r["previous"]["kpi"]
+    ui = [W.kpis(f"KPI {days} ngày gần nhất so với {days} ngày trước", [
+        W.kpi("Doanh thu", cur["revenue"], "money", prev["revenue"]),
+        W.kpi("Lợi nhuận gộp", cur["gross_profit"], "money", prev["gross_profit"]),
+        W.kpi("Chi phí hủy", cur["waste_cost"], "money", prev["waste_cost"], True),
+        W.kpi("Tỷ lệ hủy", cur["waste_rate"], "pct", prev["waste_rate"], True),
+        W.kpi("Tỷ lệ hết hàng", cur["oos_rate"], "pct", prev["oos_rate"], True),
+        W.kpi("Ngày tồn kho", cur["inventory_days"], "num", prev["inventory_days"], True),
+    ], note=f"{r['current']['start']} → {r['current']['end']}")]
     return ToolOutput({
         "current": {"start": r["current"]["start"], "end": r["current"]["end"],
                     **{k: r["current"]["kpi"][k] for k in keep}},
         "previous": {"start": r["previous"]["start"], "end": r["previous"]["end"],
                      **{k: r["previous"]["kpi"][k] for k in keep}},
         "agent_acceptance": acceptance_stats(ctx.db),
-    })
+    }, ui=ui)
 
 
 # ---------------- CHART ----------------
