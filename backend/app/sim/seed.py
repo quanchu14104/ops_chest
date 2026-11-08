@@ -1,0 +1,129 @@
+"""Sinh 1 nam lich su (chinh sach 'kinh nghiem', truoc khi co Ops Chest) va ghi vao DB.
+
+    uv run python -m app.sim.seed --reset
+"""
+from __future__ import annotations
+
+import argparse
+import time
+from datetime import timedelta
+
+from sqlalchemy import insert, select
+from sqlalchemy.orm import Session
+
+from app.auth import hash_password
+from app.clock import today
+from app.db import SessionLocal
+from app.db_init import migrate
+from app.db_init import reset as reset_db
+from app.models import (AppMeta, DailySales, Lot, POLine, Product, PurchaseOrder, StockMovement, Supplier,
+                        SupplierAgreement, User)
+from app.sim.backtest import initial_stock
+from app.sim.catalog import build_catalog
+from app.sim.policies import BaselinePolicy
+from app.sim.store_sim import StoreSim
+
+# Tai khoan demo (chi dung cho moi truong gia lap)
+DEMO_USERS = [
+    ("quanly", "Trần Minh Anh", "manager", "quanly123"),
+    ("nhanvien", "Lê Văn Bình", "staff", "nhanvien123"),
+]
+
+
+def _chunks(rows: list[dict], n: int = 5000):
+    for i in range(0, len(rows), n):
+        yield rows[i:i + n]
+
+
+def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
+    t0 = time.perf_counter()
+    if reset:
+        reset_db()
+    migrate()
+    end = today() - timedelta(days=1)
+    start = end - timedelta(days=days - 1)
+
+    suppliers, products = build_catalog()
+    sim = StoreSim(suppliers, products, seed=seed_value, record=True)
+    initial_stock(sim, start)
+    sim.run(start, days, BaselinePolicy())
+
+    db: Session = SessionLocal()
+    try:
+        if db.scalar(select(Product.id).limit(1)):
+            raise SystemExit("DB đã có dữ liệu. Chạy lại với --reset để xóa và seed lại.")
+        sup_ids = {}
+        for s in suppliers:
+            row = Supplier(code=s.code, name=s.name, email=s.email, phone=s.phone, lead_time_days=s.lead_time_days,
+                           order_weekdays=s.order_weekdays, min_order_value=s.min_order_value)
+            db.add(row)
+            db.flush()
+            sup_ids[s.code] = row.id
+            notes = ("Nhận trả hàng cận hạn nếu báo trước; hoàn tiền trừ vào đơn kế tiếp." if s.accepts_return
+                     else "Không nhận trả hàng cận hạn.")
+            db.add(SupplierAgreement(supplier_id=row.id, discount_pct=s.discount_pct,
+                                     accepts_near_expiry_return=s.accepts_return,
+                                     return_min_days_before_expiry=s.return_min_days,
+                                     return_credit_pct=s.return_credit_pct, valid_from=start,
+                                     valid_to=end + timedelta(days=365), notes=notes))
+        pid = {}
+        for p in products:
+            row = Product(sku=p.sku, name=p.name, category=p.category, freshness_class=p.freshness_class,
+                          shelf_life_days=p.shelf_life_days, unit_cost=p.unit_cost, unit_price=p.unit_price,
+                          pack_size=p.pack_size, supplier_id=sup_ids[p.supplier_code],
+                          is_traffic_driver=p.is_traffic_driver, substitute_skus=p.substitutes)
+            db.add(row)
+            db.flush()
+            pid[p.sku] = row.id
+
+        line_ids = {}
+        pending_codes = {o.po_code for o in sim.pipeline}
+        for code, rec in sim.pos.items():
+            pending = code in pending_codes
+            po = PurchaseOrder(code=code, supplier_id=sup_ids[rec.supplier], status="SENT" if pending else "RECEIVED",
+                               order_date=rec.order_date, expected_date=rec.arrival,
+                               total_value=sum(q * c for _, q, c in rec.lines))
+            for sku, q, c in rec.lines:
+                po.lines.append(POLine(product_id=pid[sku], qty=q, unit_cost=c, received_qty=None if pending else q))
+            db.add(po)
+        db.flush()
+        for line, code in db.execute(select(POLine, PurchaseOrder.code).join(PurchaseOrder)):
+            line_ids[(code, line.product_id)] = line.id
+
+        for sku, lots in sim.lots.items():
+            for l in lots:
+                db.add(Lot(product_id=pid[sku], qty_received=l.qty, qty_remaining=l.qty, received_date=l.received,
+                           expiry_date=l.expiry, unit_cost=l.unit_cost, markdown_pct=0.0,
+                           po_line_id=line_ids.get((l.po_code, pid[sku])), status="ACTIVE"))
+
+        for chunk in _chunks([{**{k: v for k, v in r.items() if k != "sku"}, "product_id": pid[r["sku"]]}
+                              for r in sim.sales_rows]):
+            db.execute(insert(DailySales), chunk)
+        for chunk in _chunks([{**{k: v for k, v in r.items() if k != "sku"}, "product_id": pid[r["sku"]]}
+                              for r in sim.movements]):
+            db.execute(insert(StockMovement), chunk)
+
+        if not db.scalar(select(User.id).limit(1)):
+            for u, name, role, pw in DEMO_USERS:
+                db.add(User(username=u, full_name=name, role=role, password_hash=hash_password(pw)))
+        db.merge(AppMeta(key="seeded_for_date", value=today().isoformat()))
+        db.merge(AppMeta(key="seed_policy", value=BaselinePolicy.name))
+        db.commit()
+    finally:
+        db.close()
+    return {"days": days, "start": start.isoformat(), "end": end.isoformat(), "products": len(products),
+            "sales_rows": len(sim.sales_rows), "movements": len(sim.movements), "purchase_orders": len(sim.pos),
+            "open_lots": sum(len(v) for v in sim.lots.values()), "seconds": round(time.perf_counter() - t0, 1)}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--days", type=int, default=365)
+    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--reset", action="store_true", help="Xóa toàn bộ bảng rồi seed lại")
+    args = ap.parse_args()
+    print(seed(args.days, args.seed, args.reset))
+
+
+if __name__ == "__main__":
+    main()

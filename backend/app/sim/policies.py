@@ -1,0 +1,193 @@
+"""Hai chinh sach dat hang de so sanh trong backtest.
+
+A - BaselinePolicy ("kinh nghiem"): muc ton muc tieu = TB ban 28 ngay x so ngay can phu x he so an toan.
+    Khong biet thu trong tuan, Tet, het hang lam doanh so thap, khong xu ly hang can date.
+B - OpsChestPolicy: dung dung cac engine cua Ops Chest (du bao, newsvendor/order-up-to, tran HSD,
+    ABC-XYZ, de xuat giam gia/tra hang). Trong mo phong coi nhu SM duyet het de xuat.
+"""
+from __future__ import annotations
+
+import math
+from datetime import date, timedelta
+
+from app.engines.abc_xyz import Z_BY_CLASS, SkuStats, classify
+from app.engines.disposition import ELASTICITY, DispositionInput, best
+from app.engines.expiry import LotInput, project_lots
+from app.engines.forecast import estimate_event_factors, forecast_demand
+from app.engines.replenishment import Incoming, LotState, ReplenishmentInput, compute_order, review_period
+from app.sim.catalog import ProductSpec
+from app.sim.store_sim import Policy, StoreSim
+
+AT_RISK_DAYS = {"FRESH": 1, "SHORT": 3, "LONG": 45}
+
+
+def salvage_value(p: ProductSpec, accepts_return: bool, credit_pct: float) -> float:
+    """Tien thu hoi ky vong cho 1 don vi khong ban duoc gia goc (giam gia cuoi ngay hoac tra NCC)."""
+    v = 0.2 * p.unit_price if p.freshness_class in ("FRESH", "SHORT") else 0.0
+    if accepts_return:
+        v = max(v, 0.5 * p.unit_cost * credit_pct)
+    return v
+
+
+class BaselinePolicy(Policy):
+    name = "A: Kinh nghiệm (par level)"
+
+    def __init__(self, safety: float = 1.2):
+        self.safety = safety
+
+    def place_orders(self, sim: StoreSim, d: date) -> None:
+        for code, sup in sim.suppliers.items():
+            if d.weekday() not in sup.order_weekdays:
+                continue
+            R = review_period(sup.order_weekdays, d)
+            L = sup.lead_time_days
+            lines = []
+            for p in sim.by_supplier[code]:
+                if p.sku in sim.delisted:
+                    continue
+                sales = sim.hist[p.sku]["sales"][-28:]
+                m = sum(sales) / len(sales) if len(sales) >= 7 else p.base_rate
+                if p.shelf_life_days <= R + 7:
+                    # "ngay ban tot": TB + 1 do lech chuan doanh so 4 tuan qua
+                    sd = (sum((x - m) ** 2 for x in sales) / max(1, len(sales) - 1)) ** 0.5 if len(sales) > 1 else 0
+                    target = m * R * 1.15 + 0.5 * sd
+                else:
+                    target = m * (L + R) * self.safety + m
+                position = sim.on_hand(p.sku) + sum(o.qty for o in sim.incoming(p.sku))
+                q = target - position
+                if q > 0.5:
+                    lines.append((p.sku, int(math.ceil(q / p.pack_size)) * p.pack_size))
+            sim.place_order(code, d, lines)
+
+
+class OpsChestPolicy(Policy):
+    name = "B: Ops Chest"
+
+    def __init__(self, dispose: bool = True, lookback_classify: int = 90):
+        self.dispose = dispose
+        self.lookback = lookback_classify
+        self.classes: dict[str, str] = {}
+        self._last_classify: date | None = None
+        self._events: dict[str, dict] = {}
+        self._events_at: date | None = None
+        self.actions = {"markdown": 0, "return": 0}
+
+    # --- tien ich ---
+    def _event_factors(self, sim: StoreSim, d: date) -> dict[str, dict]:
+        if self._events_at is None or (d - self._events_at).days >= 30:
+            self._events = {p.sku: estimate_event_factors(sim.hist[p.sku]["sales"][-400:], d - timedelta(days=1))
+                            if len(sim.hist[p.sku]["sales"]) >= 120 else {} for p in sim.products}
+            self._events_at = d
+        return self._events
+
+    def _classify(self, sim: StoreSim, d: date) -> None:
+        if self._last_classify and (d - self._last_classify).days < 7:
+            return
+        n = self.lookback
+        stats = []
+        for p in sim.products:
+            h = sim.hist[p.sku]
+            sales = h["sales"][-n:]
+            if not sales:
+                continue
+            margin = sum(h["revenue"][-n:]) - sum(h["cogs"][-n:]) - sum(h["waste_cost"][-n:])
+            weekly = [sum(sales[i:i + 7]) for i in range(len(sales) % 7, len(sales), 7)]
+            stats.append(SkuStats(p.sku, p.name, margin, weekly))
+        if stats:
+            self.classes = {k: v.cell for k, v in classify(stats).items()}
+        self._last_classify = d
+
+    def _forecast(self, sim: StoreSim, p: ProductSpec, end: date, horizon: int, start: date | None = None):
+        h = sim.hist[p.sku]
+        events = self._event_factors(sim, end + timedelta(days=1)).get(p.sku, {})
+        return forecast_demand(h["sales"][-120:], end, horizon, stockout=h["stockout"][-120:],
+                               start=start, event_factors=events)
+
+    # --- xu ly can date (sang som, truoc khi ban) ---
+    def pre_sales(self, sim: StoreSim, d: date) -> None:
+        if not self.dispose or not sim.days or len(sim.days) < 2:
+            return
+        for p in sim.products:
+            lots = sim.lots[p.sku]
+            thr = AT_RISK_DAYS[p.freshness_class]
+            at_risk = [l for l in lots if 1 <= (l.expiry - d).days <= max(thr, 1) and l.qty > 0]
+            if not at_risk:
+                continue
+            horizon = max((l.expiry - d).days for l in lots) + 1
+            fc = self._forecast(sim, p, d - timedelta(days=1), min(horizon, 120), start=d)
+            risks = {r.lot_id: r for r in project_lots(
+                [LotInput(l.lot_no, l.qty, l.expiry) for l in lots], fc.daily, d)}
+            sup = sim.suppliers[p.supplier_code]
+            for lot in at_risk:
+                r = risks.get(lot.lot_no)
+                if not r or r.expected_waste < 1:
+                    continue
+                opt = best(DispositionInput(
+                    qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=r.days_left,
+                    expected_sold_full_price=r.expected_sold, elasticity=ELASTICITY[p.freshness_class],
+                    accepts_return=sup.accepts_return, return_min_days_before_expiry=sup.return_min_days,
+                    return_credit_pct=sup.return_credit_pct, daily_demand=fc.daily[0],
+                ))
+                if opt.action == "MARKDOWN":
+                    sim.apply_markdown(lot, opt.markdown_pct, d, evening=opt.timing == "EVENING")
+                    self.actions["markdown"] += 1
+                elif opt.action == "RETURN":
+                    sim.apply_return(lot, int(round(opt.units_returned)), sup.return_credit_pct, d)
+                    self.actions["return"] += 1
+
+    # --- gio vang: hang het han hom nay con du sau gio ban chinh ---
+    def evening(self, sim: StoreSim, d: date) -> None:
+        if not self.dispose:
+            return
+        for p in sim.products:
+            left = [l for l in sim.lots[p.sku] if l.expiry <= d and l.qty > 0]
+            if not left:
+                continue
+            fc_today = self._forecast(sim, p, d - timedelta(days=1), 1, start=d).daily[0]
+            for lot in left:
+                opt = best(DispositionInput(
+                    qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=0,
+                    expected_sold_full_price=0, elasticity=ELASTICITY[p.freshness_class],
+                    daily_demand=fc_today,
+                ))
+                if opt.action == "MARKDOWN":
+                    sim.apply_markdown(lot, opt.markdown_pct, d, evening=True)
+                    self.actions["markdown"] += 1
+
+    # --- dat hang (cuoi ngay) ---
+    def place_orders(self, sim: StoreSim, d: date) -> None:
+        self._classify(sim, d)
+        for code, sup in sim.suppliers.items():
+            if d.weekday() not in sup.order_weekdays:
+                continue
+            R = review_period(sup.order_weekdays, d)
+            L = sup.lead_time_days
+            lines = []
+            for p in sim.by_supplier[code]:
+                if p.sku in sim.delisted:
+                    continue
+                res = compute_order(build_input(
+                    p, d, L, R, self._forecast(sim, p, d, L + R + min(p.shelf_life_days, 30) + 2),
+                    [LotState(l.qty, l.expiry) for l in sim.lots[p.sku]],
+                    [Incoming(o.qty, o.arrival, o.arrival + timedelta(days=p.shelf_life_days - 1))
+                     for o in sim.incoming(p.sku)],
+                    Z_BY_CLASS.get(self.classes.get(p.sku, "BY"), 1.28),
+                    salvage_value(p, sup.accepts_return, sup.return_credit_pct),
+                ))
+                if res.qty > 0:
+                    lines.append((p.sku, res.qty))
+            sim.place_order(code, d, lines)
+
+
+def stockout_penalty(p) -> float:
+    """Chi phi co hoi/mat khach moi don vi het hang: 30% gia ban, 100% voi hang keo khach."""
+    return p.unit_price * (1.0 if p.is_traffic_driver else 0.3)
+
+
+def build_input(p, today, L, R, fc, lots, incoming, z, salvage) -> ReplenishmentInput:
+    return ReplenishmentInput(
+        today=today, lead_time_days=L, review_period_days=R, shelf_life_days=p.shelf_life_days,
+        forecast=fc, lots=lots, incoming=incoming, pack_size=p.pack_size, z=z,
+        unit_cost=p.unit_cost, unit_price=p.unit_price, salvage_per_unit=salvage,
+        stockout_penalty_per_unit=stockout_penalty(p),
+    )

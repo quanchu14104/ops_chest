@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: opschest
+      POSTGRES_PASSWORD: opschest
+      POSTGRES_DB: opschest
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opschest"]
+      interval: 3s
+      retries: 20
+
+  mailpit:
+    # Hop thu sandbox: moi email PO/tra hang deu nam o day, khong gui ra Internet
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"  # giao dien web
+      - "1025:1025"  # SMTP
+
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://opschest:opschest@db:5432/opschest
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      PDF_OUTPUT_DIR: /data/generated
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - generated:/data/generated
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    environment:
+      API_TARGET: http://backend:8000
+      VITE_POLL: "1"
+    volumes:
+      - ./frontend:/app
+      - node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  generated:
+  node_modules:

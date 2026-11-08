@@ -1,0 +1,28 @@
+[project]
+name = "ops-chest"
+version = "0.1.0"
+description = "Ops Chest - agent van hanh kho & han su dung cho cua hang tien loi (HITL)"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.4",
+    "openai>=1.40",
+    "apscheduler>=3.10,<4",
+    "reportlab>=4.2",
+    "jinja2>=3.1",
+    "tzdata>=2024.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

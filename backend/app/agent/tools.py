@@ -1,0 +1,289 @@
+"""Tool registry cho agent.
+
+QUY TAC HITL (duoc test kiem tra):
+- Chi co 2 loai tool: "read" (doc du lieu) va "propose" (tao Proposal PENDING qua proposals.builders).
+- Module nay KHONG import proposals.executor hay proposals.service.approve.
+- Truy van co tham so co dinh; LLM khong viet SQL.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+from typing import Any, Callable
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
+
+from app.models import Proposal, Supplier, User
+from app.proposals import builders
+from app.proposals.views import acceptance_stats, to_dict
+from app.services import charts, inventory, replenish, reports
+
+
+@dataclass
+class ToolContext:
+    db: Session
+    user: User
+    chat_session_id: int | None = None
+
+
+@dataclass
+class ToolOutput:
+    data: Any
+    ui: list[dict] = field(default_factory=list)  # su kien hien thi: chart / proposal
+
+
+@dataclass
+class Tool:
+    name: str
+    kind: str  # read / propose
+    description: str
+    parameters: dict
+    fn: Callable[..., ToolOutput]
+
+    def schema(self) -> dict:
+        # Tham so tuy chon cho phep null: nhieu model gui null thay vi bo qua, va mot so provider
+        # (vd Groq) kiem tra schema nghiem ngat -> tu choi ca luot goi neu chi khai bao "string".
+        params = {**self.parameters, "properties": {}}
+        req = set(self.parameters.get("required", []))
+        for k, v in self.parameters["properties"].items():
+            if k not in req and isinstance(v.get("type"), str):
+                v = {**v, "type": [v["type"], "null"]}
+            params["properties"][k] = v
+        return {"type": "function", "function": {"name": self.name, "description": self.description,
+                                                 "parameters": params}}
+
+
+REGISTRY: dict[str, Tool] = {}
+
+
+def tool(name: str, kind: str, description: str, properties: dict | None = None, required: list[str] | None = None):
+    assert kind in ("read", "propose")
+
+    def deco(fn):
+        REGISTRY[name] = Tool(name, kind, description,
+                              {"type": "object", "properties": properties or {}, "required": required or []}, fn)
+        return fn
+    return deco
+
+
+def _d(s: str | None) -> date | None:
+    return date.fromisoformat(s) if s else None
+
+
+DATE = {"type": "string", "description": "YYYY-MM-DD"}
+GROUP = {"type": "string", "enum": ["day", "week", "month"]}
+CATEGORY = {"type": "string", "description": "category name (partial), e.g. 'Nước ngọt'"}
+SKU = {"type": "string", "description": "e.g. COM002"}
+
+
+# ---------------- READ ----------------
+@tool("get_inventory_summary", "read", "Current stock overview: SKU counts, stock value by category, out-of-stock SKUs, value expiring within 3 days, pending proposals.")
+def _inventory_summary(ctx: ToolContext) -> ToolOutput:
+    return ToolOutput(inventory.inventory_summary(ctx.db))
+
+
+@tool("search_products", "read", "Find products by name/SKU/category. Returns SKU, prices, on-hand qty.",
+      {"query": {"type": "string"}, "category": CATEGORY})
+def _search_products(ctx: ToolContext, query: str | None = None, category: str | None = None) -> ToolOutput:
+    prods = inventory.find_products(ctx.db, query, category, limit=25)
+    lots = inventory.active_lots(ctx.db, [p.id for p in prods])
+    return ToolOutput([{"sku": p.sku, "name": p.name, "category": p.category, "status": p.status,
+                        "unit_price": p.unit_price, "unit_cost": p.unit_cost, "supplier": p.supplier.name,
+                        "on_hand": sum(l.qty_remaining for l in lots.get(p.id, []))} for p in prods])
+
+
+@tool("get_product_detail", "read", "One SKU: lots with expiry, incoming POs, 28-day sales, 14-day forecast, ABC-XYZ cell.", {"sku": SKU}, ["sku"])
+def _product_detail(ctx: ToolContext, sku: str) -> ToolOutput:
+    d = inventory.product_detail(ctx.db, sku.upper())
+    return ToolOutput(d if d else {"error": f"Không tìm thấy SKU {sku}"})
+
+
+@tool("get_expiring_lots", "read", "Lots expiring within N days (plus expired lots still on shelf) that are at risk of waste, with expected waste and best handling option.",
+      {"days": {"type": "integer", "default": 7}, "category": CATEGORY})
+def _expiring(ctx: ToolContext, days: int = 7, category: str | None = None) -> ToolOutput:
+    r = inventory.expiring_lots(ctx.db, days=days, category=category)
+    # Chi tra lo co nguy co (lo "OK" khong can LLM doc); phuong an tot nhat rut gon
+    risky = [it for it in r["lots"] if it["status"] != "OK"]
+    lots = [{k: it[k] for k in ("lot_id", "sku", "name", "qty", "expiry_date", "days_left", "status",
+                                 "expected_waste", "value_at_risk", "supplier")}
+            | ({"best": {"label": it["options"][0]["label"], "gain": it["options"][0]["delta_vs_keep"]}}
+               if it["options"] else {}) for it in risky]
+    return ToolOutput({"as_of": r["as_of"], "summary": r["summary"], "total_value_at_risk": r["total_value_at_risk"],
+                       "lots": lots[:20], "more": max(0, len(lots) - 20)})
+
+
+@tool("get_stock_flow", "read", "Stock in (received) / out (sold, wasted, returned) over time. Default last 30 days.",
+      {"start": DATE, "end": DATE, "group_by": GROUP, "category": CATEGORY, "sku": SKU})
+def _stock_flow(ctx: ToolContext, start=None, end=None, group_by="day", category=None, sku=None) -> ToolOutput:
+    s, e = reports.default_range(_d(start), _d(end))
+    rows = reports.stock_flow(ctx.db, s, e, group_by, category, sku)
+    totals = {k: sum(r[k] for r in rows) for k in ("in_qty", "in_value", "sold_qty", "sold_value", "waste_qty",
+                                                   "waste_value", "return_qty")}
+    return ToolOutput({"start": s.isoformat(), "end": e.isoformat(), "totals": totals, "rows": rows[-31:],
+                       "note": "use group_by=week for long ranges" if len(rows) > 31 else None})
+
+
+@tool("get_sales_summary", "read", "Revenue, gross profit, units sold, demand lost to stockouts over time.",
+      {"start": DATE, "end": DATE, "group_by": GROUP, "category": CATEGORY, "sku": SKU})
+def _sales(ctx: ToolContext, start=None, end=None, group_by="week", category=None, sku=None) -> ToolOutput:
+    s, e = reports.default_range(_d(start), _d(end))
+    rows = reports.sales_series(ctx.db, s, e, group_by, category, sku)
+    totals = {k: sum(r.get(k, 0) for r in rows) for k in ("qty", "revenue", "gross_profit", "lost_qty")}
+    return ToolOutput({"start": s.isoformat(), "end": e.isoformat(), "totals": totals, "rows": rows[-31:],
+                       "note": "use group_by=week for long ranges" if len(rows) > 31 else None})
+
+
+@tool("get_cost_report", "read", "Cost & KPI report: waste cost/rate, stockout rate, lost margin, markdowns, supplier credits, inventory days, waste by category, top wasted SKUs. Default 30 days.",
+      {"start": DATE, "end": DATE})
+def _cost(ctx: ToolContext, start=None, end=None) -> ToolOutput:
+    s, e = reports.default_range(_d(start), _d(end))
+    return ToolOutput(reports.cost_report(ctx.db, s, e))
+
+
+@tool("get_abc_xyz", "read", "ABC-XYZ analysis (90 days): 9-cell matrix. Pass cell (e.g. 'CZ') to list its SKUs.", {"cell": {"type": "string"}})
+def _abc(ctx: ToolContext, cell: str | None = None) -> ToolOutput:
+    r = reports.abc_xyz_report(ctx.db)
+    items = [i for i in r["items"] if not cell or i["cell"] == cell.upper()]
+    return ToolOutput({"matrix": r["matrix"], "items": items[:20], "items_total": len(items)})
+
+
+@tool("get_delist_candidates", "read", "Delisting candidates (C-Y/C-Z, high waste or loss, not traffic drivers) with reasons and substitutes.")
+def _delist_cands(ctx: ToolContext) -> ToolOutput:
+    return ToolOutput(reports.delist_report(ctx.db))
+
+
+@tool("list_suppliers", "read", "Suppliers: order days, lead time, minimum order, near-expiry return terms.")
+def _suppliers(ctx: ToolContext) -> ToolOutput:
+    sups = ctx.db.scalars(select(Supplier).options(joinedload(Supplier.agreements)).order_by(Supplier.code)).unique()
+    wd = replenish.WEEKDAY_NAMES
+    return ToolOutput([{
+        "code": s.code, "name": s.name, "email": s.email, "lead_time_days": s.lead_time_days,
+        "order_days": [wd[i] for i in s.order_weekdays], "min_order_value": s.min_order_value,
+        "accepts_near_expiry_return": s.agreements[0].accepts_near_expiry_return if s.agreements else False,
+        "return_min_days_before_expiry": s.agreements[0].return_min_days_before_expiry if s.agreements else None,
+        "return_credit_pct": s.agreements[0].return_credit_pct if s.agreements else None,
+    } for s in sups])
+
+
+@tool("preview_reorder", "read", "PREVIEW suggested order quantities for one supplier (does not create a proposal).", {"supplier": {"type": "string", "description": "code (NCC01) or name"}},
+      ["supplier"])
+def _preview(ctx: ToolContext, supplier: str) -> ToolOutput:
+    sup = replenish.get_supplier(ctx.db, supplier)
+    if not sup:
+        return ToolOutput({"error": f"Không tìm thấy nhà cung cấp '{supplier}'"})
+    s = replenish.suggest_po(ctx.db, sup)
+    s["lines"] = [{k: l[k] for k in ("sku", "name", "qty", "on_hand", "forecast_cover", "line_value", "abc_xyz")}
+                  | {"mode": l["explain"]["mode"], "capped_by_shelf_life": l["explain"]["capped_by_shelf_life"]}
+                  for l in s["lines"]]
+    return ToolOutput(s)
+
+
+@tool("list_proposals", "read", "List proposals by status (PENDING, EXECUTED, REJECTED, ...).",
+      {"status": {"type": "string", "default": "PENDING"}, "type": {"type": "string"}})
+def _list_props(ctx: ToolContext, status: str = "PENDING", type: str | None = None) -> ToolOutput:
+    q = select(Proposal).where(Proposal.status == status.upper()).order_by(Proposal.id.desc()).limit(20)
+    if type:
+        q = q.where(Proposal.type == type.upper())
+    return ToolOutput([{"id": p.id, "type": p.type, "status": p.status, "title": p.title, "est_value": p.est_value,
+                        "created_at": p.created_at.isoformat(), "decided_by": p.decided_by,
+                        "decision_note": p.decision_note} for p in ctx.db.scalars(q)])
+
+
+@tool("get_kpi_dashboard", "read", "KPIs of the last N days vs the previous N days, plus how often the manager accepted agent proposals.", {"days": {"type": "integer", "default": 30}})
+def _kpi(ctx: ToolContext, days: int = 30) -> ToolOutput:
+    r = reports.kpi_compare(ctx.db, days)
+    keep = ("revenue", "gross_profit", "waste_cost", "waste_rate", "oos_rate", "lost_margin", "markdown_loss",
+            "return_credit", "inventory_days")
+    return ToolOutput({
+        "current": {"start": r["current"]["start"], "end": r["current"]["end"],
+                    **{k: r["current"]["kpi"][k] for k in keep}},
+        "previous": {"start": r["previous"]["start"], "end": r["previous"]["end"],
+                     **{k: r["previous"]["kpi"][k] for k in keep}},
+        "agent_acceptance": acceptance_stats(ctx.db),
+    })
+
+
+# ---------------- CHART ----------------
+@tool("build_chart", "read", "Render a chart in the UI (stock_flow/_value: in vs out; sales: revenue & profit; sales_qty: sold vs lost; waste_by_category; waste_trend; inventory_by_category; expiry_risk; abc_xyz). Default last 30 days.",
+      {"metric": {"type": "string", "enum": list(charts.METRICS)}, "start": DATE, "end": DATE, "group_by": GROUP,
+       "category": CATEGORY, "sku": SKU}, ["metric"])
+def _chart(ctx: ToolContext, metric: str, start=None, end=None, group_by="day", category=None, sku=None) -> ToolOutput:
+    spec = charts.build_chart(ctx.db, metric, _d(start), _d(end), group_by or "day", category, sku)
+    data = spec.get("data", [])
+    summary = {"chart_rendered": True, "title": spec["title"], "period": spec["period"], "rows": len(data)}
+    for s in spec.get("series", []):
+        vals = [r.get(s["key"], 0) or 0 for r in data]
+        if vals:
+            summary[s["key"]] = {"total": round(sum(vals)), "max": max(vals), "min": min(vals)}
+    if len(data) <= 20:
+        summary["data"] = data
+    return ToolOutput(summary, ui=[{"type": "chart", "spec": spec}])
+
+
+# ---------------- PROPOSE (chi tao de xuat PENDING) ----------------
+def _prop_out(p, created: bool, extra: dict | None = None) -> ToolOutput:
+    d = to_dict(p)
+    msg = "Đã tạo đề xuất mới" if created else "Đề xuất tương tự đã tồn tại, dùng lại đề xuất cũ"
+    return ToolOutput({"proposal_id": p.id, "status": p.status, "title": p.title, "est_value": p.est_value,
+                       "message": f"{msg}. Cần Store Manager duyệt trong Hộp duyệt.", **(extra or {})},
+                      ui=[{"type": "proposal", "proposal": d}])
+
+
+@tool("propose_purchase_order", "propose", "Create a purchase-order PROPOSAL for one supplier. Nothing is sent until the manager approves.",
+      {"supplier": {"type": "string", "description": "code (NCC01) or name"}}, ["supplier"])
+def _propose_po(ctx: ToolContext, supplier: str) -> ToolOutput:
+    sup = replenish.get_supplier(ctx.db, supplier)
+    if not sup:
+        return ToolOutput({"error": f"Không tìm thấy nhà cung cấp '{supplier}'"})
+    p, created, sug = builders.purchase_order(ctx.db, sup, "agent", ctx.chat_session_id)
+    ctx.db.commit()
+    if not p:
+        return ToolOutput({"message": f"Không cần đặt hàng {sup.name} lúc này: tồn còn hạn + hàng đang về đủ phủ "
+                                      "nhu cầu dự báo.", "warnings": sug["warnings"]})
+    return _prop_out(p, created, {"warnings": sug["warnings"]})
+
+
+@tool("propose_markdown", "propose", "Create a markdown PROPOSAL for near-expiry lots where markdown is the best option. Optional lot_ids.",
+      {"lot_ids": {"type": "array", "items": {"type": "integer"}}, "days": {"type": "integer", "default": 3}})
+def _propose_md(ctx: ToolContext, lot_ids: list[int] | None = None, days: int = 3) -> ToolOutput:
+    p, created = builders.markdown(ctx.db, "agent", lot_ids=lot_ids, days=max(days, 7 if lot_ids else days),
+                                   chat_session_id=ctx.chat_session_id)
+    ctx.db.commit()
+    if not p:
+        return ToolOutput({"message": "Không có lô nào mà giảm giá có lợi hơn giữ nguyên."})
+    return _prop_out(p, created)
+
+
+@tool("propose_supplier_return", "propose", "Create a return-to-supplier PROPOSAL for near-expiry lots (only if the contract allows). Optional lot_ids.",
+      {"lot_ids": {"type": "array", "items": {"type": "integer"}}})
+def _propose_return(ctx: ToolContext, lot_ids: list[int] | None = None) -> ToolOutput:
+    res = builders.supplier_return(ctx.db, "agent", lot_ids=lot_ids, chat_session_id=ctx.chat_session_id)
+    ctx.db.commit()
+    if not res:
+        return ToolOutput({"message": "Không có lô nào nên trả NCC (không có điều khoản hoặc giảm giá/giữ có lợi hơn)."})
+    outs = [_prop_out(p, c) for p, c in res]
+    return ToolOutput([o.data for o in outs], ui=[u for o in outs for u in o.ui])
+
+
+@tool("propose_dispose_expired", "propose", "Create a PROPOSAL to write off expired lots still in stock.")
+def _propose_dispose(ctx: ToolContext) -> ToolOutput:
+    p, created = builders.dispose_expired(ctx.db, "agent", ctx.chat_session_id)
+    ctx.db.commit()
+    if not p:
+        return ToolOutput({"message": "Không có lô nào đã quá hạn còn trong kho."})
+    return _prop_out(p, created)
+
+
+@tool("propose_delist", "propose", "Create a delisting PROPOSAL for one SKU (only if it is a delisting candidate).",
+      {"sku": SKU}, ["sku"])
+def _propose_delist(ctx: ToolContext, sku: str) -> ToolOutput:
+    p, created, err = builders.delist(ctx.db, sku, "agent", ctx.chat_session_id)
+    ctx.db.commit()
+    if not p:
+        return ToolOutput({"error": err})
+    return _prop_out(p, created)
+
+
+def schemas() -> list[dict]:
+    return [t.schema() for t in REGISTRY.values()]

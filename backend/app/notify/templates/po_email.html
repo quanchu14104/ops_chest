@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="vi">
+<body style="font-family: Arial, Helvetica, sans-serif; color:#1f2328; font-size:14px;">
+  <p>Kính gửi <strong>{{ supplier_name }}</strong>,</p>
+  <p>{{ store.store_name }} gửi đơn đặt hàng <strong>{{ code }}</strong>, đề nghị giao ngày
+     <strong>{{ expected_date }}</strong> tại {{ store.store_address }}.</p>
+  <table cellpadding="6" cellspacing="0" style="border-collapse:collapse; border:1px solid #d0d7de;">
+    <thead style="background:#f6f8fa;">
+      <tr><th align="left">Mã hàng</th><th align="left">Tên hàng</th><th align="right">Số lượng</th>
+          <th align="right">Đơn giá</th><th align="right">Thành tiền</th></tr>
+    </thead>
+    <tbody>
+    {% for l in lines %}
+      <tr style="border-top:1px solid #d0d7de;">
+        <td>{{ l.sku }}</td><td>{{ l.name }}</td><td align="right">{{ l.qty }}</td>
+        <td align="right">{{ l.unit_cost|money }}</td><td align="right">{{ (l.qty * l.unit_cost)|money }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="border-top:2px solid #1f2328;"><td colspan="4" align="right"><strong>Tổng cộng</strong></td>
+          <td align="right"><strong>{{ total|money }}</strong></td></tr>
+    </tfoot>
+  </table>
+  {% if note %}<p><em>Ghi chú: {{ note }}</em></p>{% endif %}
+  <p>Đơn hàng PDF đính kèm. Vui lòng xác nhận lại qua email này hoặc gọi {{ store.store_phone }}.</p>
+  <p>Trân trọng,<br>{{ approved_by }}<br>Store Manager, {{ store.store_name }}</p>
+  <hr style="border:none;border-top:1px solid #d0d7de;">
+  <p style="color:#656d76;font-size:12px;">Đơn do hệ thống Ops Chest soạn và đã được Store Manager duyệt trước khi gửi.</p>
+</body>
+</html>
