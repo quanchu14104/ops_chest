@@ -45,6 +45,7 @@ const TOOL_LABEL: Record<string, string> = {
   preview_reorder: "Tính thử số lượng đặt",
   list_proposals: "Xem đề xuất",
   get_kpi_dashboard: "Xem KPI",
+  open_receive_form: "Mở form nhận hàng",
   build_chart: "Vẽ biểu đồ",
   propose_purchase_order: "Tạo đề xuất đặt hàng",
   propose_markdown: "Tạo đề xuất giảm giá",
