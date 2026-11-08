@@ -13,6 +13,7 @@ from app.auth import current_user
 from app.clock import now
 from app.db import SessionLocal, get_db
 from app.models import ChatSession, User
+from app.services import quick as quick_svc
 
 router = APIRouter(prefix="/api/chat")
 
@@ -89,3 +90,12 @@ def send(sid: int, body: MessageIn, db: Session = Depends(get_db), user: User = 
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.get("/quick/{key}")
+def quick(key: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Du phong khi LLM loi: tra widget tu tool doc, khong qua LLM va khong luu vao hoi thoai."""
+    try:
+        return quick_svc.run(db, user, key)
+    except quick_svc.QuickError as e:
+        raise HTTPException(404, str(e))

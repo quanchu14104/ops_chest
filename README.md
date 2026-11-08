@@ -1,11 +1,11 @@
 # Ops Chest
 
-Agent dạng chatbot kèm dashboard giúp **Store Manager** của cửa hàng tiện lợi độc lập quản lý tồn kho theo lô và hạn sử dụng (HSD). Agent hỗ trợ:
+Agent dạng chatbot (chat là giao diện chính, dashboard chỉ để tham khảo) giúp **Store Manager** của cửa hàng tiện lợi độc lập quản lý tồn kho theo lô và hạn sử dụng (HSD). Agent hỗ trợ:
 
 - đề xuất đơn đặt hàng;
 - xử lý hàng cận date (giảm giá, trả nhà cung cấp, ghi hủy);
 - đề xuất ngừng nhập mặt hàng;
-- trò chuyện kèm biểu đồ nhập/xuất và chi phí.
+- trò chuyện kèm biểu đồ, bảng và thẻ số liệu ngay trong khung chat; nhận hàng bằng form trong chat; sửa đề xuất bằng lời ("giảm còn 30 thùng").
 
 **Mọi quyết định cuối cùng thuộc về Store Manager (Human-in-the-loop).** Ops Chest chỉ *đề xuất*. Đặt hàng, gửi email, đổi giá, ghi hủy và ngừng nhập chỉ xảy ra khi Store Manager bấm duyệt.
 
@@ -39,7 +39,7 @@ cd backend
 uv sync
 uv run python -m app.sim.seed --reset      # SQLite ./ops_chest.db
 uv run uvicorn app.api.main:app --reload
-uv run pytest -q                            # 24 test: engine, HITL, API, backtest
+uv run pytest -q                            # 72 test: engine, HITL, API, widget, bản tin, backtest
 ```
 
 Frontend chạy bằng `cd frontend && npm install && npm run dev` (Node 20+). Email cần một SMTP ở `localhost:1025`, ví dụ chạy riêng Mailpit:
@@ -54,7 +54,7 @@ docker run -p 8025:8025 -p 1025:1025 axllent/mailpit
 React (Vite, Recharts, TanStack Query)
    │ REST + SSE (stream chat)
 FastAPI
- ├─ agent/      LLM client OpenAI-compatible, 19 tool (14 đọc, 5 tạo đề xuất), vòng lặp tự viết
+ ├─ agent/      LLM client OpenAI-compatible, 21 tool (15 đọc, 6 tạo đề xuất), vòng lặp tự viết
  ├─ engines/    dự báo, đặt hàng (newsvendor/order-up-to + trần HSD), rủi ro hết hạn, xử lý cận date,
  │              ABC-XYZ, KPI. Thuần Python, tất định, có unit test
  ├─ services/   đọc DB → gọi engine (dùng chung cho API, agent, job)
@@ -102,7 +102,15 @@ Dùng được với OpenAI, Groq, Gemini, OpenRouter, DeepSeek, Ollama, vLLM…
 uv run python -m app.agent.evals --json ket-qua-<model>.json
 ```
 
-Bộ eval có 20 câu hỏi tiếng Việt và chấm 4 tiêu chí: gọi đúng tool, không bịa số (mọi con số phải có trong output của tool), không nói như đã thực thi, và không bỏ qua bước duyệt.
+Bộ eval có 30 câu hỏi tiếng Việt và chấm các tiêu chí: gọi đúng tool, không bịa số (mọi con số phải có trong output của tool), không nói như đã thực thi, và không bỏ qua bước duyệt. Với các câu của giao diện chat-first, eval chấm thêm: tool phát đúng loại widget, agent không chép lại số trong bảng, và không nói "đã nhận hàng" (agent chỉ mở được form, nhân viên tự bấm xác nhận). Eval cần LLM thật nên chưa có điểm số trong repo; chạy lệnh trên với key của bạn.
+
+### Giao diện chat-first
+
+- **Trợ lý** là trang chủ: bản tin đầu ngày (dựng từ dữ liệu thật, **không qua LLM**), khung chat, hộp đề xuất để duyệt tại chỗ. Các trang dữ liệu (Cận date, Đặt & nhận hàng, Phân tích…) và dashboard cũ (`/stats`) vẫn còn làm đường dự phòng.
+- **Widget:** tool đọc tự phát bảng/thẻ KPI (`app/agent/widgets.py`) từ chính dữ liệu của tool, nên số liệu luôn khớp dữ liệu thật; LLM chỉ tóm tắt.
+- **Sửa đề xuất:** `revise_proposal` tạo đề xuất *mới* chờ duyệt và chuyển bản cũ sang `SUPERSEDED`. Nút "Hỏi lại" trên thẻ đề xuất đưa ngữ cảnh vào chat.
+- **Nhận hàng:** `open_receive_form` chỉ hiện form trong chat; việc ghi vẫn đi qua `POST /api/purchase-orders/{id}/receive` do người dùng bấm.
+- **Khi LLM lỗi:** các mục bản tin và gợi ý nhanh gọi `GET /api/chat/quick/{khóa}`, chạy thẳng tool đọc (không LLM, không ghi gì) và hiện widget, nên app vẫn dùng được và demo không phụ thuộc LLM.
 
 ## Tài liệu
 

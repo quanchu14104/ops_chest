@@ -28,21 +28,21 @@ def build(db: Session) -> dict:
         extra = f" (đơn đặt hàng tổng {vnd(total)})" if total else ""
         items.append({"id": "pending", "level": "action", "count": len(pending),
                       "text": f"{len(pending)} đề xuất đang chờ anh/chị duyệt{extra}",
-                      "prompt": "Liệt kê các đề xuất đang chờ duyệt và cho biết cái nào nên xử lý trước"})
+                      "prompt": "Liệt kê các đề xuất đang chờ duyệt và cho biết cái nào nên xử lý trước", "quick": "pending"})
     if expired:
         items.append({"id": "expired", "level": "action", "count": len(expired),
                       "text": f"{len(expired)} lô đã quá hạn còn trên kệ, giá vốn {vnd(summ['value_already_expired_on_shelf'])}",
-                      "prompt": "Có lô nào đã quá hạn còn trên kệ không? Nên xử lý thế nào?"})
+                      "prompt": "Có lô nào đã quá hạn còn trên kệ không? Nên xử lý thế nào?", "quick": "expired"})
     near = [l for l in risky if l["status"] != "EXPIRED"]
     if near:
         items.append({"id": "expiring", "level": "warn", "count": len(near),
                       "text": f"{len(near)} lô có nguy cơ hủy trong 3 ngày tới, giá vốn rủi ro {vnd(exp['total_value_at_risk'])}",
-                      "prompt": "Hàng nào sắp hết hạn trong 3 ngày tới, nên xử lý thế nào?"})
+                      "prompt": "Hàng nào sắp hết hạn trong 3 ngày tới, nên xử lý thế nào?", "quick": "expiring"})
     if due:
         names = ", ".join(s.name for s in due)
         items.append({"id": "due", "level": "info", "count": len(due),
                       "text": f"Hôm nay đến lịch đặt hàng: {names}",
-                      "prompt": f"Lên đơn đặt hàng cho {due[0].name}"})
+                      "prompt": f"Lên đơn đặt hàng cho {due[0].name}", "quick": f"reorder:{due[0].code}"})
     if summ["purchase_orders_awaiting_delivery"]:
         items.append({"id": "po", "level": "info", "count": summ["purchase_orders_awaiting_delivery"],
                       "text": f"{summ['purchase_orders_awaiting_delivery']} đơn hàng đang chờ giao",
@@ -50,6 +50,6 @@ def build(db: Session) -> dict:
     if summ["out_of_stock_skus"]:
         items.append({"id": "oos", "level": "warn", "count": summ["out_of_stock_skus"],
                       "text": f"{summ['out_of_stock_skus']} mặt hàng đang hết hàng",
-                      "prompt": "Tình hình kho hôm nay thế nào? Mặt hàng nào đang hết?"})
+                      "prompt": "Tình hình kho hôm nay thế nào? Mặt hàng nào đang hết?", "quick": "inventory"})
     return {"today": today().isoformat(), "date_label": dmy(today()), "items": items,
             "all_clear": not items}

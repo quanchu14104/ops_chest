@@ -21,3 +21,13 @@ def test_briefing_pending_count_matches_inbox(client, manager, staff):
     pend = client.get("/api/proposals?status=PENDING&limit=200", headers=manager).json()
     item = next((i for i in d["items"] if i["id"] == "pending"), None)
     assert (item["count"] if item else 0) == len(pend)
+
+
+def test_briefing_items_have_valid_quick_keys(client, manager):
+    """Moi muc ban tin co `quick` (neu co) phai chay duoc qua /api/chat/quick, khong can LLM."""
+    d = client.get("/api/briefing", headers=manager).json()
+    for it in d["items"]:
+        if it.get("quick"):
+            r = client.get(f"/api/chat/quick/{it['quick']}", headers=manager)
+            assert r.status_code == 200, (it["quick"], r.text)
+            assert r.json()["ui"] and all(u["type"] == "widget" for u in r.json()["ui"])
