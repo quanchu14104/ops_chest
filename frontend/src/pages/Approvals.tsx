@@ -7,7 +7,7 @@ import { TYPE_LABEL } from "../format";
 const TABS: [string, string][] = [
   ["PENDING,FAILED", "Chờ duyệt"],
   ["EXECUTED", "Đã thực hiện"],
-  ["REJECTED,EXPIRED", "Từ chối / hết hiệu lực"],
+  ["REJECTED,EXPIRED,SUPERSEDED", "Từ chối / hết hiệu lực"],
 ];
 
 export default function Approvals() {

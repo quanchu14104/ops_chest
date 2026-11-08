@@ -7,7 +7,7 @@ from app.db import Base
 from app.models.catalog import Product, Supplier
 
 PROPOSAL_TYPES = ("PURCHASE_ORDER", "MARKDOWN", "RETURN", "DISPOSE", "DELIST")
-PROPOSAL_STATUSES = ("PENDING", "APPROVED", "EXECUTED", "FAILED", "REJECTED", "EXPIRED")
+PROPOSAL_STATUSES = ("PENDING", "APPROVED", "EXECUTED", "FAILED", "REJECTED", "EXPIRED", "SUPERSEDED")
 
 
 class User(Base):

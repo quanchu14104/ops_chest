@@ -190,3 +190,67 @@ def delist(db: Session, sku: str, created_by: str, chat_session_id: int | None =
         est_value=int(c["margin_90d"]), created_by=created_by, dedupe_key=f"DL:{p.sku}",
         chat_session_id=chat_session_id)
     return prop, created, ""
+
+
+class ReviseError(Exception):
+    """Yeu cau sua khong hop le (de xuat khong PENDING, SKU khong co trong don, muc giam sai...)."""
+
+
+def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, int] | None = None,
+           markdown_pct: float | None = None, chat_session_id: int | None = None) -> Proposal:
+    """Tao de xuat MOI (PENDING) thay cho de xuat PENDING cu, ban cu chuyen SUPERSEDED (khong duyet duoc nua).
+
+    Chi doc/ghi ban ghi de xuat: khong duyet, khong thuc thi. Ban moi van phai qua Store Manager duyet.
+    """
+    old = db.get(Proposal, proposal_id)
+    if not old:
+        raise ReviseError(f"Không tìm thấy đề xuất #{proposal_id}")
+    if old.status != "PENDING":
+        raise ReviseError(f"Đề xuất #{old.id} đang ở trạng thái {old.status}, chỉ sửa được đề xuất đang chờ duyệt.")
+    if old.expires_at and _now() > old.expires_at:
+        raise ReviseError(f"Đề xuất #{old.id} đã quá hạn chốt, hãy tạo đề xuất mới.")
+    payload = copy.deepcopy(old.payload)
+    changes: list[str] = []
+    est_value = old.est_value
+    if old.type == "PURCHASE_ORDER":
+        if not sku_qty:
+            raise ReviseError("Cần nêu số lượng mới theo SKU cho đơn đặt hàng.")
+        by_sku = {l["sku"].upper(): l for l in payload["lines"]}
+        for sku, qty in sku_qty.items():
+            line = by_sku.get(sku.upper())
+            if line is None:
+                raise ReviseError(f"{sku} không có trong đơn #{old.id}")
+            qty = int(qty)
+            if qty < 0:
+                raise ReviseError("Số lượng không được âm")
+            if qty != line["qty"]:
+                changes.append(f"{line['sku']}: {line['qty']} → {qty}")
+                line["qty"] = qty
+                line["line_value"] = qty * line["unit_cost"]
+        payload["total_value"] = sum(int(l["qty"]) * int(l["unit_cost"]) for l in payload["lines"])
+        est_value = payload["total_value"]
+    elif old.type == "MARKDOWN":
+        if markdown_pct is None:
+            raise ReviseError("Cần nêu mức giảm giá mới (vd 0.3 = 30%).")
+        if not 0 < float(markdown_pct) < 0.95:
+            raise ReviseError("Mức giảm giá phải trong khoảng 0–95%")
+        for it in payload["items"]:
+            if it.get("markdown_pct") != float(markdown_pct):
+                changes.append(f"{it['sku']}#{it['lot_id']}: {it['markdown_pct']:.0%} → {float(markdown_pct):.0%}")
+                it["markdown_pct"] = float(markdown_pct)
+    else:
+        raise ReviseError("Loại đề xuất này không sửa được, chỉ đặt hàng và giảm giá.")
+    if not changes:
+        raise ReviseError("Thay đổi yêu cầu trùng với đề xuất hiện tại, không có gì để sửa.")
+    old.status = "SUPERSEDED"
+    old.decision_note = f"Được thay bằng bản sửa theo yêu cầu trong chat ({'; '.join(changes)})"
+    audit.log(db, created_by, "PROPOSAL_SUPERSEDED", "proposal", old.id, {"changes": changes})
+    rationale = f"{old.rationale} [Bản sửa của #{old.id}: {'; '.join(changes)}.]"
+    if old.type == "MARKDOWN":
+        rationale += " Mức thu thêm ước tính chưa tính lại theo mức giảm mới."
+    new, _ = _create(db, type=old.type, title=old.title, rationale=rationale, payload=payload,
+                     evidence={**old.evidence, "revised_from": old.id}, est_value=est_value,
+                     created_by=created_by, dedupe_key=old.dedupe_key, expires_at=old.expires_at,
+                     chat_session_id=chat_session_id or old.chat_session_id)
+    audit.log(db, created_by, "PROPOSAL_REVISED", "proposal", new.id, {"from": old.id, "changes": changes})
+    return new

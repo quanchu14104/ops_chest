@@ -44,6 +44,7 @@ export const STATUS_LABEL: Record<string, string> = {
   FAILED: "Lỗi khi thực hiện",
   REJECTED: "Đã từ chối",
   EXPIRED: "Hết hiệu lực",
+  SUPERSEDED: "Đã có bản sửa",
 };
 
 export const WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];

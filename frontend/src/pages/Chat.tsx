@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, streamChat, type ChartSpec, type ChatEvent, type Proposal, type TurnMetrics, type WidgetSpec } from "../api";
 import ChartView from "../components/ChartView";
-import ProposalCard from "../components/ProposalCard";
+import ProposalCard, { ASK_EVENT, type AskDetail } from "../components/ProposalCard";
 import Briefing from "../components/Briefing";
 import Widget from "../components/Widgets";
 
@@ -51,6 +51,7 @@ const TOOL_LABEL: Record<string, string> = {
   propose_supplier_return: "Tạo đề xuất trả NCC",
   propose_dispose_expired: "Tạo đề xuất ghi hủy",
   propose_delist: "Tạo đề xuất ngừng nhập",
+  revise_proposal: "Sửa đề xuất (tạo bản mới)",
 };
 
 const SUGGESTIONS = [
@@ -250,6 +251,8 @@ export default function Chat({ home = false }: { home?: boolean }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const location = useLocation();
   const sessionId = sid ? Number(sid) : null;
 
   useEffect(() => {
@@ -266,6 +269,29 @@ export default function Chat({ home = false }: { home?: boolean }) {
     // Khong tra ve ket qua: Chromium moi tra Promise tu scrollIntoView -> React tuong la ham cleanup
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns]);
+
+  // "Hỏi lại" từ thẻ đề xuất: điền sẵn ngữ cảnh vào ô nhập (sự kiện khi đang ở trang chat, router state khi đến từ trang khác)
+  const draftIn = (d: string) => {
+    setText(d);
+    inputRef.current?.focus();
+  };
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const d = (e as CustomEvent<AskDetail>).detail;
+      d.handled = true;
+      draftIn(d.text);
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, []);
+  useEffect(() => {
+    const draft = (location.state as { draft?: string } | null)?.draft;
+    if (draft) {
+      draftIn(draft);
+      nav(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const send = async (msg: string) => {
     if (!msg.trim() || busy) return;
@@ -357,6 +383,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
           }}
         >
           <textarea
+            ref={inputRef}
             value={text}
             placeholder="Nhập câu hỏi… (Enter để gửi, Shift+Enter xuống dòng)"
             onChange={(e) => setText(e.target.value)}

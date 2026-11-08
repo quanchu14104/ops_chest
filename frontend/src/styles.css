@@ -176,7 +176,7 @@ tbody tr:hover td { background: var(--surface-2); }
 .st-PENDING .dot { background: var(--warning); }
 .st-EXECUTED .dot, .st-APPROVED .dot { background: var(--good); }
 .st-FAILED .dot { background: var(--critical); }
-.st-REJECTED .dot, .st-EXPIRED .dot { background: var(--text-muted); }
+.st-REJECTED .dot, .st-EXPIRED .dot, .st-SUPERSEDED .dot { background: var(--text-muted); }
 
 /* ---------- KPI ---------- */
 .kpi .label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
@@ -211,7 +211,7 @@ tbody tr:hover td { background: var(--surface-2); }
 .proposal { border-left: 3px solid var(--warning); }
 .proposal.st-EXECUTED { border-left-color: var(--good); }
 .proposal.st-FAILED { border-left-color: var(--critical); }
-.proposal.st-REJECTED, .proposal.st-EXPIRED { border-left-color: var(--text-muted); }
+.proposal.st-REJECTED, .proposal.st-EXPIRED, .proposal.st-SUPERSEDED { border-left-color: var(--text-muted); }
 .proposal .meta { font-size: 12px; color: var(--text-muted); }
 .proposal .rationale { color: var(--text-secondary); margin: 8px 0; }
 .edited { background: color-mix(in srgb, var(--warning) 18%, transparent); }
