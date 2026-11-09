@@ -105,6 +105,10 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         evening = [l for l in lots if l.expiry_date == d and l.markdown_pct > 0 and l.qty_remaining > 0]
         if evening:
             top = max(l.markdown_pct for l in evening)
+            rebate = (min(REFERENCE_WORLD.evening_share * (a["sold"] - a["discounted"]), sum(l.qty_remaining for l in evening))
+                      * p.unit_price * top)  # khach toi von tra gia goc cung duoc huong gia giam
+            a["revenue"] -= rebate
+            a["md_loss"] += rebate
             extra = _poisson(_rng(SEED, "ev", p.sku, d.toordinal()),
                              expected * REFERENCE_WORLD.evening_share * REFERENCE_WORLD.elasticity[p.freshness_class] * top)
             for lot in evening:

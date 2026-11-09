@@ -122,6 +122,8 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     new_expiry = arrival + timedelta(days=inp.shelf_life_days - 1)
 
     lots = [[float(l.qty), l.expiry] for l in inp.lots if l.qty > 0]
+    # Don giao tre van la hang dang ve, neu khong se dat trung. Khong giao nua thi SM phai huy don.
+    lots += [[float(inc.qty), inc.expiry] for inc in inp.incoming if inc.arrival < base]
     # 1) Mo phong tu ngay mai den truoc ngay hang moi ve (hang dang ve cung duoc cong vao)
     pre_days = (arrival - base).days
     pre_sold = pre_waste = 0.0

@@ -26,6 +26,11 @@ class Supplier(Base):
     products: Mapped[list["Product"]] = relationship(back_populates="supplier")
     agreements: Mapped[list["SupplierAgreement"]] = relationship(back_populates="supplier")
 
+    def agreement_on(self, d: date) -> "SupplierAgreement | None":
+        """Thoa thuan co hieu luc vao ngay d; nhieu ban cung hieu luc thi lay ban ky sau cung."""
+        valid = [a for a in self.agreements if a.valid_from <= d <= a.valid_to]
+        return max(valid, key=lambda a: (a.valid_from, a.id), default=None)
+
 
 class SupplierAgreement(Base):
     """Hop dong nguyen tac: luu DIEU KHOAN de engine tinh toan, khong phai van ban phap ly."""

@@ -1,15 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, openPdf, type Proposal } from "../api";
+import { api, getUser, openPdf, type Proposal } from "../api";
 import ExpiryPhoto from "../components/ExpiryPhoto";
 import { dateVi, money, num } from "../format";
 
-type PO = { id: number; code: string; supplier: string; status: string; order_date: string; expected_date: string; total_value: number; proposal_id: number | null; has_pdf: boolean };
+type PO = { id: number; code: string; supplier: string; status: string; order_date: string; expected_date: string; total_value: number; proposal_id: number | null; has_pdf: boolean; overdue_days: number };
 type PODetail = PO & { lines: { line_id: number; sku: string; name: string; qty: number; unit_cost: number; received_qty: number | null; shelf_life_days: number; default_expiry: string }[] };
 type Supplier = { code: string; name: string };
 
 const PO_STATUS: Record<string, string> = { SENT: "Chờ giao", RECEIVED: "Đã nhận", CANCELLED: "Đã huỷ" };
+const PO_BADGE: Record<string, string> = { SENT: "PENDING", RECEIVED: "EXECUTED", CANCELLED: "REJECTED" };
+
+function CancelPO({ po, onDone }: { po: PO; onDone: () => void }) {
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const m = useMutation({
+    mutationFn: () => api(`/purchase-orders/${po.id}/cancel`, { method: "POST", body: { reason } }),
+    onSuccess: onDone,
+    onError: (e: Error) => setErr(e.message),
+  });
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <h2>Huỷ đơn {po.code} · {po.supplier}</h2>
+      <p className="small secondary">Chỉ huỷ khi nhà cung cấp không giao nữa. Hệ thống không tự báo cho nhà cung cấp, anh/chị cần báo trực tiếp.</p>
+      <input style={{ width: "100%" }} autoFocus placeholder="Lý do huỷ (bắt buộc)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      {err && <div className="alert error" style={{ marginTop: 8 }}>{err}</div>}
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="danger" disabled={!reason.trim() || m.isPending} onClick={() => m.mutate()}>Xác nhận huỷ đơn</button>
+        <button className="ghost" onClick={onDone}>Đóng</button>
+      </div>
+    </div>
+  );
+}
 
 function Receive({ id, onDone }: { id: number; onDone: () => void }) {
   const q = useQuery({ queryKey: ["po", id], queryFn: () => api<PODetail>(`/purchase-orders/${id}`) });
@@ -20,7 +43,7 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
     mutationFn: () =>
       api(`/purchase-orders/${id}/receive`, {
         method: "POST",
-        body: { lines: q.data!.lines.map((l) => ({ line_id: l.line_id, received_qty: qty[l.line_id] ?? l.qty, expiry_date: exp[l.line_id] ?? l.default_expiry })) },
+        body: { lines: q.data!.lines.map((l) => ({ line_id: l.line_id, received_qty: qty[l.line_id] ?? l.qty, expiry_date: exp[l.line_id] || null })) },
       }),
     onSuccess: onDone,
     onError: (e: Error) => setErr(e.message),
@@ -32,7 +55,7 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
       <h2>Nhận hàng {d.code} · {d.supplier}</h2>
       <p className="small secondary">
         Bắt buộc ghi <b>hạn sử dụng in trên bao bì</b> cho từng lô. Đây là dữ liệu máy POS không có; thiếu nó thì không quản lý FEFO và cảnh báo cận date được.
-        Ô HSD đã điền sẵn theo hạn chuẩn của mặt hàng, hãy sửa nếu khác.
+        Dòng nhận 0 thì không cần HSD.
       </p>
       <div className="table-wrap">
         <table>
@@ -47,7 +70,7 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
                   <input className="qty" type="number" min={0} value={qty[l.line_id] ?? l.qty} onChange={(e) => setQty({ ...qty, [l.line_id]: Number(e.target.value) })} />
                 </td>
                 <td>
-                  <input type="date" value={exp[l.line_id] ?? l.default_expiry} onChange={(e) => setExp({ ...exp, [l.line_id]: e.target.value })} aria-label={`HSD ${l.name}`} />
+                  <input type="date" value={exp[l.line_id] ?? ""} onChange={(e) => setExp({ ...exp, [l.line_id]: e.target.value })} aria-label={`HSD ${l.name}`} />
                   <ExpiryPhoto sku={l.sku} onRead={(iso) => setExp((cur) => ({ ...cur, [l.line_id]: iso }))} />
                 </td>
               </tr>
@@ -68,6 +91,8 @@ export default function Orders() {
   const qc = useQueryClient();
   const [status, setStatus] = useState("SENT");
   const [receiving, setReceiving] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState<PO | null>(null);
+  const isManager = getUser()?.role === "manager";
   const [sup, setSup] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const pos = useQuery({ queryKey: ["pos", status], queryFn: () => api<PO[]>(`/purchase-orders?status=${status}&limit=100`) });
@@ -98,7 +123,7 @@ export default function Orders() {
       </div>
       <div className="row" style={{ marginBottom: 12 }}>
         <div className="seg">
-          {Object.entries(PO_STATUS).slice(0, 2).map(([k, l]) => (
+          {Object.entries(PO_STATUS).map(([k, l]) => (
             <button key={k} className={status === k ? "on" : ""} onClick={() => setStatus(k)}>{l}</button>
           ))}
         </div>
@@ -113,12 +138,13 @@ export default function Orders() {
                   <td>{po.code}{po.proposal_id && <span className="badge accent" style={{ marginLeft: 6 }}>từ đề xuất #{po.proposal_id}</span>}</td>
                   <td>{po.supplier}</td>
                   <td>{dateVi(po.order_date)}</td>
-                  <td>{dateVi(po.expected_date)}</td>
+                  <td>{dateVi(po.expected_date)}{po.overdue_days > 0 && <span className="badge st-FAILED" style={{ marginLeft: 6 }}>trễ {po.overdue_days} ngày</span>}</td>
                   <td className="num">{money(po.total_value)}</td>
-                  <td><span className={`badge st-${po.status === "SENT" ? "PENDING" : "EXECUTED"}`}><span className="dot" />{PO_STATUS[po.status]}</span></td>
+                  <td><span className={`badge st-${PO_BADGE[po.status]}`}><span className="dot" />{PO_STATUS[po.status]}</span></td>
                   <td className="row" style={{ justifyContent: "flex-end" }}>
                     {po.has_pdf && <button className="sm" onClick={() => openPdf(po.id).catch((e) => alert(e.message))}>PDF</button>}
-                    {po.status === "SENT" && <button className="sm" onClick={() => setReceiving(po.id)}>Nhận hàng</button>}
+                    {po.status === "SENT" && <button className="sm" onClick={() => { setCancelling(null); setReceiving(po.id); }}>Nhận hàng</button>}
+                    {po.status === "SENT" && isManager && <button className="sm danger" onClick={() => { setReceiving(null); setCancelling(po); }}>Huỷ đơn</button>}
                   </td>
                 </tr>
               ))}
@@ -127,7 +153,8 @@ export default function Orders() {
           {pos.data?.length === 0 && <p className="muted">Không có đơn nào.</p>}
         </div>
       </div>
-      {receiving && <Receive id={receiving} onDone={() => { setReceiving(null); qc.invalidateQueries(); }} />}
+      {cancelling && <CancelPO key={cancelling.id} po={cancelling} onDone={() => { setCancelling(null); qc.invalidateQueries(); }} />}
+      {receiving && <Receive key={receiving} id={receiving} onDone={() => { setReceiving(null); qc.invalidateQueries(); }} />}
     </>
   );
 }

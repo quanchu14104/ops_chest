@@ -30,7 +30,7 @@ Store Manager (SM) làm việc trực tiếp với đại lý, có toàn quyền
 Cả hai chế độ dưới đây đều:
 
 - mô phỏng FEFO đến ngày hàng về, **chỉ tính phần tồn còn hạn** khi hàng mới về;
-- trừ hàng đang về;
+- trừ hàng đang về, kể cả đơn đã quá ngày giao. Đơn không giao nữa thì Store Manager hủy trên trang Đặt & nhận hàng; bản tin cảnh báo đơn trễ;
 - bị **chặn trần theo HSD**: không đặt nhiều hơn lượng bán kịp trước khi lô mới hết hạn;
 - làm tròn theo quy cách đóng gói.
 
@@ -57,9 +57,11 @@ Engine mô phỏng bán FEFO theo dự báo để ra **số lượng dự kiến
 
 - **Giữ nguyên:** phần dư bị hủy, tốn thêm chi phí xử lý khoảng 500đ/đơn vị.
 - **Giảm giá 20/30/50%.** Hệ số co giãn giả định: FRESH 3,0, SHORT 2,0, LONG 1,2. Đây là giả định cần hiệu chỉnh bằng dữ liệu thật.
-  - Lô hết hạn trong ngày: chỉ **giảm giá giờ vàng sau 18h cho phần còn dư** (khoảng 30% lượt khách), nên không ăn mất doanh thu giá gốc ban ngày.
+  - Lô hết hạn trong ngày: chỉ **giảm giá giờ vàng sau 18h cho phần còn dư** (khoảng 30% lượt khách), nên không ăn mất doanh thu giá gốc ban ngày. Khách buổi tối vốn sẽ trả giá gốc cũng được hưởng giá giảm; engine và bộ giả lập đều trừ phần này.
   - Lô còn vài ngày: giảm giá cả lô; engine tính cả phần doanh thu giá gốc bị mất.
-- **Trả nhà cung cấp:** chỉ khi thỏa thuận cho phép và lô còn ≥ N ngày trước HSD; hoàn x% giá vốn.
+  - Lô đang giảm giá: chỉ xét mức sâu hơn, so với phương án giữ mức hiện tại. Hệ thống không tăng giá trở lại, vì tem đã dán.
+- **Trả nhà cung cấp:** chỉ khi thỏa thuận **còn hiệu lực** cho phép và lô còn ≥ N ngày trước HSD; hoàn x% giá vốn. Thỏa thuận hết hiệu lực thì đơn hàng không được chiết khấu và có cảnh báo.
+- Một lô đang nằm trong đề xuất trả hoặc ghi hủy còn mở thì không được đề xuất lại cho đến khi đề xuất đó đóng.
 
 ### Giả thuyết của Store Manager (`services/hypotheses.py`)
 
@@ -68,7 +70,7 @@ Dự báo từ lịch sử không biết tuần này có trận bóng. Cách là
 - Store Manager nói trong chat, agent tạo đề xuất với **đúng hệ số và ngày người dùng nêu**. Thiếu thì agent phải hỏi, không tự chọn.
 - Giới hạn bằng code: hệ số 0,3–3, tối đa 14 ngày, không trùng khoảng ngày cùng phạm vi.
 - Dự báo chỉ đổi sau khi duyệt. Những ngày có sự kiện không được dùng để ước lượng mức nền, giống cách xử lý Tết.
-- Hết khoảng ngày, hệ thống so lượng bán thực tế với dự báo nền đã lưu. **Đúng** nếu nhu cầu đi được ≥50% quãng đường dự đoán, **sai** nếu ≤25%, còn lại là đúng một phần. Dùng lượng bán vì cửa hàng thật không biết nhu cầu bị hụt, nên hết hàng có thể làm giả thuyết tăng trông kém hơn thực tế.
+- Hết khoảng ngày, hệ thống so lượng bán thực tế với dự báo nền đã lưu. **Đúng** nếu nhu cầu đi được ≥50% quãng đường dự đoán, **sai** nếu ≤25%, còn lại là đúng một phần. Dùng lượng bán vì cửa hàng thật không biết nhu cầu bị hụt. Khi từ 20% số SKU-ngày bị hết hàng, lượng bán chỉ là cận dưới của nhu cầu, nên hệ thống chỉ giữ kết luận mà cận dưới chứng minh được: giả thuyết tăng là "đúng", giả thuyết giảm là "sai". Các trường hợp còn lại chấm **chưa đủ căn cứ**, tránh việc nhập ít, bán ít rồi tự xác nhận là nhu cầu đã giảm.
 
 ### Học từ phần sửa (`engines/edit_learning.py`)
 
@@ -108,20 +110,22 @@ Bảng dưới (08/09–06/11/2026, 60 ngày). Mỗi dòng chỉ đổi một đ
 
 | Kịch bản | Lợi nhuận B so với A | Tỷ lệ hủy A / B | Hết hàng A / B |
 |---|---|---|---|
-| **Tham chiếu** | **+11,9%** | 11,0% / 5,7% | 5,6% / 7,3% |
-| Nhu cầu khác (seed 11) | +12,1% | 11,3% / 6,1% | 5,4% / 7,1% |
-| Nhu cầu khác (seed 23) | +9,9% | 10,8% / 5,8% | 5,0% / 7,2% |
-| Khách phản ứng đúng 100% giả định | +12,4% | 10,5% / 4,1% | 5,1% / 7,2% |
-| Khách chỉ phản ứng 25% giả định | +9,9% | 11,1% / 6,9% | 5,8% / 7,4% |
-| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +5,4% | 11,0% / 8,3% | 5,6% / 7,4% |
-| B không tách doanh số giảm giá khỏi nhu cầu | +10,1% | 11,0% / 6,7% | 5,6% / 6,8% |
-| Store Manager chỉ duyệt 80% đề xuất | +9,0% | 11,0% / 7,0% | 5,6% / 6,9% |
-| Store Manager chỉ duyệt 60% đề xuất | +5,5% | 11,0% / 8,4% | 5,6% / 6,6% |
-| 20% lượt mua lấy lô mới (không theo FEFO) | +12,0% | 11,1% / 5,8% | 5,6% / 7,3% |
-| 50% lượt mua lấy lô mới (không theo FEFO) | +12,2% | 11,3% / 5,9% | 5,6% / 7,3% |
-| Cách so sánh cũ (A không giảm giá, khách phản ứng đúng giả định) | +20,3% | 11,9% / 4,1% | 6,0% / 7,2% |
+| **Tham chiếu** | **+13,6%** | 11,0% / 6,5% | 5,6% / 7,3% |
+| Nhu cầu khác (seed 11) | +13,5% | 11,3% / 7,0% | 5,4% / 7,2% |
+| Nhu cầu khác (seed 23) | +11,7% | 10,8% / 6,6% | 5,0% / 7,2% |
+| Khách phản ứng đúng 100% giả định | +15,3% | 10,5% / 5,2% | 5,1% / 7,3% |
+| Khách chỉ phản ứng 25% giả định | +11,5% | 11,1% / 7,3% | 5,8% / 7,4% |
+| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +10,0% | 11,0% / 8,3% | 5,6% / 7,4% |
+| B không tách doanh số giảm giá khỏi nhu cầu | +11,7% | 11,0% / 7,3% | 5,6% / 7,0% |
+| Store Manager chỉ duyệt 80% đề xuất | +11,3% | 11,0% / 7,6% | 5,6% / 7,0% |
+| Store Manager chỉ duyệt 60% đề xuất | +8,0% | 11,0% / 8,9% | 5,6% / 6,7% |
+| 20% lượt mua lấy lô mới (không theo FEFO) | +13,7% | 11,1% / 6,6% | 5,6% / 7,3% |
+| 50% lượt mua lấy lô mới (không theo FEFO) | +14,0% | 11,3% / 6,8% | 5,6% / 7,4% |
+| Cách so sánh cũ (A không giảm giá, khách phản ứng đúng giả định) | +17,7% | 11,8% / 5,2% | 6,0% / 7,3% |
 
-Con số nên trích dẫn là **khoảng +10–12% lợi nhuận gộp, tỷ lệ hủy giảm gần một nửa**. Dòng "cách so sánh cũ" được giữ lại để cho thấy phương pháp so sánh ảnh hưởng tới kết quả ra sao.
+Con số nên trích dẫn là **khoảng +12–14% lợi nhuận gộp, tỷ lệ hủy giảm khoảng 40%**. Dòng "cách so sánh cũ" được giữ lại để cho thấy phương pháp so sánh ảnh hưởng tới kết quả ra sao.
+
+Từ khi tính cả phần khách buổi tối được hưởng giá giảm, lợi nhuận của cả hai chính sách đều thấp đi. A giảm 30% mọi buổi tối nên mất nhiều hơn B, vì B bỏ qua các lần giảm không có lợi. Vì vậy chênh lệch tăng thêm khoảng 2 điểm, đồng thời tỷ lệ hủy của B cao hơn trước. Phần tăng này một phần đến từ việc baseline A cứng nhắc, không nên hiểu là engine tốt lên ngần ấy.
 
 **Đánh đổi:** tỷ lệ hết hàng của B cao hơn A ở mọi kịch bản (5–6% so với khoảng 7%), và B giữ tồn kho nhiều hơn. Lợi nhuận tăng chủ yếu nhờ hủy ít hơn, không phải nhờ bán được nhiều hơn. Đây là điểm yếu còn lại của engine, dù newsvendor đã tính chi phí mất khách.
 
@@ -129,7 +133,7 @@ Con số nên trích dẫn là **khoảng +10–12% lợi nhuận gộp, tỷ l�
 
 1. Mô hình nhu cầu và hệ số co giãn đều là giả định; bảng độ nhạy chỉ cho biết kết luận chịu được sai lệch tới đâu.
 2. Baseline A là một heuristic hợp lý, không phải hành vi đo được của một Store Manager thật.
-3. Kịch bản tham chiếu coi như Store Manager duyệt 100% đề xuất. Nếu chỉ duyệt 60%, phần lợi nhuận tăng thêm còn khoảng một nửa: lợi ích phụ thuộc vào việc người dùng thực sự làm theo.
+3. Kịch bản tham chiếu coi như Store Manager duyệt 100% đề xuất. Nếu chỉ duyệt 60%, phần lợi nhuận tăng thêm còn khoảng 60%: lợi ích phụ thuộc vào việc người dùng thực sự làm theo.
 4. Chỉ có 3 chuỗi nhu cầu trên một giai đoạn 60 ngày, không đủ để nói về độ tin cậy thống kê.
 5. Khi khách không mua theo FEFO, cả A và B đều hủy nhiều hơn một chút nên chênh lệch gần như không đổi. Bộ giả lập chưa mô phỏng hao hụt (mất mát không ghi sổ).
 

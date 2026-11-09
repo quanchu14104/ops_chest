@@ -40,7 +40,7 @@ def _check_open(db: Session, p: Proposal, allow_failed: bool = False) -> None:
         if p.status == "SUPERSEDED":
             raise ProposalError(409, "Đề xuất này đã được thay bằng bản sửa mới, hãy duyệt bản mới.")
         raise ProposalError(409, f"Đề xuất đang ở trạng thái {p.status}, không thể thao tác.")
-    if p.status == "PENDING" and p.expires_at and _now() > p.expires_at:
+    if p.expires_at and _now() > p.expires_at:  # ca FAILED: so lieu cua mot don cu khong con dung de thu lai
         p.status = "EXPIRED"
         audit.log(db, "system", "PROPOSAL_EXPIRED", "proposal", p.id)
         db.commit()
@@ -165,7 +165,7 @@ def reject(db: Session, pid: int, user: User, reason: str) -> Proposal:
 
 
 def expire_stale(db: Session) -> int:
-    rows = db.scalars(select(Proposal).where(Proposal.status == "PENDING", Proposal.expires_at < _now())).all()
+    rows = db.scalars(select(Proposal).where(Proposal.status.in_(["PENDING", "FAILED"]), Proposal.expires_at < _now())).all()
     for p in rows:
         p.status = "EXPIRED"
         audit.log(db, "system", "PROPOSAL_EXPIRED", "proposal", p.id)

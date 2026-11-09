@@ -43,7 +43,7 @@ def test_hypothesis_is_scored_when_window_passes(db, restore_clock):
     db.commit()
     out = advance(db, 1, "quanly")
     db.refresh(row)
-    assert row.status == "EVALUATED" and row.result["verdict"] in ("CORRECT", "PARTIAL", "WRONG")
+    assert row.status == "EVALUATED" and row.result["verdict"] in ("CORRECT", "PARTIAL", "WRONG", "INCONCLUSIVE")
     assert any(x["id"] == row.id for x in out["hypotheses_evaluated"])
 
 

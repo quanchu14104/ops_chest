@@ -5,12 +5,12 @@ Moi muc co `prompt`: cau hoi gui vao chat khi nguoi dung bam vao muc do.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.clock import today
 from app.fmt import dmy, vnd
-from app.models import Proposal
+from app.models import Proposal, PurchaseOrder
 from app.services import hypotheses, inventory, replenish
 
 
@@ -46,6 +46,12 @@ def build(db: Session) -> dict:
     if summ["purchase_orders_awaiting_delivery"]:
         items.append({"id": "po", "level": "info", "count": summ["purchase_orders_awaiting_delivery"],
                       "text": f"{summ['purchase_orders_awaiting_delivery']} đơn hàng đang chờ giao",
+                      "prompt": "Có đơn đặt hàng nào đang chờ giao không?"})
+    late = db.scalar(select(func.count()).select_from(PurchaseOrder).where(
+        PurchaseOrder.status == "SENT", PurchaseOrder.expected_date < today()))
+    if late:
+        items.append({"id": "po_late", "level": "warn", "count": late,
+                      "text": f"{late} đơn đã quá ngày giao dự kiến: hỏi lại nhà cung cấp, không giao nữa thì huỷ đơn",
                       "prompt": "Có đơn đặt hàng nào đang chờ giao không?"})
     if summ["out_of_stock_skus"]:
         items.append({"id": "oos", "level": "warn", "count": summ["out_of_stock_skus"],

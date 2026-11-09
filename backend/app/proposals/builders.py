@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app import audit
@@ -22,9 +22,25 @@ def _end_of(d) -> datetime:
     return datetime.combine(d, time(23, 59, 59))
 
 
+def _still_open():
+    """De xuat con duyet (hoac thu lai) duoc: PENDING/FAILED chua qua han chot."""
+    return and_(Proposal.status.in_(["PENDING", "FAILED"]),
+                or_(Proposal.expires_at.is_(None), Proposal.expires_at >= _now()))
+
+
 def _existing(db: Session, key: str) -> Proposal | None:
     return db.scalar(select(Proposal).where(Proposal.dedupe_key == key,
-                                            Proposal.status.in_(["PENDING", "APPROVED", "EXECUTED"])))
+                                            or_(Proposal.status.in_(["APPROVED", "EXECUTED"]), _still_open())))
+
+
+def _open_by_lot(db: Session, type: str) -> dict[int, Proposal]:
+    """Lo dang nam trong de xuat con mo. Khoa dedupe co ngay nen khong chan duoc de xuat lap lai qua cac ngay."""
+    out: dict[int, Proposal] = {}
+    for p in db.scalars(select(Proposal).where(Proposal.type == type, _still_open())):
+        for it in p.payload["items"]:
+            if int(it["qty"]) > 0:
+                out[it["lot_id"]] = p
+    return out
 
 
 def _create(db: Session, *, type: str, title: str, rationale: str, payload: dict, evidence: dict,
@@ -124,14 +140,17 @@ def markdown(db: Session, created_by: str, lot_ids: list[int] | None = None, day
 def supplier_return(db: Session, created_by: str, lot_ids: list[int] | None = None, days: int = 60,
                     chat_session_id: int | None = None) -> list[tuple[Proposal, bool]]:
     items = _lot_items(db, lot_ids, days, "RETURN")
+    open_by_lot = _open_by_lot(db, "RETURN")
+    already = {open_by_lot[i["lot_id"]].id: open_by_lot[i["lot_id"]] for i in items if i["lot_id"] in open_by_lot}
     by_sup: dict[str, list] = {}
     for i in items:
-        by_sup.setdefault(i["supplier"], []).append(i)
-    out = []
+        if i["lot_id"] not in open_by_lot:
+            by_sup.setdefault(i["supplier"], []).append(i)
+    out: list[tuple[Proposal, bool]] = [(p, False) for p in already.values()]
     t = today()
     for sup_name, its in by_sup.items():
         sup = db.scalar(select(Supplier).options(joinedload(Supplier.agreements)).where(Supplier.name == sup_name))
-        agr = sup.agreements[0]
+        agr = sup.agreement_on(t)  # _lot_items chi giu lo co phuong an tra kha thi, tuc thoa thuan con hieu luc
         payload_items = [{"lot_id": i["lot_id"], "sku": i["sku"], "name": i["name"],
                           "qty": int(round(i["option"]["units_returned"])), "lot_qty": i["qty"],
                           "expiry_date": i["expiry_date"], "unit_cost": i["unit_cost"]} for i in its]
@@ -160,6 +179,11 @@ def dispose_expired(db: Session, created_by: str, chat_session_id: int | None = 
                       .where(Lot.status == "ACTIVE", Lot.qty_remaining > 0, Lot.expiry_date < t)).all()
     if not lots:
         return None, False
+    open_by_lot = _open_by_lot(db, "DISPOSE")
+    fresh = [l for l in lots if l.id not in open_by_lot]
+    if not fresh:
+        return open_by_lot[lots[0].id], False
+    lots = fresh
     items = [{"lot_id": l.id, "sku": l.product.sku, "name": l.product.name, "qty": l.qty_remaining,
               "expiry_date": l.expiry_date.isoformat(), "unit_cost": l.unit_cost} for l in lots]
     value = sum(i["qty"] * i["unit_cost"] for i in items)

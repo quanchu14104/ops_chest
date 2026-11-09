@@ -13,7 +13,7 @@ import math
 from datetime import date, timedelta
 
 from app.engines.abc_xyz import Z_BY_CLASS, SkuStats, classify
-from app.engines.disposition import ELASTICITY, DispositionInput, best
+from app.engines.disposition import ELASTICITY, EVENING_SHARE, DispositionInput, best
 from app.engines.expiry import LotInput, project_lots
 from app.engines.forecast import baseline_demand, estimate_event_factors, forecast_demand
 from app.engines.replenishment import Incoming, LotState, ReplenishmentInput, compute_order, review_period
@@ -159,7 +159,7 @@ class OpsChestPolicy(Policy):
                     qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=r.days_left,
                     expected_sold_full_price=r.expected_sold, elasticity=ELASTICITY[p.freshness_class],
                     accepts_return=sup.accepts_return, return_min_days_before_expiry=sup.return_min_days,
-                    return_credit_pct=sup.return_credit_pct, daily_demand=fc.daily[0],
+                    return_credit_pct=sup.return_credit_pct, daily_demand=fc.daily[0], current_markdown=lot.markdown,
                 ))
                 if opt.action == "MARKDOWN":
                     sim.apply_markdown(lot, opt.markdown_pct, d, evening=opt.timing == "EVENING")
@@ -183,11 +183,14 @@ class OpsChestPolicy(Policy):
                 opt = best(DispositionInput(
                     qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=0,
                     expected_sold_full_price=0, elasticity=ELASTICITY[p.freshness_class],
-                    daily_demand=fc_today,
+                    daily_demand=fc_today, current_markdown=lot.markdown,
+                    evening_full_price_units=fc_today * EVENING_SHARE,
                 ))
                 if opt.action == "MARKDOWN":
                     sim.apply_markdown(lot, opt.markdown_pct, d, evening=True)
                     self.actions["markdown"] += 1
+                elif lot.markdown > 0:  # lo da dan tem giam tu truoc: buoi toi van ban o muc do
+                    sim.apply_markdown(lot, lot.markdown, d, evening=True)
 
     # --- dat hang (cuoi ngay) ---
     def place_orders(self, sim: StoreSim, d: date) -> None:

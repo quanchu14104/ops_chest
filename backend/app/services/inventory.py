@@ -102,7 +102,7 @@ def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_
         fc = forecast_for(db, p, horizon=horizon, start=t)
         risks = {r.lot_id: r for r in project_lots(
             [LotInput(l.id, l.qty_remaining, l.expiry_date) for l in lots if l.expiry_date >= t], fc.daily, t)}
-        agr = p.supplier.agreements[0] if p.supplier.agreements else None
+        agr = p.supplier.agreement_on(t)
         for l in lots:
             if l.expiry_date > t + timedelta(days=days):
                 continue
@@ -122,6 +122,7 @@ def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_
                         accepts_return=bool(agr and agr.accepts_near_expiry_return),
                         return_min_days_before_expiry=agr.return_min_days_before_expiry if agr else 0,
                         return_credit_pct=agr.return_credit_pct if agr else 0.0, daily_demand=fc.daily[0],
+                        current_markdown=l.markdown_pct,
                     ))][:3]
             items.append({
                 "lot_id": l.id, "product_id": p.id, "sku": p.sku, "name": p.name, "category": p.category,

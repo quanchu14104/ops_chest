@@ -56,5 +56,20 @@ def receive_po(db: Session, po_id: int, lines: list[dict], user: User) -> dict:
     return {"code": po.code, "lots": created}
 
 
+def cancel_po(db: Session, po_id: int, reason: str, user: User) -> dict:
+    """Don khong con giao nua: bo khoi hang dang ve de lan dat sau tinh dung. Chi doi trang thai, khong gui email."""
+    po = db.get(PurchaseOrder, po_id)
+    if not po:
+        raise ReceiveError("Không tìm thấy đơn hàng")
+    if po.status != "SENT":
+        raise ReceiveError(f"Đơn {po.code} đang ở trạng thái {po.status}, không huỷ được.")
+    if not reason or not reason.strip():
+        raise ReceiveError("Cần ghi lý do huỷ đơn.")
+    po.status = "CANCELLED"
+    audit.log(db, user.username, "PO_CANCELLED", "purchase_order", po.id, {"code": po.code, "reason": reason.strip()})
+    db.commit()
+    return {"code": po.code, "status": po.status}
+
+
 def default_expiry(shelf_life_days: int, received: date | None = None) -> date:
     return (received or today()) + timedelta(days=shelf_life_days - 1)

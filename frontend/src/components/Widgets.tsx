@@ -141,7 +141,7 @@ function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { form: "receive_po" 
           lines: w.lines.map((l) => ({
             line_id: l.line_id,
             received_qty: Number(qty[l.line_id] ?? l.received_qty ?? l.qty),
-            expiry_date: exp[l.line_id] || l.default_expiry,
+            expiry_date: exp[l.line_id] || null, // khong doan HSD thay nguoi nhan: thieu thi backend bao loi tung mat hang
           })),
         },
       }),
@@ -199,7 +199,7 @@ function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { form: "receive_po" 
                   <input
                     type="date"
                     disabled={closed}
-                    value={exp[l.line_id] ?? l.default_expiry}
+                    value={exp[l.line_id] ?? ""}
                     onChange={(e) => setExp({ ...exp, [l.line_id]: e.target.value })}
                     aria-label={`HSD ${l.name}`}
                   />

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.auth import create_token, current_user, verify_password
+from app.auth import create_token, current_user, require_manager, verify_password
 from app.clock import today
 from app.config import settings
 from app.db import get_db
@@ -115,7 +115,7 @@ def suppliers(db: Session = Depends(get_db), user: User = Depends(current_user))
     rows = db.scalars(select(Supplier).options(joinedload(Supplier.agreements)).order_by(Supplier.code)).unique()
     out = []
     for s in rows:
-        a = s.agreements[0] if s.agreements else None
+        a = s.agreement_on(today())
         out.append({"id": s.id, "code": s.code, "name": s.name, "email": s.email, "phone": s.phone,
                     "lead_time_days": s.lead_time_days, "order_weekdays": s.order_weekdays,
                     "min_order_value": s.min_order_value,
@@ -134,9 +134,11 @@ def purchase_orders(status: str | None = None, limit: int = Query(50, le=300),
         PurchaseOrder.order_date.desc(), PurchaseOrder.id.desc()).limit(limit)
     if status:
         q = q.where(PurchaseOrder.status == status.upper())
+    t = today()
     return [{"id": po.id, "code": po.code, "supplier": po.supplier.name, "status": po.status,
              "order_date": po.order_date.isoformat(), "expected_date": po.expected_date.isoformat(),
-             "total_value": po.total_value, "proposal_id": po.proposal_id, "has_pdf": bool(po.pdf_path)}
+             "total_value": po.total_value, "proposal_id": po.proposal_id, "has_pdf": bool(po.pdf_path),
+             "overdue_days": max(0, (t - po.expected_date).days) if po.status == "SENT" else 0}
             for po in db.scalars(q)]
 
 
@@ -177,6 +179,19 @@ class ReceiveIn(BaseModel):
 def receive(po_id: int, body: ReceiveIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     try:
         return receiving.receive_po(db, po_id, [l.model_dump() for l in body.lines], user)
+    except ReceiveError as e:
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
+
+
+class CancelPoIn(BaseModel):
+    reason: str
+
+
+@router.post("/purchase-orders/{po_id}/cancel")
+def cancel_po(po_id: int, body: CancelPoIn, db: Session = Depends(get_db), user: User = Depends(require_manager)):
+    try:
+        return receiving.cancel_po(db, po_id, body.reason, user)
     except ReceiveError as e:
         db.rollback()
         raise HTTPException(422, str(e)) from e

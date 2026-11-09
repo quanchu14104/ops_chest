@@ -14,7 +14,8 @@ from app.services.history import forecast_for
 
 MAX_DAYS = 14
 FACTOR_RANGE = (0.3, 3.0)
-VERDICT_LABEL = {"CORRECT": "Đúng", "PARTIAL": "Đúng một phần", "WRONG": "Sai"}
+VERDICT_LABEL = {"CORRECT": "Đúng", "PARTIAL": "Đúng một phần", "WRONG": "Sai", "INCONCLUSIVE": "Chưa đủ căn cứ (hết hàng nhiều)"}
+SUPPLY_LIMITED_SHARE = 0.2  # ty le SKU-ngay het hang tu muc nay thi doanh so khong con dai dien cho nhu cau
 
 
 class HypothesisError(Exception):
@@ -93,7 +94,8 @@ def evaluate_finished(db: Session) -> list[dict]:
             .where(DailySales.product_id.in_(ids), DailySales.date.between(x.start_date, x.end_date))
         ).one()
         ratio = float(actual) / x.baseline_total if x.baseline_total > 0 else 0.0
-        verdict = hypothesis_verdict(x.factor, ratio)
+        sku_days = len(ids) * ((x.end_date - x.start_date).days + 1)
+        verdict = hypothesis_verdict(x.factor, ratio, supply_limited=int(stockouts) >= SUPPLY_LIMITED_SHARE * sku_days > 0)
         x.result = {"actual_total": int(actual), "baseline_total": x.baseline_total, "ratio": round(ratio, 3),
                     "verdict": verdict, "stockout_sku_days": int(stockouts)}
         x.status = "EVALUATED"

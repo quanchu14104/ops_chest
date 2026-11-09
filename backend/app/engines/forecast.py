@@ -174,15 +174,20 @@ def forecast_demand(
     )
 
 
-def hypothesis_verdict(factor: float, ratio: float) -> str:
-    """Cham gia thuyet: nhu cau thuc te da di duoc bao nhieu phan quang duong SM du doan so voi du bao nen."""
+def hypothesis_verdict(factor: float, ratio: float, supply_limited: bool = False) -> str:
+    """Cham gia thuyet: nhu cau thuc te da di duoc bao nhieu phan quang duong SM du doan so voi du bao nen.
+
+    `supply_limited`: het hang nhieu trong khoang cham. Luc do doanh so chi la can duoi cua nhu cau, nen chi ket luan
+    duoc dieu can duoi chung minh: bieu tang "dung", du bao giam "sai". Nhap it roi ban it khong chung minh duoc gi.
+    """
     gap = factor - 1.0
     if abs(gap) < 1e-9:
         return "PARTIAL"
     share = (ratio - 1.0) / gap
-    if share >= 0.5:
-        return "CORRECT"
-    return "WRONG" if share <= 0.25 else "PARTIAL"
+    verdict = "CORRECT" if share >= 0.5 else ("WRONG" if share <= 0.25 else "PARTIAL")
+    if supply_limited and verdict != ("CORRECT" if factor > 1 else "WRONG"):
+        return "INCONCLUSIVE"
+    return verdict
 
 
 def wape(actual: list[float], predicted: list[float]) -> float | None:
