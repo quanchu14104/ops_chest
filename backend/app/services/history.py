@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.clock import today
 from app.engines.abc_xyz import SkuClass, SkuStats, classify
-from app.engines.forecast import Forecast, estimate_event_factors, forecast_demand
-from app.models import DailySales, Product, StockMovement
+from app.engines.disposition import ELASTICITY
+from app.engines.forecast import Forecast, baseline_demand, estimate_event_factors, forecast_demand
+from app.models import DailySales, DemandHypothesis, Product, StockMovement
 
 
 @dataclass
@@ -23,6 +24,7 @@ class History:
     revenue: dict[int, list[float]]
     cogs: dict[int, list[float]]
     waste_cost: dict[int, list[float]]
+    demand: dict[int, list[float]]  # luong ban da bo phan nho giam gia: dau vao cua du bao
 
     def series(self, pid: int, name: str, last: int | None = None) -> list:
         s = getattr(self, name).get(pid)
@@ -47,17 +49,21 @@ def load_history(db: Session, days: int = 400) -> History:
     if key in _cache:
         return _cache[key]
     start = end - timedelta(days=days - 1)
-    pids = db.scalars(select(Product.id)).all()
+    freshness = dict(db.execute(select(Product.id, Product.freshness_class)).all())
+    pids = list(freshness)
     mk = lambda v: {pid: [v] * days for pid in pids}  # noqa: E731
-    h = History(end, days, mk(0.0), mk(False), mk(0.0), mk(0.0), mk(0.0))
+    h = History(end, days, mk(0.0), mk(False), mk(0.0), mk(0.0), mk(0.0), mk(0.0))
     rows = db.execute(
         select(DailySales.product_id, DailySales.date, DailySales.qty_sold, DailySales.revenue,
-               DailySales.cogs, DailySales.stockout)
+               DailySales.cogs, DailySales.stockout, DailySales.discounted_qty, DailySales.discount_pct,
+               DailySales.evening_qty)
         .where(DailySales.date >= start, DailySales.date <= end)
     ).all()
-    for pid, d, q, rev, cogs, so in rows:
+    for pid, d, q, rev, cogs, so, disc, pct, ev in rows:
         i = (d - start).days
         h.sales[pid][i] = float(q)
+        h.demand[pid][i] = baseline_demand(float(q), float(disc or 0), float(pct or 0), float(ev or 0),
+                                           ELASTICITY[freshness[pid]])
         h.revenue[pid][i] = float(rev)
         h.cogs[pid][i] = float(cogs)
         h.stockout[pid][i] = bool(so)
@@ -79,17 +85,39 @@ _event_cache: dict = {}
 def event_factors(h: History, pid: int) -> dict:
     key = (h.end, pid)
     if key not in _event_cache:
-        _event_cache[key] = estimate_event_factors(h.sales[pid], h.end) if h.days >= 120 else {}
+        _event_cache[key] = estimate_event_factors(h.demand[pid], h.end) if h.days >= 120 else {}
     return _event_cache[key]
 
 
-def forecast_for(db: Session, product: Product, horizon: int = 14, start: date | None = None) -> Forecast:
+def hypotheses_for(db: Session, product: Product) -> list[DemandHypothesis]:
+    rows = db.scalars(select(DemandHypothesis).where(DemandHypothesis.status != "CANCELLED")).all()
+    return [x for x in rows if x.sku == product.sku or (x.category is not None and x.category == product.category)]
+
+
+def _apply_hypotheses(fc: Forecast, active: list[DemandHypothesis]) -> None:
+    applied: dict[int, float] = {}
+    for k in range(len(fc.daily)):
+        d = fc.start + timedelta(days=k)
+        for x in active:
+            if x.start_date <= d <= x.end_date:
+                fc.daily[k] *= x.factor
+                applied[x.id] = x.factor
+    fc.adjustments = [{"hypothesis_id": i, "factor": f} for i, f in applied.items()]
+
+
+def forecast_for(db: Session, product: Product, horizon: int = 14, start: date | None = None,
+                 with_hypotheses: bool = True) -> Forecast:
     h = load_history(db)
-    return forecast_demand(
-        h.series(product.id, "sales", 120), h.end, horizon,
+    hyps = hypotheses_for(db, product)
+    skip = {x.start_date + timedelta(days=i) for x in hyps for i in range((x.end_date - x.start_date).days + 1)}
+    fc = forecast_demand(
+        h.series(product.id, "demand", 120), h.end, horizon,
         stockout=h.series(product.id, "stockout", 120),
-        start=start or today(), event_factors=event_factors(h, product.id),
+        start=start or today(), event_factors=event_factors(h, product.id), skip_dates=skip,
     )
+    if with_hypotheses:
+        _apply_hypotheses(fc, [x for x in hyps if x.status == "ACTIVE"])
+    return fc
 
 
 def sku_stats(db: Session, window: int = 90) -> tuple[list[SkuStats], dict[str, Product]]:
@@ -98,7 +126,7 @@ def sku_stats(db: Session, window: int = 90) -> tuple[list[SkuStats], dict[str, 
     by_sku = {p.sku: p for p in products}
     stats = []
     for p in products:
-        sales = h.series(p.id, "sales", window)
+        sales = h.series(p.id, "demand", window)
         weekly = [sum(sales[i:i + 7]) for i in range(len(sales) % 7, len(sales), 7)]
         rev = sum(h.series(p.id, "revenue", window))
         cogs = sum(h.series(p.id, "cogs", window))

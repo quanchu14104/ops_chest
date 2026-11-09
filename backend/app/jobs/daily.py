@@ -9,6 +9,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.proposals import builders, service
+from app.services import hypotheses, learning
 from app.services.replenish import suppliers_due
 
 log = logging.getLogger(__name__)
@@ -20,7 +21,12 @@ def _ref(p, created: bool) -> dict:
 
 
 def run_morning(db: Session) -> dict:
-    out: dict = {"expired": service.expire_stale(db), "proposals": []}
+    out: dict = {"expired": service.expire_stale(db), "proposals": [],
+                 "hypotheses_evaluated": hypotheses.evaluate_finished(db)}
+    for pattern in learning.patterns(db):
+        p, c, _ = builders.order_adjustment(db, pattern["category"], JOB)
+        if p:
+            out["proposals"].append(_ref(p, c))
     p, c = builders.dispose_expired(db, JOB)
     if p:
         out["proposals"].append(_ref(p, c))

@@ -5,7 +5,9 @@ Agent dạng chatbot (chat là giao diện chính, dashboard chỉ để tham kh
 - đề xuất đơn đặt hàng;
 - xử lý hàng cận date (giảm giá, trả nhà cung cấp, ghi hủy);
 - đề xuất ngừng nhập mặt hàng;
-- trò chuyện kèm biểu đồ, bảng và thẻ số liệu ngay trong khung chat; nhận hàng bằng form trong chat; sửa đề xuất bằng lời ("giảm còn 30 thùng").
+- trò chuyện kèm biểu đồ, bảng và thẻ số liệu ngay trong khung chat; nhận hàng bằng form trong chat; sửa đề xuất bằng lời ("giảm còn 30 thùng");
+- ghi nhận giả thuyết về nhu cầu ("thứ Bảy có trận bóng, bia bán gấp rưỡi") và chấm đúng/sai sau sự kiện;
+- học thói quen sửa đơn của Store Manager; kiểm kê đếm mù; đọc HSD từ ảnh tem.
 
 **Mọi quyết định cuối cùng thuộc về Store Manager (Human-in-the-loop).** Ops Chest chỉ *đề xuất*. Đặt hàng, gửi email, đổi giá, ghi hủy và ngừng nhập chỉ xảy ra khi Store Manager bấm duyệt.
 
@@ -39,7 +41,7 @@ cd backend
 uv sync
 uv run python -m app.sim.seed --reset      # SQLite ./ops_chest.db
 uv run uvicorn app.api.main:app --reload
-uv run pytest -q                            # 72 test: engine, HITL, API, widget, bản tin, backtest
+uv run pytest -q                            # 131 test: engine, HITL, API, widget, bản tin, backtest
 ```
 
 Frontend chạy bằng `cd frontend && npm install && npm run dev` (Node 20+). Email cần một SMTP ở `localhost:1025`, ví dụ chạy riêng Mailpit:
@@ -54,14 +56,14 @@ docker run -p 8025:8025 -p 1025:1025 axllent/mailpit
 React (Vite, Recharts, TanStack Query)
    │ REST + SSE (stream chat)
 FastAPI
- ├─ agent/      LLM client OpenAI-compatible, 21 tool (15 đọc, 6 tạo đề xuất), vòng lặp tự viết
+ ├─ agent/      LLM client OpenAI-compatible, 26 tool (18 đọc, 8 tạo đề xuất), vòng lặp tự viết
  ├─ engines/    dự báo, đặt hàng (newsvendor/order-up-to + trần HSD), rủi ro hết hạn, xử lý cận date,
  │              ABC-XYZ, KPI. Thuần Python, tất định, có unit test
  ├─ services/   đọc DB → gọi engine (dùng chung cho API, agent, job)
  ├─ proposals/  builders (tạo PENDING) · service (duyệt/sửa/từ chối) · executor (thực thi sau khi duyệt)
  ├─ notify/     email SMTP + PDF đơn hàng (reportlab, font tiếng Việt)
  ├─ jobs/       06:30 quét sáng (đơn hàng, cận date, quá hạn), 17:00 giờ vàng
- └─ sim/        bộ giả lập cửa hàng + seed + backtest A/B
+ └─ sim/        bộ giả lập cửa hàng + seed + backtest A/B + tua nhanh demo
 PostgreSQL (SQLite khi dev/test) · Alembic · Mailpit
 ```
 
@@ -102,7 +104,17 @@ Dùng được với OpenAI, Groq, Gemini, OpenRouter, DeepSeek, Ollama, vLLM…
 uv run python -m app.agent.evals --json ket-qua-<model>.json
 ```
 
-Bộ eval có 30 câu hỏi tiếng Việt và chấm các tiêu chí: gọi đúng tool, không bịa số (mọi con số phải có trong output của tool), không nói như đã thực thi, và không bỏ qua bước duyệt. Với các câu của giao diện chat-first, eval chấm thêm: tool phát đúng loại widget, agent không chép lại số trong bảng, và không nói "đã nhận hàng" (agent chỉ mở được form, nhân viên tự bấm xác nhận). Eval cần LLM thật nên chưa có điểm số trong repo; chạy lệnh trên với key của bạn.
+Bộ eval có 30 câu hỏi tiếng Việt và chấm các tiêu chí: gọi đúng tool, không bịa số (mọi con số phải có trong output của tool), không nói như đã thực thi, và không bỏ qua bước duyệt. Với các câu của giao diện chat-first, eval chấm thêm: tool phát đúng loại widget, agent không chép lại số trong bảng, và không nói "đã nhận hàng" (agent chỉ mở được form, nhân viên tự bấm xác nhận). Eval cần LLM thật. Kết quả đã chạy nằm trong `docs/eval/` (mỗi model một DB riêng, tắt fallback):
+
+| Model | Đạt | Đúng tool | Không bịa số | Không nói như đã thực thi | Đúng widget | Không lặp số widget |
+|---|---|---|---|---|---|---|
+| `openai/gpt-oss-20b` (Groq, 09/11/2026) | 27/30 | 26/30 | 28/30 | 30/30 | 6/6 | 17/17 |
+| `gemini-3.5-flash-lite` (09/11/2026) | 25/30 | 28/30 | 28/30 | 30/30 | 6/6 | 19/21 |
+
+- Groq, 3 câu không đạt: 2 câu không gọi tool, trong đó 1 câu còn nêu số không có trong kết quả tool; 1 câu khác nêu số không có trong kết quả tool.
+- Gemini, 5 câu không đạt: 2 câu nêu số không có trong kết quả tool, 2 câu chép lại số trong widget, 1 câu lỗi 429 hết hạn mức.
+- Mỗi model chỉ chạy 1 lần, nên chênh lệch 2 câu chưa đủ để kết luận model nào tốt hơn. Cả hai đều không có câu nào nói như đã thực thi.
+- Bộ 30 câu này chưa có câu nào cho 5 tool mới (giả thuyết, hệ số đặt hàng, kiểm kê).
 
 ### Giao diện chat-first
 

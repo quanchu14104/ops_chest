@@ -142,6 +142,10 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                     <td>
                       {l.name}
                       {l.explain?.capped_by_shelf_life && <span className="badge" style={{ marginLeft: 6 }} title="Bị chặn theo hạn sử dụng">trần HSD</span>}
+                      {(l.explain?.hypotheses ?? []).map((h: { hypothesis_id: number; factor: number }) => (
+                        <span key={h.hypothesis_id} className="badge accent" style={{ marginLeft: 6 }} title="Dự báo đã áp dụng giả thuyết của Store Manager">giả thuyết ×{num(h.factor, 2)}</span>
+                      ))}
+                      {l.explain?.order_adjustment && <span className="badge accent" style={{ marginLeft: 6 }} title="Hệ số học từ cách Store Manager hay sửa đơn">hệ số ×{num(l.explain.order_adjustment, 2)}</span>}
                     </td>
                     <td>{l.abc_xyz ?? "—"}</td>
                     <td className="num">{num(l.on_hand)}</td>
@@ -240,6 +244,33 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
         </ul>
       )}
 
+      {open && p.type === "DEMAND_HYPOTHESIS" && (
+        <div className="table-wrap" style={{ marginTop: 8 }}>
+          <p className="small secondary">Dự báo {num(pl.sku_count)} mặt hàng từ {dateVi(pl.start_date)} đến {dateVi(pl.end_date)}: {num(pl.baseline_total, 1)} thành {num(pl.adjusted_total, 1)} đơn vị.</p>
+          <table>
+            <thead><tr><th>Tên hàng</th><th className="num">Dự báo hiện tại</th><th className="num">Nếu duyệt</th></tr></thead>
+            <tbody>
+              {(pl.lines as { sku: string; name: string; baseline: number; adjusted: number }[]).map((l) => (
+                <tr key={l.sku}><td>{l.name} <span className="muted small">{l.sku}</span></td><td className="num">{num(l.baseline, 1)}</td><td className="num">{num(l.adjusted, 1)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {open && p.type === "STOCK_ADJUST" && (
+        <div className="table-wrap" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>Tên hàng</th><th className="num">Trên sổ</th><th className="num">Đếm được</th><th className="num">Lệch</th><th className="num">Giá trị</th></tr></thead>
+            <tbody>
+              {(pl.items as { sku: string; name: string; system_qty: number; counted_qty: number; diff: number; value: number }[]).map((it) => (
+                <tr key={it.sku}><td>{it.name} <span className="muted small">{it.sku}</span></td><td className="num">{num(it.system_qty)}</td><td className="num">{num(it.counted_qty)}</td><td className="num">{it.diff > 0 ? "+" : ""}{num(it.diff)}</td><td className="num">{money(it.value)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {p.sm_edits?.length > 0 && (
         <p className="small muted" style={{ marginTop: 8 }}>
           SM đã sửa: {p.sm_edits.flatMap((e) => e.changes).map((c) => `${c.field}: ${String(c.from)} → ${String(c.to)}`).join("; ")}
@@ -255,7 +286,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
       {error && <div className="alert error" style={{ marginTop: 8 }}>{error}</div>}
 
       {canDecide && (
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row prop-actions">
           {!rejecting ? (
             <>
               <button className="primary" disabled={approve.isPending} onClick={() => approve.mutate()}>
@@ -295,6 +326,7 @@ function ExecResult({ p }: { p: Proposal }) {
   else if (p.type === "MARKDOWN") text = `Đã áp giá giảm cho ${(r.lots_marked_down as unknown[]).length} lô. ${r.instruction}`;
   else if (p.type === "RETURN") text = `Đã gửi phiếu trả ${r.code} tới ${r.email_to}, hoàn dự kiến ${money(Number(r.credit))}.`;
   else if (p.type === "DISPOSE") text = `Đã ghi hủy ${r.lots_disposed} lô, giá vốn ${money(Number(r.waste_cost))}.`;
-  else if (p.type === "DELIST") text = String(r.note);
+  else if (p.type === "DELIST" || p.type === "DEMAND_HYPOTHESIS" || p.type === "ORDER_ADJUST") text = String(r.note);
+  else if (p.type === "STOCK_ADJUST") text = `Đã điều chỉnh tồn ${r.items} mặt hàng theo số đếm, giá trị lệch ròng ${money(Number(r.net_value))}.`;
   return <div className="alert ok" style={{ marginTop: 8 }}>✓ {text}</div>;
 }

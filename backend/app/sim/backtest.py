@@ -2,6 +2,10 @@
 
     uv run python -m app.sim.backtest --days 90
     uv run python -m app.sim.backtest --start 2026-01-20 --days 60   # giai doan Tet
+    uv run python -m app.sim.backtest --sensitivity                  # ghi lai bang do nhay cho giao dien
+
+Mac dinh so voi doi thu cong bang (A co giam gia gio vang) trong the gioi ma khach chi phan ung bang mot
+nua muc engine gia dinh. Hai chinh sach deu bat dau tu cung trang thai sau giai doan khoi dong.
 """
 from __future__ import annotations
 
@@ -11,13 +15,18 @@ import json
 import time
 from collections import defaultdict
 from datetime import date, timedelta
+from pathlib import Path
 
 from app.engines.kpi import summarize
 from app.sim.catalog import build_catalog
-from app.sim.policies import BaselinePolicy, OpsChestPolicy
-from app.sim.store_sim import StoreSim
+from app.sim.policies import BaselineGoldenHourPolicy, BaselinePolicy, OpsChestPolicy
+from app.sim.store_sim import Policy, StoreSim
+from app.sim.world import OPTIMISTIC_WORLD, PESSIMISTIC_WORLD, REFERENCE_WORLD, WorldParams
 
 WARMUP_DAYS = 200
+SENSITIVITY_FILE = Path(__file__).parent / "data" / "sensitivity.json"
+SENSITIVITY_START = date(2026, 9, 8)
+SENSITIVITY_DAYS = 60
 
 
 def initial_stock(sim: StoreSim, start: date) -> None:
@@ -26,17 +35,23 @@ def initial_stock(sim: StoreSim, start: date) -> None:
         sim.add_lot(p.sku, qty, start - timedelta(days=1), p.unit_cost)
 
 
-def run_backtest(start: date, days: int, seed: int = 7, warmup: int = WARMUP_DAYS) -> dict:
+def warm_base(start: date, seed: int = 7, warmup: int = WARMUP_DAYS) -> StoreSim:
+    """Cua hang truoc ky so sanh, luon van hanh bang chinh sach goc de moi kich ban cung diem xuat phat."""
     suppliers, products = build_catalog()
     base = StoreSim(suppliers, products, seed=seed)
     warm_start = start - timedelta(days=warmup)
     initial_stock(base, warm_start)
     base.run(warm_start, warmup, BaselinePolicy())
+    return base
 
+
+def compare(base: StoreSim, start: date, days: int, world: WorldParams = REFERENCE_WORLD,
+            baseline: Policy | None = None, ops: OpsChestPolicy | None = None) -> dict:
     results = {}
     by_class = {}
-    for policy in (BaselinePolicy(), OpsChestPolicy()):
+    for policy in (baseline or BaselineGoldenHourPolicy(), ops or OpsChestPolicy()):
         sim = copy.deepcopy(base)
+        sim.world = world
         sim.reset_totals()
         t0 = time.perf_counter()
         sim.run(start, days, policy)
@@ -53,8 +68,58 @@ def run_backtest(start: date, days: int, seed: int = 7, warmup: int = WARMUP_DAY
         "gross_profit_gain": b["gross_profit"] - a["gross_profit"],
         "inventory_value_reduction": a["avg_inventory_value"] - b["avg_inventory_value"],
     }
-    return {"start": start.isoformat(), "days": days, "seed": seed, "results": results,
+    return {"start": start.isoformat(), "days": days, "seed": base.seed, "results": results,
             "by_freshness": by_class, "delta": delta}
+
+
+def run_backtest(start: date, days: int, seed: int = 7, warmup: int = WARMUP_DAYS,
+                 world: WorldParams = REFERENCE_WORLD, baseline: Policy | None = None,
+                 ops: OpsChestPolicy | None = None) -> dict:
+    return compare(warm_base(start, seed, warmup), start, days, world, baseline, ops)
+
+
+def _row(key: str, label: str, note: str, res: dict) -> dict:
+    a, b = list(res["results"].values())
+    return {
+        "key": key, "label": label, "note": note, "seed": res["seed"],
+        "gain": round(b["gross_profit"] - a["gross_profit"]),
+        "gain_pct": round(b["gross_profit"] / a["gross_profit"] - 1, 4),
+        "waste_a": a["waste_rate"], "waste_b": b["waste_rate"],
+        "oos_a": a["oos_rate"], "oos_b": b["oos_rate"],
+    }
+
+
+def run_sensitivity(start: date = SENSITIVITY_START, days: int = SENSITIVITY_DAYS) -> dict:
+    """Moi kich ban chi doi MOT dieu so voi kich ban tham chieu."""
+    base = warm_base(start, 7)
+    rows = [
+        _row("reference", "Tham chiếu", "A có giờ vàng, khách phản ứng bằng 50% giả định của engine",
+             compare(base, start, days)),
+    ]
+    for seed in (11, 23):
+        rows.append(_row(f"seed_{seed}", f"Nhu cầu khác (seed {seed})", "Đổi chuỗi nhu cầu ngẫu nhiên",
+                         compare(warm_base(start, seed), start, days)))
+    rows += [
+        _row("world_100", "Khách phản ứng đúng 100% giả định", "Trường hợp tốt nhất cho giảm giá của B",
+             compare(base, start, days, world=OPTIMISTIC_WORLD)),
+        _row("world_25", "Khách chỉ phản ứng 25% giả định", "Engine đánh giá quá cao tác dụng của giảm giá",
+             compare(base, start, days, world=PESSIMISTIC_WORLD)),
+        _row("order_only", "B chỉ đặt hàng", "Tắt giảm giá và trả NCC của B: đo riêng phần công của đặt hàng",
+             compare(base, start, days, ops=OpsChestPolicy(dispose=False))),
+        _row("no_demand_fix", "B không tách doanh số giảm giá", "Dự báo tính cả lượng bán nhờ giảm giá vào nhu cầu",
+             compare(base, start, days, ops=OpsChestPolicy(adjust_markdown=False))),
+        _row("approve_80", "Store Manager duyệt 80%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm, giảm giá thì bỏ qua",
+             compare(base, start, days, ops=OpsChestPolicy(approval_rate=0.8))),
+        _row("approve_60", "Store Manager duyệt 60%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm, giảm giá thì bỏ qua",
+             compare(base, start, days, ops=OpsChestPolicy(approval_rate=0.6))),
+        _row("fefo_80", "20% lượt mua lấy lô mới", "Khách lấy hàng phía sau kệ; engine vẫn tin là bán FEFO",
+             compare(base, start, days, world=REFERENCE_WORLD.with_fefo(0.8))),
+        _row("fefo_50", "50% lượt mua lấy lô mới", "Khách lấy hàng phía sau kệ; engine vẫn tin là bán FEFO",
+             compare(base, start, days, world=REFERENCE_WORLD.with_fefo(0.5))),
+        _row("legacy", "Cách so sánh cũ", "A không giảm giá gì, khách phản ứng đúng giả định: thiên vị cho B",
+             compare(base, start, days, world=OPTIMISTIC_WORLD, baseline=BaselinePolicy())),
+    ]
+    return {"start": start.isoformat(), "days": days, "rows": rows}
 
 
 def _class_breakdown(sim: StoreSim, days: int) -> dict:
@@ -84,9 +149,9 @@ def _fmt(results: dict) -> str:
             ("markdown_loss", "Giảm giá đã chi", "{:,.0f}"), ("return_credit", "NCC hoàn tiền", "{:,.0f}"),
             ("avg_inventory_value", "Tồn kho TB (giá vốn)", "{:,.0f}"), ("inventory_days", "Số ngày tồn", "{:.1f}")]
     names = list(results)
-    lines = [f"{'Chỉ số':<24}" + "".join(f"{n:>26}" for n in names)]
+    lines = [f"{'Chỉ số':<24}" + "".join(f"{n:>32}" for n in names)]
     for k, label, f in keys:
-        lines.append(f"{label:<24}" + "".join(f"{f.format(results[n][k]):>26}" for n in names))
+        lines.append(f"{label:<24}" + "".join(f"{f.format(results[n][k]):>32}" for n in names))
     return "\n".join(lines)
 
 
@@ -96,7 +161,16 @@ def main() -> None:
     ap.add_argument("--days", type=int, default=90)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--sensitivity", action="store_true", help=f"Chạy các kịch bản và ghi vào {SENSITIVITY_FILE.name}")
     args = ap.parse_args()
+    if args.sensitivity:
+        out = run_sensitivity()
+        SENSITIVITY_FILE.parent.mkdir(exist_ok=True)
+        SENSITIVITY_FILE.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        for r in out["rows"]:
+            print(f"{r['key']:<14} {r['gain_pct']:+7.1%}  hủy {r['waste_a']:.1%}/{r['waste_b']:.1%}"
+                  f"  hết hàng {r['oos_a']:.1%}/{r['oos_b']:.1%}")
+        return
     from app.clock import today
     start = args.start or today() - timedelta(days=args.days)
     res = run_backtest(start, args.days, args.seed)

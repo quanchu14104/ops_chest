@@ -5,10 +5,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from app.engines.disposition import ELASTICITY, EVENING_SHARE
 from app.engines.kpi import KpiTotals
 from app.sim.catalog import ProductSpec, SupplierSpec
 from app.sim.demand import _poisson, _rng, expected_demand, sample_demand
+from app.sim.world import REFERENCE_WORLD, WorldParams
 
 
 @dataclass
@@ -59,8 +59,9 @@ class Policy:
 
 class StoreSim:
     def __init__(self, suppliers: list[SupplierSpec], products: list[ProductSpec], seed: int = 7,
-                 record: bool = False):
+                 record: bool = False, world: WorldParams = REFERENCE_WORLD):
         self.seed = seed
+        self.world = world
         self.suppliers = {s.code: s for s in suppliers}
         self.products = products
         self.by_sku = {p.sku: p for p in products}
@@ -121,12 +122,17 @@ class StoreSim:
         return code
 
     @staticmethod
-    def _sell(p: ProductSpec, lot: SimLot, take: int, md: float, a: list) -> None:
+    def _sell(p: ProductSpec, lot: SimLot, take: int, md: float, a: list, evening: bool = False) -> None:
         lot.qty -= take
         a[0] += take
         a[1] += take * p.unit_price * (1 - md)
         a[2] += take * lot.unit_cost
         a[3] += take * p.unit_price * md
+        if md > 0 and evening:
+            a[7] += take
+        elif md > 0:
+            a[5] += take
+            a[6] += take * md
 
     def apply_markdown(self, lot: SimLot, pct: float, d: date, evening: bool = False) -> None:
         if evening:
@@ -143,6 +149,14 @@ class StoreSim:
         self.totals.return_credit += credit
         self.totals.return_cost += units * lot.unit_cost
         self._mv(lot.sku, d, "RETURN", units, lot.unit_cost, credit, note=f"Trả NCC, hoàn {credit_pct:.0%}")
+
+    def _non_fefo_units(self, sku: str, d: date, need: int) -> int:
+        """So don vi khach lay tu lo moi nhat thay vi lo gan het han."""
+        c = self.world.fefo_compliance
+        if c >= 1 or need <= 0:
+            return 0
+        r = _rng(self.seed, "pick", sku, d.toordinal())
+        return sum(1 for _ in range(need) if r.random() > c)
 
     # ----- mot ngay -----
     def run_day(self, d: date, policy: Policy) -> None:
@@ -165,19 +179,23 @@ class StoreSim:
             lots = self.lots[sku]
             lots.sort(key=lambda l: (l.expiry, l.lot_no))
             need = sample_demand(self.seed, p, d)
-            a = acc[sku] = [0, 0.0, 0.0, 0.0, 0]
-            for lot in lots:
-                if need <= 0:
-                    break
-                take = min(lot.qty, need)
-                if take > 0:
-                    self._sell(p, lot, take, lot.markdown, a)
-                    need -= take
-            a[4] = need
+            # sold, rev, cogs, md_loss, lost, so ban giam gia ca ngay, tong (so x muc giam), so ban gio vang
+            a = acc[sku] = [0, 0.0, 0.0, 0.0, 0, 0, 0.0, 0]
+            from_back = self._non_fefo_units(sku, d, need)
+            need -= from_back
+            for order, units in ((lots, need), (lots[::-1], from_back)):  # ban theo FEFO, roi khach lay lo moi
+                for lot in order:
+                    if units <= 0:
+                        break
+                    take = min(lot.qty, units)
+                    if take > 0:
+                        self._sell(p, lot, take, lot.markdown, a)
+                        units -= take
+                a[4] += units
             md_lots = [l for l in lots if l.markdown > 0 and l.qty > 0]
             if md_lots:
                 top = max(l.markdown for l in md_lots)
-                lam = expected_demand(self.seed, p, d) * ELASTICITY[p.freshness_class] * top
+                lam = expected_demand(self.seed, p, d) * self.world.elasticity[p.freshness_class] * top
                 extra = _poisson(_rng(self.seed, "md", sku, d.toordinal()), lam)
                 for lot in md_lots:
                     take = min(lot.qty, extra)
@@ -193,20 +211,24 @@ class StoreSim:
             ev_lots = [l for l in self.lots[sku] if l.evening_md > 0 and l.qty > 0 and l.expiry <= d]
             if ev_lots:
                 top = max(l.evening_md for l in ev_lots)
-                lam = expected_demand(self.seed, p, d) * EVENING_SHARE * ELASTICITY[p.freshness_class] * top
+                lam = (expected_demand(self.seed, p, d) * self.world.evening_share
+                       * self.world.elasticity[p.freshness_class] * top)
                 extra = _poisson(_rng(self.seed, "ev", sku, d.toordinal()), lam)
                 for lot in ev_lots:
                     take = min(lot.qty, extra)
                     if take > 0:
-                        self._sell(p, lot, take, lot.evening_md, a)
+                        self._sell(p, lot, take, lot.evening_md, a, evening=True)
                         extra -= take
-            sold, rev, cogs, md_loss, lost = a
+            sold, rev, cogs, md_loss, lost, md_units, md_weighted, ev_units = a
             if md_loss:
                 self._mv(sku, d, "MARKDOWN", 0, 0, md_loss, note="Doanh thu giảm do giảm giá")
             self.lots[sku] = [l for l in self.lots[sku] if l.qty > 0]
 
             h = self.hist[sku]
             h["sales"].append(sold)
+            h["md_units"].append(md_units)
+            h["md_pct"].append(md_weighted / md_units if md_units else 0.0)
+            h["ev_units"].append(ev_units)
             h["stockout"].append(lost > 0)
             h["lost"].append(lost)
             h["revenue"].append(rev)

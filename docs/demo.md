@@ -50,6 +50,16 @@ Hỏi lần lượt:
 - Ô HSD là bắt buộc. Để trống sẽ báo lỗi, nhập ngày đã qua cũng bị từ chối.
 - Giải thích: đây là dữ liệu POS không có, nền tảng cho FEFO và cảnh báo cận date. Nguyên tắc chung: LLM không có quyền ghi, mọi thao tác ghi là một cú bấm của con người.
 
+## 4b. Giả thuyết, tua nhanh, học từ phần sửa (3 phút, tùy chọn)
+
+- Nói trong chat: *"Thứ Bảy này có trận bóng, nhóm Bia bán gấp rưỡi"* (nêu rõ ngày). Thẻ đề xuất hiện dự báo trước và sau. Bấm **Duyệt**.
+- Vào **Số liệu tổng quan → Tua nhanh → Tua 7 ngày**. Giả thuyết được chấm đúng/sai và hiện trong bản tin. Bỏ chọn "Giả thuyết đang áp dụng xảy ra đúng" để xem trường hợp sai.
+- Nhấn mạnh: tua nhanh **không tự duyệt**. Nếu không ai duyệt đơn hàng, kệ trống dần và hàng quá hạn nằm trên kệ.
+- Bấm **Nạp lịch sử sửa mẫu**: thẻ "Học từ cách anh/chị sửa đơn" hiện thói quen và nút đề xuất hệ số.
+- Vào **Kiểm kê**: phiếu không có số trên sổ. Nhập số đếm lệch để tạo đề xuất điều chỉnh.
+- Trong form nhận hàng, bấm **Chụp HSD** để đọc tem bằng ảnh.
+- Ngày đã tua được lưu lại. Muốn quay về, seed lại DB rồi khởi động lại backend.
+
 ## 5. Chứng minh hiệu quả (1 phút)
 
-Vào **Phân tích → Mô phỏng A/B → Chạy 60 ngày**. So sánh lợi nhuận gộp, tỷ lệ hủy, tỷ lệ hết hàng giữa chính sách "kinh nghiệm" và Ops Chest trên cùng nhu cầu khách. Nêu rõ các giới hạn (xem `nghiep-vu.md` mục 5).
+Vào **Phân tích → Mô phỏng A/B → Chạy 60 ngày**. So sánh lợi nhuận gộp, tỷ lệ hủy, tỷ lệ hết hàng giữa chính sách "kinh nghiệm" và Ops Chest trên cùng nhu cầu khách. Kéo xuống bảng **độ nhạy**: nhấn mạnh rằng giả lập cố tình cho khách phản ứng với giảm giá yếu hơn engine tin, và kết quả vẫn dương ở mọi kịch bản. Nói thẳng đánh đổi là hết hàng cao hơn (xem `nghiep-vu.md` mục 5).

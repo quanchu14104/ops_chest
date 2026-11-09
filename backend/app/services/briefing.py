@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.clock import today
 from app.fmt import dmy, vnd
 from app.models import Proposal
-from app.services import inventory, replenish
+from app.services import hypotheses, inventory, replenish
 
 
 def build(db: Session) -> dict:
@@ -51,5 +51,10 @@ def build(db: Session) -> dict:
         items.append({"id": "oos", "level": "warn", "count": summ["out_of_stock_skus"],
                       "text": f"{summ['out_of_stock_skus']} mặt hàng đang hết hàng",
                       "prompt": "Tình hình kho hôm nay thế nào? Mặt hàng nào đang hết?", "quick": "inventory"})
+    for x in hypotheses.recently_evaluated(db):
+        v = hypotheses.view(x)
+        items.append({"id": f"hypothesis-{x.id}", "level": "info", "count": 1,
+                      "text": f"Giả thuyết \"{x.reason}\" ({v['scope']} ×{x.factor:g}): {v['verdict_label']}",
+                      "prompt": "Các giả thuyết nhu cầu của tôi gần đây đúng hay sai?"})
     return {"today": today().isoformat(), "date_label": dmy(today()), "items": items,
             "all_clear": not items}

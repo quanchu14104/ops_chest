@@ -63,3 +63,7 @@ class DailySales(Base):
     # Cua hang that khong biet luong khach muon mua ma het hang; du lieu gia lap thi co.
     lost_qty: Mapped[int | None] = mapped_column(Integer)
     stockout: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Ban nho giam gia khong phai nhu cau binh thuong: tach rieng de du bao khong bi thoi len
+    discounted_qty: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    discount_pct: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    evening_qty: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

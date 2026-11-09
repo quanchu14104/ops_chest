@@ -1,6 +1,7 @@
 """Dang nhap, dashboard, ton kho, san pham, NCC, PO, bao cao, audit."""
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -221,6 +222,16 @@ def backtest(days: int = Query(60, ge=14, le=120), user: User = Depends(current_
     if key not in _backtest_cache:
         _backtest_cache[key] = run_backtest(start, days)
     return _backtest_cache[key]
+
+
+@router.get("/reports/backtest/sensitivity")
+def backtest_sensitivity(user: User = Depends(current_user)):
+    """Bang do nhay da tinh san (python -m app.sim.backtest --sensitivity): chay song mat vai phut."""
+    from app.sim.backtest import SENSITIVITY_FILE
+
+    if not SENSITIVITY_FILE.exists():
+        raise HTTPException(404, "Chưa có bảng độ nhạy. Chạy: python -m app.sim.backtest --sensitivity")
+    return json.loads(SENSITIVITY_FILE.read_text(encoding="utf-8"))
 
 
 @router.get("/audit")

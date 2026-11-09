@@ -4,9 +4,11 @@ import { api, type ChartSpec, type Proposal } from "../api";
 import ChartView from "../components/ChartView";
 import { dateVi, money, pct } from "../format";
 
-type Cost = { start: string; end: string; kpi: Record<string, number>; top_waste_skus: { sku: string; name: string; waste_qty: number; waste_value: number }[] };
+type Cost = { start: string; end: string; kpi: Record<string, number>; shrink_value: number; top_waste_skus: { sku: string; name: string; waste_qty: number; waste_value: number }[] };
 type Cand = { sku: string; name: string; category: string; cell: string; margin_90d: number; waste_rate: number; reasons: string[] };
 type BT = { start: string; days: number; results: Record<string, Record<string, number>>; delta: Record<string, number> };
+type SensRow = { key: string; label: string; note: string; gain: number; gain_pct: number; waste_a: number; waste_b: number; oos_a: number; oos_b: number };
+type Sens = { start: string; days: number; rows: SensRow[] };
 
 const METRICS: [string, string][] = [
   ["stock_flow", "Nhập/xuất (số lượng)"],
@@ -39,6 +41,7 @@ export default function Reports() {
   const cost = useQuery({ enabled: !!meta.data, queryKey: ["cost", days, meta.data?.today], queryFn: () => api<Cost>(`/reports/cost?start=${iso(start)}&end=${iso(end)}`) });
   const cands = useQuery({ queryKey: ["delist"], queryFn: () => api<Cand[]>(`/reports/delist`) });
   const bt = useMutation({ mutationFn: (d: number) => api<BT>(`/reports/backtest?days=${d}`) });
+  const sens = useQuery({ queryKey: ["bt-sensitivity"], queryFn: () => api<Sens>("/reports/backtest/sensitivity"), retry: false });
   const delist = useMutation({
     mutationFn: (sku: string) => api<Proposal[]>("/proposals/create", { method: "POST", body: { type: "DELIST", sku } }),
     onSuccess: (r) => { setMsg(`Đã tạo đề xuất #${r[0].id}. Vào Hộp duyệt để quyết định.`); qc.invalidateQueries(); },
@@ -69,7 +72,7 @@ export default function Reports() {
         <div className="grid kpis" style={{ marginBottom: 16 }}>
           {[["Giá vốn hàng hủy", money(k.waste_cost)], ["Tỷ lệ hủy", pct(k.waste_rate)], ["Tỷ lệ hết hàng", pct(k.oos_rate)],
             ["Lãi mất do hết hàng", money(k.lost_margin)], ["Đã giảm giá", money(k.markdown_loss)], ["NCC hoàn tiền", money(k.return_credit)],
-            ["Số ngày tồn kho", `${k.inventory_days.toLocaleString("vi-VN")} ngày`]].map(([l, v]) => (
+            ["Số ngày tồn kho", `${k.inventory_days.toLocaleString("vi-VN")} ngày`], ["Hao hụt kiểm kê", money(cost.data?.shrink_value ?? 0)]].map(([l, v]) => (
             <div className="card kpi" key={l}><div className="label">{l}</div><div className="value" style={{ fontSize: 20 }}>{v}</div></div>
           ))}
         </div>
@@ -119,8 +122,8 @@ export default function Reports() {
       <div className="card">
         <h2>Mô phỏng A/B: "kinh nghiệm" và Ops Chest</h2>
         <p className="small secondary">
-          Chạy lại cùng cửa hàng với <b>cùng nhu cầu khách</b> (tất định) bằng 2 chính sách đặt hàng. A: mức tồn theo trung bình 4 tuần (không biết thứ trong tuần, Tết, hết hàng).
-          B: dự báo + newsvendor/order-up-to + trần HSD + giảm giá giờ vàng/trả NCC (coi như SM duyệt hết). Mất khoảng 10-30 giây.
+          Chạy lại cùng cửa hàng với <b>cùng nhu cầu khách</b> (tất định) bằng 2 chính sách đặt hàng. A: mức tồn theo trung bình 4 tuần, cuối ngày giảm 30% hàng hết hạn hôm nay.
+          B: dự báo + newsvendor/order-up-to + trần HSD + giảm giá giờ vàng/trả NCC (coi như SM duyệt hết). Trong mô phỏng, khách chỉ phản ứng với giảm giá bằng một nửa mức engine giả định. Mất khoảng 10-30 giây.
         </p>
         <div className="row">
           {[30, 60, 90].map((d) => <button key={d} disabled={bt.isPending} onClick={() => bt.mutate(d)}>Chạy {d} ngày</button>)}
@@ -128,8 +131,35 @@ export default function Reports() {
         </div>
         {bt.error && <div className="alert error">{(bt.error as Error).message}</div>}
         {bt.data && <Backtest d={bt.data} />}
+        {sens.data && <Sensitivity d={sens.data} />}
       </div>
     </>
+  );
+}
+
+function Sensitivity({ d }: { d: Sens }) {
+  const signed = (v: number) => `${v >= 0 ? "+" : ""}${pct(v)}`;
+  const core = d.rows.filter((r) => r.key === "reference" || r.key.startsWith("seed_")).map((r) => r.gain_pct);
+  const oosWorse = d.rows.every((r) => r.oos_b > r.oos_a);
+  return (
+    <div className="table-wrap" style={{ marginTop: 16 }}>
+      <h2>Kết quả phụ thuộc vào giả định đến đâu</h2>
+      <p className="small secondary">
+        Tính sẵn từ {dateVi(d.start)}, {d.days} ngày. Mỗi dòng chỉ đổi một điều so với dòng tham chiếu. Lợi nhuận gộp của B so với A ở kịch bản tham chiếu và các chuỗi nhu cầu khác: <b>{signed(Math.min(...core))} đến {signed(Math.max(...core))}</b>.
+      </p>
+      <table>
+        <thead><tr><th>Kịch bản</th><th className="num">Lợi nhuận B so với A</th><th className="num">Tỷ lệ hủy A / B</th><th className="num">Hết hàng A / B</th></tr></thead>
+        <tbody>{d.rows.map((r) => (
+          <tr key={r.key}>
+            <td><b>{r.label}</b><div className="small muted">{r.note}</div></td>
+            <td className="num">{signed(r.gain_pct)}</td>
+            <td className="num">{pct(r.waste_a)} / {pct(r.waste_b)}</td>
+            <td className="num">{pct(r.oos_a)} / {pct(r.oos_b)}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {oosWorse && <div className="alert" style={{ marginTop: 10 }}>Đánh đổi: tỷ lệ hết hàng của B cao hơn A ở mọi kịch bản. Lợi nhuận tăng chủ yếu nhờ hủy ít hơn, không phải nhờ bán được nhiều hơn.</div>}
+    </div>
   );
 }
 

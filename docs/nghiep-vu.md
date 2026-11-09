@@ -22,6 +22,7 @@ Store Manager (SM) làm việc trực tiếp với đại lý, có toàn quyền
 - Mức nền EWMA (half-life 14 ngày) × hệ số thứ trong tuần × hệ số Tết.
 - Hệ số Tết được *học từ chính lịch sử SKU*.
 - **Nhu cầu bị chặn (censored demand).** Ngày hết hàng thì doanh số bằng lượng tồn, còn nhu cầu thật lớn hơn. Nếu bỏ hẳn những ngày này thì dự báo **bị lệch thấp** (đã đo được khoảng −10% trên hàng tươi), vì đó thường là ngày bán chạy. Engine ước lượng `E[D | D ≥ doanh số]` theo phân phối chuẩn (kiểu Tobit) và lặp 3 vòng.
+- **Doanh số nhờ giảm giá không phải nhu cầu.** Tính cả vào thì dự báo bị thổi lên, đặt dư, rồi lại phải giảm giá tiếp. Trong backtest, lượng bán giờ vàng bị bỏ khỏi chuỗi nhu cầu, lượng bán giảm giá cả ngày được chia cho `1 + co giãn × mức giảm` (`baseline_demand`). Lịch sử trong DB hiện chỉ sinh từ giai đoạn không giảm giá; khi nối POS thật, cần lấy thêm số lượng bán theo mức giảm.
 - Sai số chuẩn (σ) tính trên mọi quan sát, có sàn Poisson (σ ≥ √mức nền).
 
 ### Số lượng đặt (`replenishment.py`)
@@ -60,6 +61,27 @@ Engine mô phỏng bán FEFO theo dự báo để ra **số lượng dự kiến
   - Lô còn vài ngày: giảm giá cả lô; engine tính cả phần doanh thu giá gốc bị mất.
 - **Trả nhà cung cấp:** chỉ khi thỏa thuận cho phép và lô còn ≥ N ngày trước HSD; hoàn x% giá vốn.
 
+### Giả thuyết của Store Manager (`services/hypotheses.py`)
+
+Dự báo từ lịch sử không biết tuần này có trận bóng. Cách làm của 7-Eleven Nhật là để người bán đặt giả thuyết rồi kiểm chứng; đây cũng là việc chat làm tốt hơn dashboard.
+
+- Store Manager nói trong chat, agent tạo đề xuất với **đúng hệ số và ngày người dùng nêu**. Thiếu thì agent phải hỏi, không tự chọn.
+- Giới hạn bằng code: hệ số 0,3–3, tối đa 14 ngày, không trùng khoảng ngày cùng phạm vi.
+- Dự báo chỉ đổi sau khi duyệt. Những ngày có sự kiện không được dùng để ước lượng mức nền, giống cách xử lý Tết.
+- Hết khoảng ngày, hệ thống so lượng bán thực tế với dự báo nền đã lưu. **Đúng** nếu nhu cầu đi được ≥50% quãng đường dự đoán, **sai** nếu ≤25%, còn lại là đúng một phần. Dùng lượng bán vì cửa hàng thật không biết nhu cầu bị hụt, nên hết hàng có thể làm giả thuyết tăng trông kém hơn thực tế.
+
+### Học từ phần sửa (`engines/edit_learning.py`)
+
+Chỉ gợi ý khi có ít nhất 5 lần sửa trên 3 đơn đã duyệt, trung vị lệch từ 15% và 70% số lần cùng chiều. Hệ số do code tính (làm tròn 0,05, trong khoảng 0,5–1,5), agent không chọn được. Áp dụng phải qua duyệt, tắt được bất cứ lúc nào. Hệ số tăng vẫn không vượt trần HSD.
+
+### Kiểm kê (`services/stockcount.py`)
+
+Đếm **mù**: phiếu không hiện số trên sổ, vì người đếm thấy số sẽ có xu hướng đếm cho khớp. Nhân viên gửi số đếm; chênh lệch thành đề xuất cho Store Manager duyệt. Thiếu thì trừ lô gần hết hạn trước (không biết mất ở lô nào), dư thì cộng vào lô mới nhất. Nếu tồn đã thay đổi giữa lúc đếm và lúc duyệt, đề xuất thất bại và phải đếm lại, thay vì ghi đè bằng số cũ.
+
+### Đọc ảnh tem HSD (`agent/vision.py`)
+
+Model chỉ đọc chữ in trên bao bì; việc hiểu ngày (ngày trước tháng, chỉ có tháng/năm thì lấy cuối tháng) do code tất định làm. Không đọc được HSD thì trả rỗng và không bao giờ lấy NSX thay thế. Kết quả chỉ điền sẵn ô HSD, người nhận hàng vẫn phải đối chiếu và xác nhận; ảnh không được lưu. Đã thử trên ảnh tem tự tạo, **chưa thử trên ảnh bao bì thật**.
+
 ## 4. Định nghĩa KPI (`kpi.py`)
 
 | KPI | Công thức |
@@ -69,6 +91,7 @@ Engine mô phỏng bán FEFO theo dự báo để ra **số lượng dự kiến
 | Lợi nhuận gộp sau hủy | doanh thu − giá vốn bán − giá vốn hủy − giá vốn hàng trả + tiền NCC hoàn |
 | Số ngày tồn | tồn kho trung bình (giá vốn) / giá vốn bán trung bình mỗi ngày |
 | Mức tin cậy của agent | tỷ lệ đề xuất được duyệt, tỷ lệ bị sửa, mức sửa số lượng trung bình |
+| Hao hụt kiểm kê | tổng giá trị các điều chỉnh âm; báo cáo riêng, chưa trừ vào lợi nhuận gộp |
 
 Lưu ý: dữ liệu giả lập biết chính xác "nhu cầu hụt". Cửa hàng thật không biết số này, nên phải ước tính từ dự báo trong những ngày hết hàng.
 
@@ -76,21 +99,39 @@ Lưu ý: dữ liệu giả lập biết chính xác "nhu cầu hụt". Cửa hà
 
 Hai chính sách chạy trên cùng cửa hàng, với **cùng nhu cầu khách** (tất định theo seed):
 
-- **A, "kinh nghiệm":** mức tồn = trung bình doanh số 4 tuần × hệ số an toàn. Không biết thứ trong tuần, Tết, hay việc doanh số bị chặn khi hết hàng; không xử lý hàng cận date.
+- **A, "kinh nghiệm":** mức tồn = trung bình doanh số 4 tuần × hệ số an toàn; cuối ngày giảm 30% hàng hết hạn hôm nay. Không biết thứ trong tuần, Tết, hay việc doanh số bị chặn khi hết hàng.
 - **B, Ops Chest:** coi như Store Manager duyệt mọi đề xuất.
 
-| Giai đoạn | Lợi nhuận gộp | Tỷ lệ hủy | Tỷ lệ hết hàng | Tồn kho TB |
-|---|---|---|---|---|
-| 01/08–29/10/2026 (90 ngày) | **+24,3 triệu (+16,7%)** | 12,4% → 6,5% | 5,4% → 5,6% | +10% |
-| 08/09–06/11/2026 (60 ngày) | **+16,8 triệu (+17,3%)** | 11,9% → 5,8% | 6,0% → 6,3% | +11% |
+**Thiết kế để kết quả không tự chứng minh:** hệ số co giãn của "thế giới giả lập" (`sim/world.py`) tách khỏi hệ số engine giả định. Ở kịch bản tham chiếu, khách chỉ phản ứng với giảm giá bằng 50% mức engine tin (FRESH 1,5 so với 3,0), nghĩa là engine cố tình bị sai mô hình. Chính sách B chỉ dùng thứ cửa hàng quan sát được.
 
-Đánh đổi: B giữ tồn hàng tươi cao hơn một chút (newsvendor có tính chi phí mất khách), nhưng hủy ít hơn hẳn nhờ dự báo theo thứ trong tuần, trần HSD và giảm giá giờ vàng.
+Bảng dưới (08/09–06/11/2026, 60 ngày). Mỗi dòng chỉ đổi một điều so với dòng tham chiếu. Tạo lại bằng `python -m app.sim.backtest --sensitivity`, và cũng hiện trong trang **Phân tích**.
+
+| Kịch bản | Lợi nhuận B so với A | Tỷ lệ hủy A / B | Hết hàng A / B |
+|---|---|---|---|
+| **Tham chiếu** | **+11,9%** | 11,0% / 5,7% | 5,6% / 7,3% |
+| Nhu cầu khác (seed 11) | +12,1% | 11,3% / 6,1% | 5,4% / 7,1% |
+| Nhu cầu khác (seed 23) | +9,9% | 10,8% / 5,8% | 5,0% / 7,2% |
+| Khách phản ứng đúng 100% giả định | +12,4% | 10,5% / 4,1% | 5,1% / 7,2% |
+| Khách chỉ phản ứng 25% giả định | +9,9% | 11,1% / 6,9% | 5,8% / 7,4% |
+| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +5,4% | 11,0% / 8,3% | 5,6% / 7,4% |
+| B không tách doanh số giảm giá khỏi nhu cầu | +10,1% | 11,0% / 6,7% | 5,6% / 6,8% |
+| Store Manager chỉ duyệt 80% đề xuất | +9,0% | 11,0% / 7,0% | 5,6% / 6,9% |
+| Store Manager chỉ duyệt 60% đề xuất | +5,5% | 11,0% / 8,4% | 5,6% / 6,6% |
+| 20% lượt mua lấy lô mới (không theo FEFO) | +12,0% | 11,1% / 5,8% | 5,6% / 7,3% |
+| 50% lượt mua lấy lô mới (không theo FEFO) | +12,2% | 11,3% / 5,9% | 5,6% / 7,3% |
+| Cách so sánh cũ (A không giảm giá, khách phản ứng đúng giả định) | +20,3% | 11,9% / 4,1% | 6,0% / 7,2% |
+
+Con số nên trích dẫn là **khoảng +10–12% lợi nhuận gộp, tỷ lệ hủy giảm gần một nửa**. Dòng "cách so sánh cũ" được giữ lại để cho thấy phương pháp so sánh ảnh hưởng tới kết quả ra sao.
+
+**Đánh đổi:** tỷ lệ hết hàng của B cao hơn A ở mọi kịch bản (5–6% so với khoảng 7%), và B giữ tồn kho nhiều hơn. Lợi nhuận tăng chủ yếu nhờ hủy ít hơn, không phải nhờ bán được nhiều hơn. Đây là điểm yếu còn lại của engine, dù newsvendor đã tính chi phí mất khách.
 
 **Giới hạn cần nói rõ khi bảo vệ:**
 
-1. Mô hình nhu cầu và hệ số co giãn là giả định.
+1. Mô hình nhu cầu và hệ số co giãn đều là giả định; bảng độ nhạy chỉ cho biết kết luận chịu được sai lệch tới đâu.
 2. Baseline A là một heuristic hợp lý, không phải hành vi đo được của một Store Manager thật.
-3. Giả lập coi như Store Manager duyệt 100% đề xuất.
+3. Kịch bản tham chiếu coi như Store Manager duyệt 100% đề xuất. Nếu chỉ duyệt 60%, phần lợi nhuận tăng thêm còn khoảng một nửa: lợi ích phụ thuộc vào việc người dùng thực sự làm theo.
+4. Chỉ có 3 chuỗi nhu cầu trên một giai đoạn 60 ngày, không đủ để nói về độ tin cậy thống kê.
+5. Khi khách không mua theo FEFO, cả A và B đều hủy nhiều hơn một chút nên chênh lệch gần như không đổi. Bộ giả lập chưa mô phỏng hao hụt (mất mát không ghi sổ).
 
 ## 6. Tham khảo cách làm của các chuỗi
 
@@ -100,9 +141,9 @@ Hai chính sách chạy trên cùng cửa hàng, với **cùng nhu cầu khách*
 
 ## 7. Ngoài phạm vi (hướng phát triển)
 
-- Kiểm kê và hao hụt.
+- Mô phỏng hao hụt trong backtest.
+- Đọc hóa đơn giao hàng bằng ảnh (hiện chỉ đọc tem HSD từng dòng).
 - Điều chuyển hàng giữa nhiều cửa hàng.
 - Tích hợp POS/ERP thật.
 - Tham số đặt hàng do Store Manager tự chỉnh (z, chu kỳ).
 - Học hệ số co giãn từ lịch sử giảm giá.
-- Giả lập tiến ngày để demo nhiều ngày liên tiếp.

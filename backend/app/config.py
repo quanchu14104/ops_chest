@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     llm_cooldown_seconds: int = 120
     llm_cooldown_daily_limit_seconds: int = 900
 
+    # Doc anh tem HSD. De trong = dung LLM phu neu co, khong thi LLM chinh (model phai ho tro anh).
+    llm_vision_base_url: str = ""
+    llm_vision_api_key: str = ""
+    llm_vision_model: str = ""
+
+    # Nut tua nhanh ngay cho demo. Tat khi chay voi du lieu that.
+    enable_sim_controls: bool = True
+
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_from: str = "dathang@opschest-demo.test"

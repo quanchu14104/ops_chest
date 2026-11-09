@@ -29,6 +29,7 @@ class Forecast:
     n_obs: int = 0
     n_censored: int = 0
     method: str = "ewma_weekday_censored"
+    adjustments: list[dict] = field(default_factory=list)  # gia thuyet cua SM da ap vao du bao
 
     def total(self, offset: int, days: int) -> float:
         return sum(self.at(offset + i) for i in range(days))
@@ -62,6 +63,18 @@ def estimate_event_factors(history: list[float], end: date) -> dict[str, float]:
         else:
             factors[p] = round(max(0.1, min(4.0, (sum(vals) / len(vals)) / base)), 3)
     return factors
+
+
+def baseline_demand(sold: float, discounted_units: float, discount_pct: float, evening_units: float,
+                    elasticity: float) -> float:
+    """Nhu cau o gia goc cua mot ngay, tu nhung gi cua hang quan sat duoc.
+
+    Hang ban nho giam gia khong phai nhu cau binh thuong: tinh ca vao thi du bao bi thoi len, dat du,
+    roi lai phai giam gia tiep. Ban gio vang la xa hang du nen bo han; ban giam gia ca ngay thi chia
+    cho he so kich cau (1 + co gian * muc giam). Dung co gian GIA DINH vi cua hang khong biet so that.
+    """
+    full_price = max(0.0, sold - discounted_units - evening_units)
+    return full_price + discounted_units / (1 + max(0.0, elasticity * discount_pct))
 
 
 def _fit(obs: list[list], half_life_days: float) -> tuple[float, list[float], float]:
@@ -100,8 +113,12 @@ def forecast_demand(
     event_factors: dict[str, float] | None = None,
     lookback: int = 56,
     half_life_days: float = 14.0,
+    skip_dates: set[date] | None = None,
 ) -> Forecast:
-    """history[i] la luong ban ngay (history_end - len+1+i). Tra ve du bao `horizon` ngay tu `start`."""
+    """history[i] la luong ban ngay (history_end - len+1+i). Tra ve du bao `horizon` ngay tu `start`.
+
+    `skip_dates`: ngay co su kien SM da khai bao; khong dung de uoc luong muc nen (giong cach xu ly Tet).
+    """
     start = start or history_end + timedelta(days=1)
     n = len(history)
     stockout = stockout or [False] * n
@@ -112,7 +129,7 @@ def forecast_demand(
     obs: list[list] = []
     for i in range(lo, n):
         d = history_end - timedelta(days=n - 1 - i)
-        if tet_phase(d):
+        if tet_phase(d) or (skip_dates and d in skip_dates):
             continue
         obs.append([n - 1 - i, float(history[i]), d.weekday(), bool(stockout[i])])
     raw_sales = [o[1] for o in obs]
@@ -155,6 +172,17 @@ def forecast_demand(
         n_obs=len(obs),
         n_censored=n_cens,
     )
+
+
+def hypothesis_verdict(factor: float, ratio: float) -> str:
+    """Cham gia thuyet: nhu cau thuc te da di duoc bao nhieu phan quang duong SM du doan so voi du bao nen."""
+    gap = factor - 1.0
+    if abs(gap) < 1e-9:
+        return "PARTIAL"
+    share = (ratio - 1.0) / gap
+    if share >= 0.5:
+        return "CORRECT"
+    return "WRONG" if share <= 0.25 else "PARTIAL"
 
 
 def wape(actual: list[float], predicted: list[float]) -> float | None:

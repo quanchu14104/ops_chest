@@ -13,6 +13,7 @@ from app.engines.replenishment import Incoming, LotState, ReplenishmentInput, co
 from app.models import Product, Supplier
 from app.services.history import abc_xyz_classes, forecast_for
 from app.services.inventory import active_lots, on_order
+from app.services.learning import active_adjustments
 
 WEEKDAY_NAMES = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
 
@@ -33,6 +34,15 @@ def suppliers_due(db: Session, d: date | None = None) -> list[Supplier]:
     return [s for s in db.scalars(select(Supplier).order_by(Supplier.code)) if d.weekday() in s.order_weekdays]
 
 
+def apply_order_adjustment(qty: int, factor: float, pack_size: int, shelf_life_cap: float) -> int:
+    """He so SM da duyet. Tang thi van khong vuot tran HSD; lam tron theo quy cach dong goi."""
+    target = qty * factor
+    if factor > 1:
+        target = max(qty, min(target, shelf_life_cap))
+    pack = max(1, pack_size)
+    return int(round(target / pack)) * pack
+
+
 def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) -> dict:
     """Dat buoi sang truoc gio ban: nhu cau hom nay van phai tru vao ton hien co."""
     t = order_date or today()
@@ -46,6 +56,7 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
     incoming = on_order(db)
     classes = abc_xyz_classes(db)
     discount = agr.discount_pct if agr else 0.0
+    adjustments = active_adjustments(db)
     lines = []
     for p in products:
         fc = forecast_for(db, p, horizon=L + R + min(p.shelf_life_days, 30) + 2, start=t)
@@ -59,16 +70,19 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
             pack_size=p.pack_size, z=Z_BY_CLASS.get(cell, 1.28), unit_cost=p.unit_cost, unit_price=p.unit_price,
             salvage_per_unit=salvage_value(p, agr), stockout_penalty_per_unit=stockout_penalty(p),
         ))
-        if res.qty <= 0:
+        adj = adjustments.get(p.category)
+        qty = apply_order_adjustment(res.qty, adj.factor, p.pack_size, res.shelf_life_cap) if adj and res.qty > 0 else res.qty
+        if qty <= 0:
             continue
         unit_cost = int(round(p.unit_cost * (1 - discount)))
         lines.append({
-            "product_id": p.id, "sku": p.sku, "name": p.name, "qty": res.qty, "suggested_qty": res.qty,
-            "pack_size": p.pack_size, "unit_cost": unit_cost, "line_value": res.qty * unit_cost,
+            "product_id": p.id, "sku": p.sku, "name": p.name, "qty": qty, "suggested_qty": qty,
+            "pack_size": p.pack_size, "unit_cost": unit_cost, "line_value": qty * unit_cost,
             "abc_xyz": cell, "freshness_class": p.freshness_class,
             "on_hand": sum(l.qty_remaining for l in lots.get(p.id, [])),
             "forecast_cover": round(res.demand_coverage, 1),
-            "explain": res.to_dict(),
+            "explain": {**res.to_dict(), "hypotheses": fc.adjustments,
+                        "order_adjustment": adj.factor if adj else None, "qty_before_adjustment": res.qty},
         })
     total = sum(l["line_value"] for l in lines)
     warnings = []

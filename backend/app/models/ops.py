@@ -1,12 +1,13 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.catalog import Product, Supplier
 
-PROPOSAL_TYPES = ("PURCHASE_ORDER", "MARKDOWN", "RETURN", "DISPOSE", "DELIST")
+PROPOSAL_TYPES = ("PURCHASE_ORDER", "MARKDOWN", "RETURN", "DISPOSE", "DELIST", "DEMAND_HYPOTHESIS", "ORDER_ADJUST",
+                  "STOCK_ADJUST")
 PROPOSAL_STATUSES = ("PENDING", "APPROVED", "EXECUTED", "FAILED", "REJECTED", "EXPIRED", "SUPERSEDED")
 
 
@@ -48,6 +49,41 @@ class Proposal(Base):
     execution_result: Mapped[dict | None] = mapped_column(JSON)
     # Khoa chong tao trung de xuat cho cung mot viec (vd: PO NCC X ngay Y)
     dedupe_key: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class DemandHypothesis(Base):
+    """Gia thuyet ve nhu cau cua Store Manager ("thu 7 co tran bong, bia ban gap ruoi"), da duoc duyet."""
+
+    __tablename__ = "demand_hypotheses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category: Mapped[str | None] = mapped_column(String(100), index=True)
+    sku: Mapped[str | None] = mapped_column(String(30), index=True)
+    factor: Mapped[float] = mapped_column(Float)
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date] = mapped_column(Date, index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE", index=True)  # ACTIVE / EVALUATED / CANCELLED
+    baseline_total: Mapped[float] = mapped_column(Float)  # du bao KHONG co gia thuyet, de cham dung/sai ve sau
+    proposal_id: Mapped[int | None] = mapped_column(ForeignKey("proposals.id"))
+    created_by: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    result: Mapped[dict | None] = mapped_column(JSON)
+
+
+class OrderAdjustment(Base):
+    """He so dieu chinh so luong dat theo nhom hang, hoc tu cach SM hay sua va da duoc SM duyet."""
+
+    __tablename__ = "order_adjustments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category: Mapped[str] = mapped_column(String(100), index=True)
+    factor: Mapped[float] = mapped_column(Float)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    proposal_id: Mapped[int | None] = mapped_column(ForeignKey("proposals.id"))
+    created_by: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class PurchaseOrder(Base):

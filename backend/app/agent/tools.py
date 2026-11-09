@@ -18,7 +18,7 @@ from app.agent import widgets as W
 from app.models import Proposal, PurchaseOrder, Supplier, User
 from app.proposals import builders
 from app.proposals.views import acceptance_stats, to_dict
-from app.services import charts, inventory, replenish, reports
+from app.services import charts, hypotheses, inventory, learning, replenish, reports, stockcount
 from app.services.receiving import default_expiry  # chi lay HSD goi y; viec nhan hang that di qua REST
 
 
@@ -272,6 +272,19 @@ def _open_receive_form(ctx: ToolContext, po: str) -> ToolOutput:
                                   "chưa có hàng nào được nhận."}, ui=[form])
 
 
+@tool("open_stock_count_form", "read", "Show a blind stock-count FORM in the chat for one category. Staff type what they counted and press confirm in the UI; any difference becomes a proposal for the manager. This only displays the form.",
+      {"category": CATEGORY}, ["category"])
+def _open_count_form(ctx: ToolContext, category: str) -> ToolOutput:
+    lines = stockcount.sheet(ctx.db, category)
+    if not lines:
+        return ToolOutput({"error": f"Không tìm thấy nhóm hàng '{category}'"})
+    form = W.form("stock_count", f"Kiểm kê: {category}", lines, {"method": "POST", "path": "/stock-counts"},
+                  note="Ghi số đếm thực tế trên kệ và trong kho. Dòng để trống là chưa đếm.", meta={"category": category})
+    return ToolOutput({"form_shown": True, "category": category, "lines": len(lines),
+                       "message": "Đã hiện form kiểm kê trong chat. Nhân viên điền số đếm rồi bấm xác nhận; tồn kho chưa thay đổi."},
+                      ui=[form])
+
+
 # ---------------- CHART ----------------
 @tool("build_chart", "read", "Render a chart in the UI (stock_flow/_value: in vs out; sales: revenue & profit; sales_qty: sold vs lost; waste_by_category; waste_trend; inventory_by_category; expiry_risk; abc_xyz). Default last 30 days.",
       {"metric": {"type": "string", "enum": list(charts.METRICS)}, "start": DATE, "end": DATE, "group_by": GROUP,
@@ -369,6 +382,52 @@ def _revise(ctx: ToolContext, proposal_id: int, sku_qty: list[dict] | None = Non
         return ToolOutput({"error": str(e)})
     ctx.db.commit()
     return _prop_out(p, True, {"replaces": proposal_id})
+
+
+@tool("propose_demand_hypothesis", "propose", "Record the manager's belief about future demand (event, weather, promotion) as a PROPOSAL. Use ONLY the factor and dates the user stated; if either is missing, ask first. Set exactly one of category or sku. Forecasts change only after approval.",
+      {"factor": {"type": "number", "description": "demand multiplier stated by the user, 1.5 = +50%, 0.7 = -30%"},
+       "start_date": DATE, "end_date": DATE, "reason": {"type": "string", "description": "the user's reason, in Vietnamese"},
+       "category": CATEGORY, "sku": SKU}, ["factor", "start_date", "end_date", "reason"])
+def _propose_hypothesis(ctx: ToolContext, factor: float, start_date: str, end_date: str, reason: str,
+                        category: str | None = None, sku: str | None = None) -> ToolOutput:
+    try:
+        p, created = builders.demand_hypothesis(ctx.db, "agent", float(factor), date.fromisoformat(start_date),
+                                                date.fromisoformat(end_date), reason, category, sku, ctx.chat_session_id)
+    except (hypotheses.HypothesisError, ValueError) as e:
+        ctx.db.rollback()
+        return ToolOutput({"error": str(e)})
+    ctx.db.commit()
+    return _prop_out(p, created, {k: p.payload[k] for k in ("baseline_total", "adjusted_total", "sku_count")})
+
+
+@tool("list_demand_hypotheses", "read", "The manager's demand hypotheses: active ones and how past ones turned out (correct / partly / wrong).")
+def _list_hypotheses(ctx: ToolContext) -> ToolOutput:
+    rows = hypotheses.list_views(ctx.db)
+    ui = [W.table("Giả thuyết nhu cầu", [
+        W.col("scope", "Phạm vi"), W.col("factor", "Hệ số", "num"), W.col("start_date", "Từ", "date"),
+        W.col("end_date", "Đến", "date"), W.col("reason", "Lý do"), W.col("verdict_label", "Kết quả")], rows,
+        empty="Chưa có giả thuyết nào.")]
+    return ToolOutput(rows, ui=ui)
+
+
+@tool("get_order_edit_patterns", "read", "Consistent habits in how the manager edits suggested order quantities, by category, plus learned adjustments already active.")
+def _edit_patterns(ctx: ToolContext) -> ToolOutput:
+    found = learning.patterns(ctx.db)
+    active = [{"category": a.category, "factor": a.factor} for a in learning.active_adjustments(ctx.db).values()]
+    ui = [W.table("Thói quen sửa số lượng đặt", [
+        W.col("category", "Nhóm"), W.col("edits", "Lần sửa", "num"), W.col("proposals", "Số đơn", "num"),
+        W.col("factor", "Hệ số gợi ý", "num")], found, empty="Chưa đủ lịch sử sửa để thấy thói quen rõ ràng.")]
+    return ToolOutput({"patterns": found, "active_adjustments": active}, ui=ui)
+
+
+@tool("propose_order_adjustment", "propose", "Create a PROPOSAL to apply a learned order-quantity factor to one category. Refused unless the edit history supports it; the factor is computed, never chosen by you.",
+      {"category": CATEGORY}, ["category"])
+def _propose_adjustment(ctx: ToolContext, category: str) -> ToolOutput:
+    p, created, err = builders.order_adjustment(ctx.db, category, "agent", ctx.chat_session_id)
+    ctx.db.commit()
+    if not p:
+        return ToolOutput({"error": err})
+    return _prop_out(p, created)
 
 
 def schemas() -> list[dict]:

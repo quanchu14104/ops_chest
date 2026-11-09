@@ -2,6 +2,8 @@
 
 A - BaselinePolicy ("kinh nghiem"): muc ton muc tieu = TB ban 28 ngay x so ngay can phu x he so an toan.
     Khong biet thu trong tuan, Tet, het hang lam doanh so thap, khong xu ly hang can date.
+A' - BaselineGoldenHourPolicy: A + giam 30% buoi toi hang het han hom nay, dung nhu chu tiem binh thuong.
+    Day la doi thu so sanh mac dinh; so voi A thuan thi phan loi cua giam gia bi tinh het cho B.
 B - OpsChestPolicy: dung dung cac engine cua Ops Chest (du bao, newsvendor/order-up-to, tran HSD,
     ABC-XYZ, de xuat giam gia/tra hang). Trong mo phong coi nhu SM duyet het de xuat.
 """
@@ -13,9 +15,10 @@ from datetime import date, timedelta
 from app.engines.abc_xyz import Z_BY_CLASS, SkuStats, classify
 from app.engines.disposition import ELASTICITY, DispositionInput, best
 from app.engines.expiry import LotInput, project_lots
-from app.engines.forecast import estimate_event_factors, forecast_demand
+from app.engines.forecast import baseline_demand, estimate_event_factors, forecast_demand
 from app.engines.replenishment import Incoming, LotState, ReplenishmentInput, compute_order, review_period
 from app.sim.catalog import ProductSpec
+from app.sim.demand import _rng
 from app.sim.store_sim import Policy, StoreSim
 
 AT_RISK_DAYS = {"FRESH": 1, "SHORT": 3, "LONG": 45}
@@ -37,35 +40,52 @@ class BaselinePolicy(Policy):
 
     def place_orders(self, sim: StoreSim, d: date) -> None:
         for code, sup in sim.suppliers.items():
-            if d.weekday() not in sup.order_weekdays:
+            if d.weekday() in sup.order_weekdays:
+                self.order_supplier(sim, d, code, sup)
+
+    def order_supplier(self, sim: StoreSim, d: date, code: str, sup) -> None:
+        R = review_period(sup.order_weekdays, d)
+        L = sup.lead_time_days
+        lines = []
+        for p in sim.by_supplier[code]:
+            if p.sku in sim.delisted:
                 continue
-            R = review_period(sup.order_weekdays, d)
-            L = sup.lead_time_days
-            lines = []
-            for p in sim.by_supplier[code]:
-                if p.sku in sim.delisted:
-                    continue
-                sales = sim.hist[p.sku]["sales"][-28:]
-                m = sum(sales) / len(sales) if len(sales) >= 7 else p.base_rate
-                if p.shelf_life_days <= R + 7:
-                    # "ngay ban tot": TB + 1 do lech chuan doanh so 4 tuan qua
-                    sd = (sum((x - m) ** 2 for x in sales) / max(1, len(sales) - 1)) ** 0.5 if len(sales) > 1 else 0
-                    target = m * R * 1.15 + 0.5 * sd
-                else:
-                    target = m * (L + R) * self.safety + m
-                position = sim.on_hand(p.sku) + sum(o.qty for o in sim.incoming(p.sku))
-                q = target - position
-                if q > 0.5:
-                    lines.append((p.sku, int(math.ceil(q / p.pack_size)) * p.pack_size))
-            sim.place_order(code, d, lines)
+            sales = sim.hist[p.sku]["sales"][-28:]
+            m = sum(sales) / len(sales) if len(sales) >= 7 else p.base_rate
+            if p.shelf_life_days <= R + 7:
+                # "ngay ban tot": TB + 1 do lech chuan doanh so 4 tuan qua
+                sd = (sum((x - m) ** 2 for x in sales) / max(1, len(sales) - 1)) ** 0.5 if len(sales) > 1 else 0
+                target = m * R * 1.15 + 0.5 * sd
+            else:
+                target = m * (L + R) * self.safety + m
+            position = sim.on_hand(p.sku) + sum(o.qty for o in sim.incoming(p.sku))
+            q = target - position
+            if q > 0.5:
+                lines.append((p.sku, int(math.ceil(q / p.pack_size)) * p.pack_size))
+        sim.place_order(code, d, lines)
+
+
+class BaselineGoldenHourPolicy(BaselinePolicy):
+    name = "A: Kinh nghiệm + giờ vàng 30%"
+
+    def evening(self, sim: StoreSim, d: date) -> None:
+        for lots in sim.lots.values():
+            for lot in lots:
+                if lot.expiry <= d and lot.qty > 0:
+                    sim.apply_markdown(lot, 0.3, d, evening=True)
 
 
 class OpsChestPolicy(Policy):
     name = "B: Ops Chest"
 
-    def __init__(self, dispose: bool = True, lookback_classify: int = 90):
+    def __init__(self, dispose: bool = True, lookback_classify: int = 90, adjust_markdown: bool = True,
+                 approval_rate: float = 1.0):
         self.dispose = dispose
         self.lookback = lookback_classify
+        self.adjust_markdown = adjust_markdown  # tach luong ban nho giam gia khoi nhu cau khi du bao
+        # Ty le de xuat duoc SM duyet. Don khong duoc duyet thi SM tu dat theo kinh nghiem; giam gia thi bo qua.
+        self.approval_rate = approval_rate
+        self._habit = BaselinePolicy()
         self.classes: dict[str, str] = {}
         self._last_classify: date | None = None
         self._events: dict[str, dict] = {}
@@ -73,9 +93,22 @@ class OpsChestPolicy(Policy):
         self.actions = {"markdown": 0, "return": 0}
 
     # --- tien ich ---
+    def _approved(self, sim: StoreSim, *key, d: date) -> bool:
+        return self.approval_rate >= 1 or _rng(sim.seed, "approve", *key, d.toordinal()).random() < self.approval_rate
+
+    def _demand(self, sim: StoreSim, p: ProductSpec, last: int) -> list[float]:
+        """Chuoi nhu cau cho du bao, chi dung thu cua hang quan sat duoc (khong nhin so that cua gia lap)."""
+        h = sim.hist[p.sku]
+        sales = h["sales"][-last:]
+        if not self.adjust_markdown:
+            return sales
+        e = ELASTICITY[p.freshness_class]
+        return [baseline_demand(s, m, pct, ev, e) for s, m, pct, ev in
+                zip(sales, h["md_units"][-last:], h["md_pct"][-last:], h["ev_units"][-last:])]
+
     def _event_factors(self, sim: StoreSim, d: date) -> dict[str, dict]:
         if self._events_at is None or (d - self._events_at).days >= 30:
-            self._events = {p.sku: estimate_event_factors(sim.hist[p.sku]["sales"][-400:], d - timedelta(days=1))
+            self._events = {p.sku: estimate_event_factors(self._demand(sim, p, 400), d - timedelta(days=1))
                             if len(sim.hist[p.sku]["sales"]) >= 120 else {} for p in sim.products}
             self._events_at = d
         return self._events
@@ -87,7 +120,7 @@ class OpsChestPolicy(Policy):
         stats = []
         for p in sim.products:
             h = sim.hist[p.sku]
-            sales = h["sales"][-n:]
+            sales = self._demand(sim, p, n)
             if not sales:
                 continue
             margin = sum(h["revenue"][-n:]) - sum(h["cogs"][-n:]) - sum(h["waste_cost"][-n:])
@@ -100,7 +133,7 @@ class OpsChestPolicy(Policy):
     def _forecast(self, sim: StoreSim, p: ProductSpec, end: date, horizon: int, start: date | None = None):
         h = sim.hist[p.sku]
         events = self._event_factors(sim, end + timedelta(days=1)).get(p.sku, {})
-        return forecast_demand(h["sales"][-120:], end, horizon, stockout=h["stockout"][-120:],
+        return forecast_demand(self._demand(sim, p, 120), end, horizon, stockout=h["stockout"][-120:],
                                start=start, event_factors=events)
 
     # --- xu ly can date (sang som, truoc khi ban) ---
@@ -120,7 +153,7 @@ class OpsChestPolicy(Policy):
             sup = sim.suppliers[p.supplier_code]
             for lot in at_risk:
                 r = risks.get(lot.lot_no)
-                if not r or r.expected_waste < 1:
+                if not r or r.expected_waste < 1 or not self._approved(sim, "lot", lot.lot_no, d=d):
                     continue
                 opt = best(DispositionInput(
                     qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=r.days_left,
@@ -145,6 +178,8 @@ class OpsChestPolicy(Policy):
                 continue
             fc_today = self._forecast(sim, p, d - timedelta(days=1), 1, start=d).daily[0]
             for lot in left:
+                if not self._approved(sim, "evening", lot.lot_no, d=d):
+                    continue
                 opt = best(DispositionInput(
                     qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=0,
                     expected_sold_full_price=0, elasticity=ELASTICITY[p.freshness_class],
@@ -159,6 +194,9 @@ class OpsChestPolicy(Policy):
         self._classify(sim, d)
         for code, sup in sim.suppliers.items():
             if d.weekday() not in sup.order_weekdays:
+                continue
+            if not self._approved(sim, "po", code, d=d):
+                self._habit.order_supplier(sim, d, code, sup)
                 continue
             R = review_period(sup.order_weekdays, d)
             L = sup.lead_time_days

@@ -128,8 +128,10 @@ def cost_report(db: Session, start: date, end: date) -> dict:
     ]
     k = summarize(totals)
     k["note_inventory"] = "Tồn kho dùng giá trị hiện tại (giá vốn) làm xấp xỉ tồn trung bình."
+    shrink = db.scalar(select(func.coalesce(func.sum(StockMovement.value), 0)).where(
+        StockMovement.type == "ADJUST", StockMovement.value < 0, StockMovement.date.between(start, end)))
     return {"start": start.isoformat(), "end": end.isoformat(), "kpi": k, "waste_by_category": by_cat,
-            "top_waste_skus": top_waste}
+            "top_waste_skus": top_waste, "shrink_value": int(-(shrink or 0))}
 
 
 def kpi_compare(db: Session, days: int = 30) -> dict:

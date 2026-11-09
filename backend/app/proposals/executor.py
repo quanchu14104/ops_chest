@@ -5,7 +5,7 @@ service rollback toan bo, de xuat chuyen FAILED, SM co the duyet lai (thu lai).
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.clock import now, today
 from app.config import settings
-from app.models import Lot, POLine, Product, Proposal, PurchaseOrder, StockMovement, Supplier, User
+from app.models import (DemandHypothesis, Lot, OrderAdjustment, POLine, Product, Proposal, PurchaseOrder,
+                        StockMovement, Supplier, User)
 from app.notify import email, pdf
 
 
@@ -145,12 +146,83 @@ def _delist(db: Session, p: Proposal, user: User) -> dict:
             "note": "Không còn được đưa vào đề xuất đặt hàng. Hàng tồn tiếp tục bán đến hết."}
 
 
+def _demand_hypothesis(db: Session, p: Proposal, user: User) -> dict:
+    from app.services import hypotheses as H
+
+    pl = p.payload
+    start, end = date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"])
+    try:
+        H.validate(db, float(pl["factor"]), start, end, pl["reason"], pl["category"], pl["sku"])
+    except H.HypothesisError as e:
+        raise ExecutionError(str(e)) from e
+    row = DemandHypothesis(category=pl["category"], sku=pl["sku"], factor=float(pl["factor"]), start_date=start,
+                           end_date=end, reason=pl["reason"], status="ACTIVE", baseline_total=float(pl["baseline_total"]),
+                           proposal_id=p.id, created_by=user.username, created_at=now().replace(tzinfo=None))
+    db.add(row)
+    db.flush()
+    return {"hypothesis_id": row.id, "note": f"Dự báo {pl['scope']} đã áp dụng ×{pl['factor']:g} trong khoảng ngày đã nêu."}
+
+
+def _order_adjust(db: Session, p: Proposal, user: User) -> dict:
+    pl = p.payload
+    if db.scalar(select(OrderAdjustment.id).where(OrderAdjustment.category == pl["category"], OrderAdjustment.active.is_(True))):
+        raise ExecutionError(f"Nhóm {pl['category']} đã có hệ số đang chạy.")
+    row = OrderAdjustment(category=pl["category"], factor=float(pl["factor"]), active=True, reason=pl["reason"],
+                          proposal_id=p.id, created_by=user.username, created_at=now().replace(tzinfo=None))
+    db.add(row)
+    db.flush()
+    return {"adjustment_id": row.id, "note": f"Số lượng đề xuất nhóm {pl['category']} sẽ nhân ×{pl['factor']:g}. Có thể tắt ở trang Tổng quan."}
+
+
+def _stock_adjust(db: Session, p: Proposal, user: User) -> dict:
+    """Thieu: tru tu lo gan het han truoc (khong biet mat o lo nao). Du: cong vao lo moi nhat."""
+    t = today()
+    ref = f"proposal:{p.id}"
+    total = 0
+    for it in p.payload["items"]:
+        lots = list(db.scalars(select(Lot).where(Lot.product_id == it["product_id"], Lot.status == "ACTIVE", Lot.qty_remaining > 0)
+                               .order_by(Lot.expiry_date, Lot.id)))
+        if sum(l.qty_remaining for l in lots) != it["system_qty"]:
+            raise ExecutionError(f"Tồn của {it['sku']} đã thay đổi sau khi đếm, hãy đếm lại.")
+        remaining = int(it["diff"])
+        if remaining > 0:
+            lot = lots[-1] if lots else None
+            if lot is None:
+                prod = db.get(Product, it["product_id"])
+                lot = Lot(product_id=prod.id, qty_received=0, qty_remaining=0, received_date=t,
+                          expiry_date=t + timedelta(days=prod.shelf_life_days - 1), unit_cost=prod.unit_cost, status="ACTIVE")
+                db.add(lot)
+                db.flush()
+            lot.qty_remaining += remaining
+            v = remaining * lot.unit_cost
+            db.add(StockMovement(product_id=it["product_id"], lot_id=lot.id, date=t, type="ADJUST", qty=remaining,
+                                 unit_cost=lot.unit_cost, value=v, ref=ref, note="Kiểm kê: dư so với sổ"))
+            total += v
+            continue
+        for lot in lots:
+            if remaining >= 0:
+                break
+            q = min(lot.qty_remaining, -remaining)
+            lot.qty_remaining -= q
+            remaining += q
+            if lot.qty_remaining == 0:
+                lot.status = "ADJUSTED"
+            v = -q * lot.unit_cost
+            db.add(StockMovement(product_id=it["product_id"], lot_id=lot.id, date=t, type="ADJUST", qty=-q,
+                                 unit_cost=lot.unit_cost, value=v, ref=ref, note="Kiểm kê: thiếu so với sổ"))
+            total += v
+    return {"items": len(p.payload["items"]), "net_value": total}
+
+
 EXECUTORS = {
+    "STOCK_ADJUST": _stock_adjust,
     "PURCHASE_ORDER": _purchase_order,
     "MARKDOWN": _markdown,
     "RETURN": _return,
     "DISPOSE": _dispose,
     "DELIST": _delist,
+    "DEMAND_HYPOTHESIS": _demand_hypothesis,
+    "ORDER_ADJUST": _order_adjust,
 }
 
 

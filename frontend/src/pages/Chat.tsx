@@ -55,13 +55,14 @@ const TOOL_LABEL: Record<string, string> = {
   revise_proposal: "Sửa đề xuất (tạo bản mới)",
 };
 
-const SUGGESTIONS = [
-  "Tình hình kho hôm nay thế nào? Có gì cần tôi xử lý không?",
-  "Vẽ biểu đồ nhập/xuất kho nhóm Nước ngọt 30 ngày qua theo tuần",
-  "Hàng nào sắp hết hạn trong tuần này, nên xử lý thế nào?",
-  "Chi phí hàng hủy tháng vừa rồi nằm ở nhóm nào nhiều nhất?",
-  "Lên đơn đặt hàng cho Bếp Trung Tâm Hạnh Phúc",
-  "Có mặt hàng nào nên ngừng nhập không? Giải thích lý do",
+// `quick` = khóa truy vấn nhanh (/chat/quick/<khóa>): dùng làm dự phòng khi LLM lỗi, không cần LLM
+const SUGGESTIONS: { text: string; quick?: string }[] = [
+  { text: "Tình hình kho hôm nay thế nào? Có gì cần tôi xử lý không?", quick: "inventory" },
+  { text: "Vẽ biểu đồ nhập/xuất kho nhóm Nước ngọt 30 ngày qua theo tuần" },
+  { text: "Hàng nào sắp hết hạn trong tuần này, nên xử lý thế nào?", quick: "expiring7" },
+  { text: "Chi phí hàng hủy tháng vừa rồi nằm ở nhóm nào nhiều nhất?", quick: "kpi" },
+  { text: "Lên đơn đặt hàng cho Bếp Trung Tâm Hạnh Phúc", quick: "reorder:NCC01" },
+  { text: "Có mặt hàng nào nên ngừng nhập không? Giải thích lý do" },
 ];
 
 // Bo truong `type` cua su kien SSE, phan con lai la WidgetSpec
@@ -226,7 +227,7 @@ function AssistantTurn({ turn, streaming }: { turn: Turn; streaming: boolean }) 
           );
         return <div key={i} style={{ marginBottom: 8 }}><ProposalCard p={b.proposal} compact /></div>;
       })}
-      {streaming && <span className="typing muted small">Ops Chest đang trả lời </span>}
+      {streaming && <span className="typing-dots" role="status" aria-label="Ops Chest đang trả lời"><i /><i /><i /></span>}
       {!streaming && turn.model && (
         <div className="small muted" title="Model đã trả lời lượt này">
           {turn.model}
@@ -251,6 +252,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hist, setHist] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const location = useLocation();
@@ -294,10 +296,25 @@ export default function Chat({ home = false }: { home?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
 
-  const send = async (msg: string) => {
+  // Dự phòng khi LLM lỗi/hết hạn mức/chưa cấu hình: tra thẳng số liệu bằng tool đọc, không qua LLM (không lưu vào hội thoại)
+  const showQuick = async (quick: string) => {
+    try {
+      const r = await api<{ title: string; ui: ({ type: "widget" } & WidgetSpec)[] }>(`/chat/quick/${encodeURIComponent(quick)}`);
+      const blocks: Block[] = [
+        { kind: "text", text: `Ops Chest chưa trả lời được lúc này, đây là số liệu tra cứu trực tiếp: **${r.title}**.` },
+        ...r.ui.map((u): Block => ({ kind: "widget", spec: widgetSpec(u) })),
+      ];
+      setTurns((t) => [...t, { role: "assistant", blocks }]);
+    } catch {
+      /* không có dự phòng thì giữ nguyên thông báo lỗi */
+    }
+  };
+
+  const send = async (msg: string, quick?: string) => {
     if (!msg.trim() || busy) return;
     setBusy(true);
     setText("");
+    let failed = false;
     let id = sessionId;
     try {
       if (!id) {
@@ -307,6 +324,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
       }
       setTurns((t) => [...t, { role: "user", blocks: [{ kind: "text", text: msg }] }, { role: "assistant", blocks: [] }]);
       await streamChat(id, msg, (e) => {
+        if (e.type === "error") failed = true;
         setTurns((t) => {
           const copy = [...t];
           copy[copy.length - 1] = apply(copy[copy.length - 1], e);
@@ -314,8 +332,10 @@ export default function Chat({ home = false }: { home?: boolean }) {
         });
       });
     } catch (e) {
+      failed = true;
       setTurns((t) => [...t, { role: "assistant", blocks: [{ kind: "text", text: `⚠️ ${(e as Error).message}` }] }]);
     } finally {
+      if (failed && quick) await showQuick(quick);
       setBusy(false);
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       qc.invalidateQueries({ queryKey: ["pending-count"] });
@@ -332,74 +352,90 @@ export default function Chat({ home = false }: { home?: boolean }) {
 
   return (
     <div className={`chat ${home ? "in-home" : ""}`}>
-      <div className="card tight sessions">
-        <button className="primary" style={{ marginBottom: 8, textAlign: "center" }} onClick={() => nav("/chat")}>
-          + Hội thoại mới
+      <div className="chat-head">
+        <button className="ghost sm" onClick={() => setHist((h) => !h)} aria-expanded={hist} aria-haspopup="true">
+          Lịch sử hội thoại
         </button>
-        {sessions.data?.map((s) => (
-          <div key={s.id} className="row" style={{ flexWrap: "nowrap", gap: 0 }}>
-            <button className={s.id === sessionId ? "on" : ""} onClick={() => nav(`/chat/${s.id}`)} title={s.title}>
-              {s.title}
+        {hist && (
+          <div className="history" role="menu">
+            <button className="primary" style={{ width: "100%", marginBottom: 6 }} onClick={() => { setHist(false); nav("/chat"); }}>
+              + Hội thoại mới
             </button>
-            <button className="sm ghost" style={{ width: "auto" }} onClick={() => del(s.id)} aria-label="Xóa hội thoại">
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-      <div className="thread">
-        <div className="messages">
-          {turns.length === 0 && home && <Briefing onAsk={send} disabled={busy} />}
-          {turns.length === 0 && (
-            <div className="card">
-              <h2>Ops Chest có thể giúp gì hôm nay?</h2>
-              <p className="secondary">
-                Hỏi về tồn kho, hạn sử dụng, chi phí, hoặc nhờ lên đơn đặt hàng. Ops Chest chỉ <b>đề xuất</b>; mọi đơn hàng, giảm giá, ghi hủy đều chờ anh/chị duyệt.
-              </p>
-              <div className="suggestions">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} onClick={() => send(s)}>
-                    {s}
-                  </button>
-                ))}
+            {sessions.data?.length === 0 && <p className="muted small" style={{ padding: "6px 10px" }}>Chưa có hội thoại nào.</p>}
+            {sessions.data?.map((s) => (
+              <div key={s.id} className="item">
+                <button className={`title ${s.id === sessionId ? "on" : ""}`} onClick={() => { setHist(false); nav(`/chat/${s.id}`); }} title={s.title}>
+                  {s.title}
+                </button>
+                <button className="sm ghost" onClick={() => del(s.id)} aria-label="Xóa hội thoại">
+                  ✕
+                </button>
               </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="messages">
+        <div className="col">
+          {turns.length === 0 && home && <Briefing onAsk={send} disabled={busy} />}
+          {turns.length === 0 && !home && (
+            <div className="hello">
+              <h1>Ops Chest có thể giúp gì hôm nay?</h1>
+              <p>Hỏi về tồn kho, hạn sử dụng, chi phí, hoặc nhờ lên đơn đặt hàng.</p>
             </div>
           )}
-          {turns.map((t, i) =>
-            t.role === "user" ? (
-              <div key={i} className="msg user">
-                {(t.blocks[0] as { text: string }).text}
-              </div>
-            ) : (
-              <AssistantTurn key={i} turn={t} streaming={busy && i === turns.length - 1} />
-            ),
-          )}
+          <div className="thread">
+            {turns.map((t, i) =>
+              t.role === "user" ? (
+                <div key={i} className="msg user">
+                  {(t.blocks[0] as { text: string }).text}
+                </div>
+              ) : (
+                <AssistantTurn key={i} turn={t} streaming={busy && i === turns.length - 1} />
+              ),
+            )}
+          </div>
           <div ref={endRef} />
         </div>
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            send(text);
-          }}
-        >
-          <textarea
-            ref={inputRef}
-            value={text}
-            placeholder="Nhập câu hỏi… (Enter để gửi, Shift+Enter xuống dòng)"
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send(text);
-              }
+      </div>
+      <div className="composer-wrap">
+        <div className="composer-in">
+          {turns.length === 0 && (
+            <div className="suggestions">
+              {SUGGESTIONS.map((s) => (
+                <button key={s.text} onClick={() => send(s.text, s.quick)} disabled={busy} title={s.text}>
+                  {s.text}
+                </button>
+              ))}
+            </div>
+          )}
+          <form
+            className="composer"
+            onSubmit={(e) => {
+              e.preventDefault();
+              send(text);
             }}
-            aria-label="Tin nhắn"
-          />
-          <button className="primary" disabled={busy || !text.trim()}>
-            Gửi
-          </button>
-        </form>
+          >
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={text}
+              placeholder="Hỏi về tồn kho, hạn dùng, đơn hàng…"
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send(text);
+                }
+              }}
+              aria-label="Tin nhắn"
+            />
+            <button className="primary" disabled={busy || !text.trim()}>
+              Gửi
+            </button>
+          </form>
+          <div className="foot-note">Ops Chest chỉ đề xuất. Anh/chị là người quyết định cuối cùng.</div>
+        </div>
       </div>
     </div>
   );

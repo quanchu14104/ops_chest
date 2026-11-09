@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import ChartView from "../components/ChartView";
+import { FastForward, Hypotheses, LearnedAdjustments } from "../components/StoreControls";
 import { TYPE_LABEL, dateVi, money, num, pct } from "../format";
 
 type Kpi = Record<string, number>;
@@ -167,6 +168,12 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+
+      <div className="grid cols-2" style={{ marginTop: 16 }}>
+        <Hypotheses />
+        <LearnedAdjustments />
+      </div>
+      <FastForward />
     </>
   );
 }

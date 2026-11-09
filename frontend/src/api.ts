@@ -167,7 +167,18 @@ export type WidgetSpec =
       lines: { line_id: number; sku: string; name: string; qty: number; received_qty: number | null; default_expiry: string }[];
       submit: { method: string; path: string };
       note: string | null;
+    }
+  | {
+      kind: "form";
+      form: "stock_count";
+      title: string;
+      meta: { category: string };
+      lines: CountLine[];
+      submit: { method: string; path: string };
+      note: string | null;
     };
+
+export type CountLine = { sku: string; name: string; category: string };
 
 export type ChartSpec = {
   metric: string;
@@ -184,7 +195,7 @@ export type ChartSpec = {
 
 export type Proposal = {
   id: number;
-  type: "PURCHASE_ORDER" | "MARKDOWN" | "RETURN" | "DISPOSE" | "DELIST";
+  type: "PURCHASE_ORDER" | "MARKDOWN" | "RETURN" | "DISPOSE" | "DELIST" | "DEMAND_HYPOTHESIS" | "ORDER_ADJUST" | "STOCK_ADJUST";
   status: "PENDING" | "APPROVED" | "EXECUTED" | "FAILED" | "REJECTED" | "EXPIRED" | "SUPERSEDED";
   title: string;
   rationale: string;

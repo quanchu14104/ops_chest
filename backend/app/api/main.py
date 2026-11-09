@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import routes_chat, routes_core, routes_proposals
+from app import clock
+from app.api import routes_chat, routes_core, routes_proposals, routes_store
 from app.config import settings
 from app.jobs import scheduler
 
@@ -13,6 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    clock.load_persisted()
     scheduler.start()
     yield
     scheduler.stop()
@@ -29,3 +31,4 @@ app.add_middleware(
 app.include_router(routes_core.router)
 app.include_router(routes_proposals.router)
 app.include_router(routes_chat.router)
+app.include_router(routes_store.router)

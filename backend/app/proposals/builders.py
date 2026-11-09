@@ -19,7 +19,7 @@ def _now() -> datetime:
 
 
 def _end_of(d) -> datetime:
-    return datetime.combine(d, time(23, 59))
+    return datetime.combine(d, time(23, 59, 59))
 
 
 def _existing(db: Session, key: str) -> Proposal | None:
@@ -192,6 +192,78 @@ def delist(db: Session, sku: str, created_by: str, chat_session_id: int | None =
     return prop, created, ""
 
 
+def demand_hypothesis(db: Session, created_by: str, factor: float, start: date, end: date, reason: str,
+                      category: str | None = None, sku: str | None = None,
+                      chat_session_id: int | None = None) -> tuple[Proposal, bool]:
+    """De xuat ghi nhan gia thuyet cua SM. Chua co tac dung voi du bao cho den khi duoc duyet."""
+    from app.services import hypotheses as H
+
+    products, cat, code = H.matching_products(db, category, sku)
+    H.validate(db, float(factor), start, end, reason, cat, code)
+    pv = H.preview(db, products, float(factor), start, end)
+    scope = cat or f"{products[0].name} ({code})"
+    rationale = (
+        f"Giả thuyết của Store Manager: {reason.strip()}. Nhu cầu {scope} nhân ×{factor:g} từ {dmy(start)} đến {dmy(end)}. "
+        f"Dự báo của {pv['sku_count']} mặt hàng trong khoảng này đổi từ {pv['baseline_total']:g} thành "
+        f"{pv['adjusted_total']:g} đơn vị. Sau khi kết thúc, hệ thống đối chiếu với lượng bán thực tế để chấm đúng/sai."
+    )
+    return _create(
+        db, type="DEMAND_HYPOTHESIS", title=f"Giả thuyết nhu cầu: {scope} ×{factor:g}", rationale=rationale,
+        payload={"category": cat, "sku": code, "scope": scope, "factor": float(factor), "start_date": start.isoformat(),
+                 "end_date": end.isoformat(), "reason": reason.strip(), **pv},
+        evidence={}, est_value=None, created_by=created_by, chat_session_id=chat_session_id,
+        dedupe_key=f"HY:{cat or code}:{start.isoformat()}:{end.isoformat()}:{factor:g}", expires_at=_end_of(today()))
+
+
+def order_adjustment(db: Session, category: str, created_by: str, chat_session_id: int | None = None
+                     ) -> tuple[Proposal | None, bool, str]:
+    """Chi tao khi lich su sua cua SM du manh (engine edit_learning): khong cho LLM tu dat he so."""
+    from app.services.learning import patterns
+
+    found = next((p for p in patterns(db) if category.lower() in p["category"].lower()), None)
+    if not found:
+        return None, False, (f"Chưa đủ dấu hiệu để điều chỉnh nhóm '{category}': cần ít nhất 5 lần sửa trên 3 đơn, "
+                             "cùng chiều, và lệch từ 15% trở lên.")
+    key = f"OA:{found['category']}:{found['factor']:g}"
+    recent = db.scalar(select(Proposal).where(Proposal.dedupe_key == key, Proposal.status == "REJECTED",
+                                              Proposal.created_at >= _now() - timedelta(days=30)))
+    if recent:
+        return None, False, f"Đề xuất tương tự #{recent.id} đã bị từ chối trong 30 ngày qua."
+    pct_change = abs(found["factor"] - 1)
+    verb = "giảm" if found["factor"] < 1 else "tăng"
+    rationale = (
+        f"Trong {found['proposals']} đơn gần đây, anh/chị đã sửa {found['edits']} dòng nhóm {found['category']}, "
+        f"thường {verb} khoảng {pct_change:.0%} so với đề xuất. Nếu duyệt, số lượng đề xuất của nhóm này sẽ nhân "
+        f"×{found['factor']:g}. Có thể tắt bất cứ lúc nào."
+    )
+    prop, created = _create(
+        db, type="ORDER_ADJUST", title=f"Điều chỉnh số lượng đặt nhóm {found['category']} ×{found['factor']:g}",
+        rationale=rationale, payload={**found, "reason": rationale}, evidence=found, est_value=None,
+        created_by=created_by, dedupe_key=key, chat_session_id=chat_session_id)
+    return prop, created, ""
+
+
+def stock_adjust(db: Session, counted: dict[str, int], created_by: str, note: str | None = None,
+                 chat_session_id: int | None = None) -> tuple[Proposal | None, int]:
+    """Tra ve (de xuat, so dong da dem). Khong lech thi khong tao de xuat."""
+    from app.services import stockcount as SC
+
+    items = SC.diffs(db, counted)
+    if not items:
+        return None, len(counted)
+    net = sum(i["value"] for i in items)
+    short = sum(1 for i in items if i["diff"] < 0)
+    large = [i for i in items if SC.is_large_gap(i["system_qty"], i["diff"])]
+    warnings = ([f"Lệch lớn ở {', '.join(i['name'] for i in large[:5])}: nên đếm lại trước khi duyệt."] if large else [])
+    prop, _ = _create(
+        db, type="STOCK_ADJUST", title=f"Điều chỉnh tồn theo kiểm kê: {len(items)} mặt hàng",
+        rationale=(f"Đếm {len(counted)} mặt hàng, {len(items)} mặt hàng lệch so với sổ ({short} thiếu, {len(items) - short} dư). "
+                   f"Giá trị lệch ròng {vnd(net)}. Duyệt thì tồn kho được sửa theo số đếm và ghi nhận hao hụt."),
+        payload={"items": items, "counted_lines": len(counted), "note": note or ""}, evidence={"warnings": warnings},
+        est_value=net, created_by=created_by, expires_at=_end_of(today()), chat_session_id=chat_session_id)
+    return prop, len(counted)
+
+
 class ReviseError(Exception):
     """Yeu cau sua khong hop le (de xuat khong PENDING, SKU khong co trong don, muc giam sai...)."""
 
@@ -211,6 +283,7 @@ def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, in
         raise ReviseError(f"Đề xuất #{old.id} đã quá hạn chốt, hãy tạo đề xuất mới.")
     payload = copy.deepcopy(old.payload)
     changes: list[str] = []
+    structured: list[dict] = []  # cung dang voi sm_edits khi SM sua tay, de hoc thoi quen sua
     est_value = old.est_value
     if old.type == "PURCHASE_ORDER":
         if not sku_qty:
@@ -225,6 +298,7 @@ def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, in
                 raise ReviseError("Số lượng không được âm")
             if qty != line["qty"]:
                 changes.append(f"{line['sku']}: {line['qty']} → {qty}")
+                structured.append({"field": f"lines[{line['sku']}].qty", "from": line["qty"], "to": qty})
                 line["qty"] = qty
                 line["line_value"] = qty * line["unit_cost"]
         payload["total_value"] = sum(int(l["qty"]) * int(l["unit_cost"]) for l in payload["lines"])
@@ -252,5 +326,7 @@ def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, in
                      evidence={**old.evidence, "revised_from": old.id}, est_value=est_value,
                      created_by=created_by, dedupe_key=old.dedupe_key, expires_at=old.expires_at,
                      chat_session_id=chat_session_id or old.chat_session_id)
+    if structured:
+        new.sm_edits = (old.sm_edits or []) + [{"by": "chat", "at": _now().isoformat(), "changes": structured}]
     audit.log(db, created_by, "PROPOSAL_REVISED", "proposal", new.id, {"from": old.id, "changes": changes})
     return new

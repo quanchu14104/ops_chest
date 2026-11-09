@@ -35,6 +35,9 @@ export const TYPE_LABEL: Record<string, string> = {
   RETURN: "Trả NCC",
   DISPOSE: "Ghi hủy",
   DELIST: "Ngừng nhập",
+  DEMAND_HYPOTHESIS: "Giả thuyết",
+  ORDER_ADJUST: "Hệ số đặt hàng",
+  STOCK_ADJUST: "Kiểm kê",
 };
 
 export const STATUS_LABEL: Record<string, string> = {

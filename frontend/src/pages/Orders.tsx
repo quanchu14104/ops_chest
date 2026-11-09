@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, openPdf, type Proposal } from "../api";
+import ExpiryPhoto from "../components/ExpiryPhoto";
 import { dateVi, money, num } from "../format";
 
 type PO = { id: number; code: string; supplier: string; status: string; order_date: string; expected_date: string; total_value: number; proposal_id: number | null; has_pdf: boolean };
@@ -47,6 +48,7 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
                 </td>
                 <td>
                   <input type="date" value={exp[l.line_id] ?? l.default_expiry} onChange={(e) => setExp({ ...exp, [l.line_id]: e.target.value })} aria-label={`HSD ${l.name}`} />
+                  <ExpiryPhoto sku={l.sku} onRead={(iso) => setExp((cur) => ({ ...cur, [l.line_id]: iso }))} />
                 </td>
               </tr>
             ))}

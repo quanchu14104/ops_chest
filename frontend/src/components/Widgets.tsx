@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { api, type WidgetFmt, type WidgetSpec } from "../api";
 import { STATUS_LABEL, TYPE_LABEL, dateVi, money, num, pct } from "../format";
+import ExpiryPhoto from "./ExpiryPhoto";
+import StockCountForm from "./StockCountForm";
 
 // Nhan hien thi cho trang thai lo hang (backend tra ma tieng Anh)
 const LOT_STATUS: Record<string, string> = {
@@ -115,7 +117,7 @@ function KpiWidget({ w }: { w: Extract<WidgetSpec, { kind: "kpis" }> }) {
 }
 
 // Form nhan hang trong chat: LLM chi mo form, viec ghi do nguoi dung bam xac nhan -> endpoint receive co san
-function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { kind: "form" }> }) {
+function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { form: "receive_po" }> }) {
   const qc = useQueryClient();
   const [qty, setQty] = useState<Record<number, string>>({});
   const [exp, setExp] = useState<Record<number, string>>({});
@@ -201,6 +203,7 @@ function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { kind: "form" }> }) 
                     onChange={(e) => setExp({ ...exp, [l.line_id]: e.target.value })}
                     aria-label={`HSD ${l.name}`}
                   />
+                  <ExpiryPhoto sku={l.sku} disabled={closed} onRead={(iso) => setExp((cur) => ({ ...cur, [l.line_id]: iso }))} />
                 </td>
               </tr>
             ))}
@@ -223,6 +226,7 @@ function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { kind: "form" }> }) 
 
 export default function Widget({ spec }: { spec: WidgetSpec }) {
   if (spec.kind === "table") return <TableWidget w={spec} />;
+  if (spec.kind === "form" && spec.form === "stock_count") return <StockCountForm lines={spec.lines} title={spec.title} note={spec.note} />;
   if (spec.kind === "form") return <ReceiveFormWidget w={spec} />;
   return <KpiWidget w={spec} />;
 }
