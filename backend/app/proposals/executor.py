@@ -73,7 +73,7 @@ def _active_lot(db: Session, lot_id: int) -> Lot:
 
 
 def _markdown(db: Session, p: Proposal, user: User) -> dict:
-    done = []
+    done, kept = [], []
     for it in p.payload["items"]:
         if it.get("include") is False:
             continue
@@ -81,17 +81,23 @@ def _markdown(db: Session, p: Proposal, user: User) -> dict:
         pct = float(it["markdown_pct"])
         if not 0 < pct < 0.95:
             raise ExecutionError(f"Mức giảm {pct} không hợp lệ cho lô {lot.id}.")
+        if pct <= lot.markdown_pct:  # tem da dan: khong tang gia tro lai
+            kept.append({"lot_id": lot.id, "sku": it["sku"], "markdown_pct": lot.markdown_pct})
+            continue
         lot.markdown_pct = pct
         done.append({"lot_id": lot.id, "sku": it["sku"], "markdown_pct": pct, "timing": it.get("timing")})
     if not done:
-        raise ExecutionError("Không còn lô nào được chọn để giảm giá.")
-    return {"lots_marked_down": done, "instruction": "In tem giảm giá và dán lên sản phẩm của các lô trên."}
+        raise ExecutionError("Không còn lô nào cần giảm thêm: các lô được chọn đã ở mức giảm bằng hoặc sâu hơn.")
+    return {"lots_marked_down": done, "kept_higher": kept,
+            "instruction": "In tem giảm giá và dán lên sản phẩm của các lô trên."}
 
 
 def _return(db: Session, p: Proposal, user: User) -> dict:
     pl = p.payload
     t = today()
     credit_pct = float(pl["credit_pct"])
+    if db.get(Supplier, pl["supplier_id"]).agreement_on(t) is None:
+        raise ExecutionError(f"Thỏa thuận với {pl['supplier_name']} đã hết hiệu lực, không còn căn cứ để trả hàng.")
     items, credit = [], 0
     for it in pl["items"]:
         q = int(it["qty"])

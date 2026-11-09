@@ -211,6 +211,10 @@ class StoreSim:
             ev_lots = [l for l in self.lots[sku] if l.evening_md > 0 and l.qty > 0 and l.expiry <= d]
             if ev_lots:
                 top = max(l.evening_md for l in ev_lots)
+                # Vong ban o tren da tinh ca ngay gia goc; khach toi trong so do cung duoc huong gia giam
+                rebate = min(self.world.evening_share * (a[0] - a[5]), sum(l.qty for l in ev_lots)) * p.unit_price * top
+                a[1] -= rebate
+                a[3] += rebate
                 lam = (expected_demand(self.seed, p, d) * self.world.evening_share
                        * self.world.elasticity[p.freshness_class] * top)
                 extra = _poisson(_rng(self.seed, "ev", sku, d.toordinal()), lam)

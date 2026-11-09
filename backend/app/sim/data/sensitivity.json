@@ -7,68 +7,68 @@
       "label": "Tham chiếu",
       "note": "A có giờ vàng, khách phản ứng bằng 50% giả định của engine",
       "seed": 7,
-      "gain": 12021299,
-      "gain_pct": 0.119,
+      "gain": 13167569,
+      "gain_pct": 0.136,
       "waste_a": 0.1102,
-      "waste_b": 0.057,
+      "waste_b": 0.0654,
       "oos_a": 0.0561,
-      "oos_b": 0.0731
+      "oos_b": 0.0735
     },
     {
       "key": "seed_11",
       "label": "Nhu cầu khác (seed 11)",
       "note": "Đổi chuỗi nhu cầu ngẫu nhiên",
       "seed": 11,
-      "gain": 12197550,
-      "gain_pct": 0.1208,
+      "gain": 13037700,
+      "gain_pct": 0.1352,
       "waste_a": 0.1134,
-      "waste_b": 0.0613,
+      "waste_b": 0.0696,
       "oos_a": 0.054,
-      "oos_b": 0.0715
+      "oos_b": 0.0718
     },
     {
       "key": "seed_23",
       "label": "Nhu cầu khác (seed 23)",
       "note": "Đổi chuỗi nhu cầu ngẫu nhiên",
       "seed": 23,
-      "gain": 10300472,
-      "gain_pct": 0.0987,
+      "gain": 11686862,
+      "gain_pct": 0.1171,
       "waste_a": 0.1084,
-      "waste_b": 0.0584,
+      "waste_b": 0.0657,
       "oos_a": 0.0501,
-      "oos_b": 0.0721
+      "oos_b": 0.0724
     },
     {
       "key": "world_100",
       "label": "Khách phản ứng đúng 100% giả định",
       "note": "Trường hợp tốt nhất cho giảm giá của B",
       "seed": 7,
-      "gain": 12884199,
-      "gain_pct": 0.1238,
+      "gain": 15154689,
+      "gain_pct": 0.1526,
       "waste_a": 0.1048,
-      "waste_b": 0.0413,
+      "waste_b": 0.0522,
       "oos_a": 0.0513,
-      "oos_b": 0.0724
+      "oos_b": 0.0729
     },
     {
       "key": "world_25",
       "label": "Khách chỉ phản ứng 25% giả định",
       "note": "Engine đánh giá quá cao tác dụng của giảm giá",
       "seed": 7,
-      "gain": 9937799,
-      "gain_pct": 0.0992,
+      "gain": 11114869,
+      "gain_pct": 0.1154,
       "waste_a": 0.1114,
-      "waste_b": 0.0689,
+      "waste_b": 0.073,
       "oos_a": 0.0581,
-      "oos_b": 0.0737
+      "oos_b": 0.0738
     },
     {
       "key": "order_only",
       "label": "B chỉ đặt hàng",
       "note": "Tắt giảm giá và trả NCC của B: đo riêng phần công của đặt hàng",
       "seed": 7,
-      "gain": 5481899,
-      "gain_pct": 0.0543,
+      "gain": 9723029,
+      "gain_pct": 0.1004,
       "waste_a": 0.1102,
       "waste_b": 0.0833,
       "oos_a": 0.0561,
@@ -79,72 +79,72 @@
       "label": "B không tách doanh số giảm giá",
       "note": "Dự báo tính cả lượng bán nhờ giảm giá vào nhu cầu",
       "seed": 7,
-      "gain": 10220199,
-      "gain_pct": 0.1011,
+      "gain": 11350699,
+      "gain_pct": 0.1173,
       "waste_a": 0.1102,
-      "waste_b": 0.067,
+      "waste_b": 0.0735,
       "oos_a": 0.0561,
-      "oos_b": 0.0675
+      "oos_b": 0.0696
     },
     {
       "key": "approve_80",
       "label": "Store Manager duyệt 80%",
       "note": "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm, giảm giá thì bỏ qua",
       "seed": 7,
-      "gain": 9084604,
-      "gain_pct": 0.0899,
+      "gain": 10926404,
+      "gain_pct": 0.1129,
       "waste_a": 0.1102,
-      "waste_b": 0.0701,
+      "waste_b": 0.0763,
       "oos_a": 0.0561,
-      "oos_b": 0.0694
+      "oos_b": 0.0699
     },
     {
       "key": "approve_60",
       "label": "Store Manager duyệt 60%",
       "note": "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm, giảm giá thì bỏ qua",
       "seed": 7,
-      "gain": 5571921,
-      "gain_pct": 0.0551,
+      "gain": 7755051,
+      "gain_pct": 0.0801,
       "waste_a": 0.1102,
-      "waste_b": 0.0844,
+      "waste_b": 0.0892,
       "oos_a": 0.0561,
-      "oos_b": 0.0662
+      "oos_b": 0.0668
     },
     {
       "key": "fefo_80",
       "label": "20% lượt mua lấy lô mới",
       "note": "Khách lấy hàng phía sau kệ; engine vẫn tin là bán FEFO",
       "seed": 7,
-      "gain": 12094107,
-      "gain_pct": 0.1202,
+      "gain": 13232907,
+      "gain_pct": 0.1374,
       "waste_a": 0.1113,
-      "waste_b": 0.0577,
+      "waste_b": 0.0664,
       "oos_a": 0.0561,
-      "oos_b": 0.0731
+      "oos_b": 0.0734
     },
     {
       "key": "fefo_50",
       "label": "50% lượt mua lấy lô mới",
       "note": "Khách lấy hàng phía sau kệ; engine vẫn tin là bán FEFO",
       "seed": 7,
-      "gain": 12230479,
-      "gain_pct": 0.1221,
+      "gain": 13380019,
+      "gain_pct": 0.1398,
       "waste_a": 0.1126,
-      "waste_b": 0.0588,
+      "waste_b": 0.0676,
       "oos_a": 0.0562,
-      "oos_b": 0.0732
+      "oos_b": 0.0736
     },
     {
       "key": "legacy",
       "label": "Cách so sánh cũ",
       "note": "A không giảm giá gì, khách phản ứng đúng giả định: thiên vị cho B",
       "seed": 7,
-      "gain": 19732699,
-      "gain_pct": 0.2029,
+      "gain": 17210239,
+      "gain_pct": 0.177,
       "waste_a": 0.1185,
-      "waste_b": 0.0413,
+      "waste_b": 0.0522,
       "oos_a": 0.0599,
-      "oos_b": 0.0724
+      "oos_b": 0.0729
     }
   ]
 }

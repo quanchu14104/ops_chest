@@ -41,7 +41,7 @@ cd backend
 uv sync
 uv run python -m app.sim.seed --reset      # SQLite ./ops_chest.db
 uv run uvicorn app.api.main:app --reload
-uv run pytest -q                            # 131 test: engine, HITL, API, widget, bản tin, backtest
+uv run pytest -q                            # 155 test: engine, HITL, quy tắc nghiệp vụ, API, widget, bản tin, backtest
 ```
 
 Frontend chạy bằng `cd frontend && npm install && npm run dev` (Node 20+). Email cần một SMTP ở `localhost:1025`, ví dụ chạy riêng Mailpit:

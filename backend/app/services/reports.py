@@ -102,6 +102,10 @@ def cost_report(db: Session, start: date, end: date) -> dict:
         totals.markdown_loss += o.get("markdown_value", 0)
         totals.return_credit += o.get("return_value", 0)
         totals.purchases_value += o.get("in_value", 0)
+    # RETURN.value la tien NCC hoan, khong phai gia von cua hang da tra
+    totals.return_cost = float(db.scalar(
+        select(func.coalesce(func.sum(StockMovement.qty * StockMovement.unit_cost), 0))
+        .where(StockMovement.type == "RETURN", StockMovement.date.between(start, end))) or 0)
     # Lai mat do het hang (gia lap biet lost_qty; cua hang that se uoc tinh tu du bao)
     lost_margin = db.execute(
         select(func.sum(DailySales.lost_qty * (Product.unit_price - Product.unit_cost)))

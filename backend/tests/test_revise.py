@@ -102,10 +102,10 @@ def test_revise_markdown_pct(db):
     if not p:
         pytest.skip("không có lô nào đáng giảm giá")
     _fresh(db, p)
-    out = toolmod.REGISTRY["revise_proposal"].fn(_ctx(db), proposal_id=p.id, markdown_pct=0.3)
+    out = toolmod.REGISTRY["revise_proposal"].fn(_ctx(db), proposal_id=p.id, markdown_pct=0.4)
     assert "error" not in out.data, out.data
     new = db.get(Proposal, out.data["proposal_id"])
-    assert new.status == "PENDING" and all(i["markdown_pct"] == 0.3 for i in new.payload["items"])
+    assert new.status == "PENDING" and all(i["markdown_pct"] == 0.4 for i in new.payload["items"])
     assert "error" in toolmod.REGISTRY["revise_proposal"].fn(_ctx(db), proposal_id=new.id, markdown_pct=0.99).data
     new.status = "EXPIRED"
     db.commit()

@@ -48,6 +48,7 @@ Hỏi lần lượt:
 - Nói trong chat: *"Nhận đơn hàng đang chờ giao"*. Agent **chỉ mở form** nhận hàng trong chat (không tự nhận, và không bao giờ nói "đã nhận"). Điền số lượng thực nhận và HSD từng dòng rồi bấm xác nhận.
 - Hoặc vào **Đặt & nhận hàng**, chọn một đơn "Chờ giao" và bấm **Nhận hàng** (cùng một endpoint).
 - Ô HSD là bắt buộc. Để trống sẽ báo lỗi, nhập ngày đã qua cũng bị từ chối.
+- Đơn quá ngày giao có nhãn "trễ N ngày" và hiện trong bản tin. Store Manager bấm **Huỷ đơn** (bắt buộc ghi lý do) khi NCC không giao nữa; đơn chưa huỷ vẫn được tính là hàng đang về nên không bị đặt trùng.
 - Giải thích: đây là dữ liệu POS không có, nền tảng cho FEFO và cảnh báo cận date. Nguyên tắc chung: LLM không có quyền ghi, mọi thao tác ghi là một cú bấm của con người.
 
 ## 4b. Giả thuyết, tua nhanh, học từ phần sửa (3 phút, tùy chọn)

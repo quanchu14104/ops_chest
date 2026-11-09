@@ -323,7 +323,10 @@ function ExecResult({ p }: { p: Proposal }) {
   const r = p.execution_result as Record<string, unknown>;
   let text = "Đã thực hiện.";
   if (p.type === "PURCHASE_ORDER") text = `Đã gửi đơn ${r.code} (${money(Number(r.total_value))}) tới ${r.email_to}. Giao dự kiến ${dateVi(String(r.expected_date))}.`;
-  else if (p.type === "MARKDOWN") text = `Đã áp giá giảm cho ${(r.lots_marked_down as unknown[]).length} lô. ${r.instruction}`;
+  else if (p.type === "MARKDOWN") {
+    const kept = (r.kept_higher as unknown[] | undefined)?.length ?? 0;
+    text = `Đã áp giá giảm cho ${(r.lots_marked_down as unknown[]).length} lô.${kept ? ` Giữ nguyên ${kept} lô đang giảm sâu hơn.` : ""} ${r.instruction}`;
+  }
   else if (p.type === "RETURN") text = `Đã gửi phiếu trả ${r.code} tới ${r.email_to}, hoàn dự kiến ${money(Number(r.credit))}.`;
   else if (p.type === "DISPOSE") text = `Đã ghi hủy ${r.lots_disposed} lô, giá vốn ${money(Number(r.waste_cost))}.`;
   else if (p.type === "DELIST" || p.type === "DEMAND_HYPOTHESIS" || p.type === "ORDER_ADJUST") text = String(r.note);

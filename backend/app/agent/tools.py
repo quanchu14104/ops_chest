@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.agent import widgets as W
+from app.clock import today
 from app.models import Proposal, PurchaseOrder, Supplier, User
 from app.proposals import builders
 from app.proposals.views import acceptance_stats, to_dict
@@ -182,13 +183,17 @@ def _delist_cands(ctx: ToolContext) -> ToolOutput:
 def _suppliers(ctx: ToolContext) -> ToolOutput:
     sups = ctx.db.scalars(select(Supplier).options(joinedload(Supplier.agreements)).order_by(Supplier.code)).unique()
     wd = replenish.WEEKDAY_NAMES
-    return ToolOutput([{
-        "code": s.code, "name": s.name, "email": s.email, "lead_time_days": s.lead_time_days,
-        "order_days": [wd[i] for i in s.order_weekdays], "min_order_value": s.min_order_value,
-        "accepts_near_expiry_return": s.agreements[0].accepts_near_expiry_return if s.agreements else False,
-        "return_min_days_before_expiry": s.agreements[0].return_min_days_before_expiry if s.agreements else None,
-        "return_credit_pct": s.agreements[0].return_credit_pct if s.agreements else None,
-    } for s in sups])
+    rows = []
+    for s in sups:
+        a = s.agreement_on(today())
+        rows.append({
+            "code": s.code, "name": s.name, "email": s.email, "lead_time_days": s.lead_time_days,
+            "order_days": [wd[i] for i in s.order_weekdays], "min_order_value": s.min_order_value,
+            "accepts_near_expiry_return": a.accepts_near_expiry_return if a else False,
+            "return_min_days_before_expiry": a.return_min_days_before_expiry if a else None,
+            "return_credit_pct": a.return_credit_pct if a else None,
+        })
+    return ToolOutput(rows)
 
 
 @tool("preview_reorder", "read", "PREVIEW suggested order quantities for one supplier (does not create a proposal).", {"supplier": {"type": "string", "description": "code (NCC01) or name"}},
@@ -263,7 +268,7 @@ def _open_receive_form(ctx: ToolContext, po: str) -> ToolOutput:
              for l in found.lines]
     form = W.form("receive_po", f"Nhận hàng {found.code} · {found.supplier.name}", lines,
                   {"method": "POST", "path": f"/purchase-orders/{found.id}/receive"},
-                  note="Ghi hạn sử dụng in trên bao bì cho từng lô (ô HSD điền sẵn theo hạn chuẩn, hãy sửa nếu khác).",
+                  note="Nhập hạn sử dụng in trên bao bì cho từng lô. Dòng nhận 0 thì không cần HSD.",
                   meta={"po_id": found.id, "code": found.code, "supplier": found.supplier.name,
                         "expected_date": found.expected_date.isoformat()})
     # Chi tra tom tat cho LLM; form day du chi di theo kenh UI
@@ -366,7 +371,7 @@ def _propose_delist(ctx: ToolContext, sku: str) -> ToolOutput:
     return _prop_out(p, created)
 
 
-@tool("revise_proposal", "propose", "Revise a PENDING proposal when the user asks to change it (e.g. 'giảm còn 30 thùng', 'giảm giá 30% thôi'). Creates a NEW pending proposal and marks the old one superseded; the manager must still approve. Only PENDING purchase orders (sku_qty: new qty per SKU) and markdowns (markdown_pct: 0.3 = 30%).",
+@tool("revise_proposal", "propose", "Store Manager only. Revise a PENDING proposal when the user asks to change it (e.g. 'giảm còn 30 thùng', 'giảm giá 30% thôi'). Creates a NEW pending proposal and marks the old one superseded; the manager must still approve. Only PENDING purchase orders (sku_qty: new qty per SKU) and markdowns (markdown_pct: 0.3 = 30%).",
       {"proposal_id": {"type": "integer"},
        "sku_qty": {"type": "array", "description": "purchase orders: new quantity per SKU",
                    "items": {"type": "object", "properties": {"sku": {"type": "string"}, "qty": {"type": "integer"}},
@@ -374,6 +379,8 @@ def _propose_delist(ctx: ToolContext, sku: str) -> ToolOutput:
        "markdown_pct": {"type": "number", "description": "markdowns: new discount, 0.3 = 30%"}}, ["proposal_id"])
 def _revise(ctx: ToolContext, proposal_id: int, sku_qty: list[dict] | None = None,
             markdown_pct: float | None = None) -> ToolOutput:
+    if ctx.user.role != "manager":  # giong PATCH /proposals: nhan vien khong duoc doi noi dung de xuat
+        return ToolOutput({"error": "Chỉ Store Manager được sửa đề xuất. Hãy báo Store Manager để tự sửa hoặc từ chối."})
     try:
         p = builders.revise(ctx.db, int(proposal_id), "agent", {str(x["sku"]): int(x["qty"]) for x in sku_qty or []},
                             markdown_pct, ctx.chat_session_id)

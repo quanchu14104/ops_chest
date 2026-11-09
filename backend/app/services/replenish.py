@@ -47,7 +47,7 @@ def apply_order_adjustment(qty: int, factor: float, pack_size: int, shelf_life_c
 def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) -> dict:
     """Dat buoi sang truoc gio ban: nhu cau hom nay van phai tru vao ton hien co."""
     t = order_date or today()
-    agr = supplier.agreements[0] if supplier.agreements else None
+    agr = supplier.agreement_on(t)
     L = supplier.lead_time_days
     R = review_period(supplier.order_weekdays, t)
     products = db.scalars(
@@ -87,6 +87,8 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
         })
     total = sum(l["line_value"] for l in lines)
     warnings = []
+    if agr is None and supplier.agreements:
+        warnings.append("Thỏa thuận với NCC không có hiệu lực vào ngày đặt: đơn này chưa áp chiết khấu, cần gia hạn.")
     if lines and supplier.min_order_value and total < supplier.min_order_value:
         warnings.append(
             f"Tổng đơn {vnd(total)} thấp hơn giá trị đơn tối thiểu {vnd(supplier.min_order_value)} của NCC. "
