@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app import audit
@@ -51,11 +51,18 @@ def validate(db: Session, factor: float, start: date, end: date, reason: str, ca
         raise HypothesisError(f"Giả thuyết chỉ áp dụng tối đa {MAX_DAYS} ngày.")
     if not reason or not reason.strip():
         raise HypothesisError("Cần ghi lý do của giả thuyết để đối chiếu về sau.")
+    # Ca giao giua nhom va SKU trong nhom: neu khong he so nhan chong ma xem truoc va du bao nen khong biet
+    if sku:
+        own_category = db.scalar(select(Product.category).where(Product.sku == sku))
+        scope = or_(DemandHypothesis.sku == sku, DemandHypothesis.category == own_category)
+    else:
+        scope = or_(DemandHypothesis.category == category,
+                    DemandHypothesis.sku.in_(select(Product.sku).where(Product.category == category)))
     overlap = db.scalar(select(DemandHypothesis.id).where(
-        DemandHypothesis.status == "ACTIVE", DemandHypothesis.category == category, DemandHypothesis.sku == sku,
+        DemandHypothesis.status == "ACTIVE", scope,
         DemandHypothesis.start_date <= end, DemandHypothesis.end_date >= start))
     if overlap:
-        raise HypothesisError(f"Đã có giả thuyết #{overlap} cho cùng phạm vi trong khoảng ngày này.")
+        raise HypothesisError(f"Đã có giả thuyết #{overlap} trùng phạm vi (cùng nhóm hoặc SKU trong nhóm) trong khoảng ngày này.")
 
 
 def preview(db: Session, products: list[Product], factor: float, start: date, end: date) -> dict:
@@ -77,8 +84,9 @@ def evaluate_finished(db: Session) -> list[dict]:
     done = []
     for x in db.scalars(select(DemandHypothesis).where(DemandHypothesis.status == "ACTIVE",
                                                        DemandHypothesis.end_date < today())):
-        products, _, _ = matching_products(db, x.category, None) if x.category else matching_products(db, None, x.sku)
-        ids = [p.id for p in products]
+        # Pham vi da chot luc duyet: so khop chinh xac, tim gan dung co the raise lam hong job sang
+        in_scope = (Product.category == x.category, Product.status == "ACTIVE") if x.category else (Product.sku == x.sku,)
+        ids = list(db.scalars(select(Product.id).where(*in_scope)))
         actual, stockouts = db.execute(
             select(func.coalesce(func.sum(DailySales.qty_sold), 0),
                    func.coalesce(func.sum(case((DailySales.stockout.is_(True), 1), else_=0)), 0))

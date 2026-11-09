@@ -11,12 +11,19 @@ from app.agent import vision
 from app.auth import current_user, require_manager
 from app.config import settings
 from app.db import get_db
-from app.models import DemandHypothesis, OrderAdjustment, Product, User
+from app.models import DemandHypothesis, OrderAdjustment, Product, Proposal, User
 from app.proposals import builders
 from app.proposals.views import to_dict
 from app.services import hypotheses, learning, stockcount
 
 router = APIRouter(prefix="/api")
+
+
+def _release_dedupe(db: Session, proposal_id: int | None) -> None:
+    """Da huy/tat thi de xuat cu khong con chan viec de xuat lai dung noi dung do."""
+    p = db.get(Proposal, proposal_id) if proposal_id else None
+    if p:
+        p.dedupe_key = None
 
 
 @router.get("/hypotheses")
@@ -32,6 +39,7 @@ def cancel_hypothesis(hid: int, db: Session = Depends(get_db), user: User = Depe
     if x.status != "ACTIVE":
         raise HTTPException(409, "Giả thuyết này không còn hiệu lực.")
     x.status = "CANCELLED"
+    _release_dedupe(db, x.proposal_id)
     audit.log(db, user.username, "HYPOTHESIS_CANCELLED", "demand_hypothesis", x.id)
     db.commit()
     return hypotheses.view(x)
@@ -63,6 +71,7 @@ def deactivate_adjustment(aid: int, db: Session = Depends(get_db), user: User = 
     if not a or not a.active:
         raise HTTPException(404, "Không tìm thấy hệ số đang chạy")
     a.active = False
+    _release_dedupe(db, a.proposal_id)
     audit.log(db, user.username, "ORDER_ADJUST_DEACTIVATED", "order_adjustment", a.id, {"category": a.category})
     db.commit()
     return {"id": a.id, "active": False}

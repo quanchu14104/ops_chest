@@ -27,9 +27,9 @@ class VisionError(Exception):
     pass
 
 
-def parse_expiry(text: str | None) -> date | None:
+def parse_expiry(text: object) -> date | None:
     """Ngay kieu Viet Nam (ngay truoc thang). Chi co thang/nam thi lay ngay cuoi thang."""
-    if not text:
+    if not text or not isinstance(text, str):  # model co the tra so hoac mang thay vi chuoi
         return None
     s = text.strip()
     m = re.search(r"(?<!\d)(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)", s)

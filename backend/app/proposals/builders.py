@@ -220,7 +220,13 @@ def order_adjustment(db: Session, category: str, created_by: str, chat_session_i
     """Chi tao khi lich su sua cua SM du manh (engine edit_learning): khong cho LLM tu dat he so."""
     from app.services.learning import patterns
 
-    found = next((p for p in patterns(db) if category.lower() in p["category"].lower()), None)
+    found_all = patterns(db)
+    wanted = category.strip().lower()
+    matches = ([p for p in found_all if p["category"].lower() == wanted]
+               or [p for p in found_all if wanted in p["category"].lower()])
+    if len(matches) > 1:
+        return None, False, f"'{category}' khớp nhiều nhóm: {', '.join(p['category'] for p in matches)}. Hãy nêu rõ một nhóm."
+    found = matches[0] if matches else None
     if not found:
         return None, False, (f"Chưa đủ dấu hiệu để điều chỉnh nhóm '{category}': cần ít nhất 5 lần sửa trên 3 đơn, "
                              "cùng chiều, và lệch từ 15% trở lên.")

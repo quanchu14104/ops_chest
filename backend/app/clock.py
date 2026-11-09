@@ -44,5 +44,5 @@ def load_persisted() -> None:
         return
     finally:
         db.close()
-    if row:
+    if row and settings.enable_sim_controls:  # da tat tua nhanh = du lieu that: chay theo ngay that
         set_today(date.fromisoformat(row.value))

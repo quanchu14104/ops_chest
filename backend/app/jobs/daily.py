@@ -23,7 +23,10 @@ def _ref(p, created: bool) -> dict:
 def run_morning(db: Session) -> dict:
     out: dict = {"expired": service.expire_stale(db), "proposals": [],
                  "hypotheses_evaluated": hypotheses.evaluate_finished(db)}
+    switched_off = learning.switched_off_categories(db)  # SM da tat thi job khong nhac lai; van de xuat tay duoc
     for pattern in learning.patterns(db):
+        if pattern["category"] in switched_off:
+            continue
         p, c, _ = builders.order_adjustment(db, pattern["category"], JOB)
         if p:
             out["proposals"].append(_ref(p, c))

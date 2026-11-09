@@ -1,6 +1,7 @@
 """Tinh de xuat don dat hang (PO) cho mot nha cung cap tu du lieu DB + engine replenishment."""
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 
 from sqlalchemy import select
@@ -36,11 +37,11 @@ def suppliers_due(db: Session, d: date | None = None) -> list[Supplier]:
 
 def apply_order_adjustment(qty: int, factor: float, pack_size: int, shelf_life_cap: float) -> int:
     """He so SM da duyet. Tang thi van khong vuot tran HSD; lam tron theo quy cach dong goi."""
-    target = qty * factor
-    if factor > 1:
-        target = max(qty, min(target, shelf_life_cap))
     pack = max(1, pack_size)
-    return int(round(target / pack)) * pack
+    target = qty * factor
+    if factor > 1:  # lam tron xuong de khong vuot tran HSD; qty da la boi so cua thung nen khong tut duoi qty
+        return max(qty, math.floor(min(target, shelf_life_cap) / pack + 1e-9) * pack)
+    return max(1, int(round(target / pack))) * pack  # van can dat thi giu it nhat mot thung
 
 
 def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) -> dict:

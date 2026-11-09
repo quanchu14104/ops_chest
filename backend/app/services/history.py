@@ -5,7 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.clock import today
@@ -90,8 +90,9 @@ def event_factors(h: History, pid: int) -> dict:
 
 
 def hypotheses_for(db: Session, product: Product) -> list[DemandHypothesis]:
-    rows = db.scalars(select(DemandHypothesis).where(DemandHypothesis.status != "CANCELLED")).all()
-    return [x for x in rows if x.sku == product.sku or (x.category is not None and x.category == product.category)]
+    return list(db.scalars(select(DemandHypothesis).where(
+        DemandHypothesis.status != "CANCELLED",
+        or_(DemandHypothesis.sku == product.sku, DemandHypothesis.category == product.category))))
 
 
 def _apply_hypotheses(fc: Forecast, active: list[DemandHypothesis]) -> None:
