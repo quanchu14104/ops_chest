@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.clock import today
 from app.config import settings
 from app.fmt import dmy, vnd
-from app.models import Proposal, PurchaseOrder
+from app.models import Proposal, PurchaseOrder, Supplier
 from app.services import datecheck, hypotheses, inventory, receiving, replenish, shelf
 
 
@@ -66,6 +66,12 @@ def build(db: Session) -> dict:
         items.append({"id": "due", "level": "info", "count": len(due),
                       "text": f"Hôm nay đến lịch đặt hàng: {names}",
                       "prompt": f"Lên đơn đặt hàng cho {due[0].name}", "quick": f"reorder:{due[0].code}"})
+    for s in db.scalars(select(Supplier).order_by(Supplier.code)):
+        c = replenish.upcoming_closure(s, today(), within_days=14)
+        if c:
+            items.append({"id": f"closure-{s.code}", "level": "warn", "count": 1,
+                          "text": replenish.closure_text(s, c), "prompt": f"Lên đơn đặt hàng cho {s.name}",
+                          "quick": f"reorder:{s.code}"})
     if summ["purchase_orders_awaiting_delivery"]:
         items.append({"id": "po", "level": "info", "count": summ["purchase_orders_awaiting_delivery"],
                       "text": f"{summ['purchase_orders_awaiting_delivery']} đơn hàng đang chờ giao",

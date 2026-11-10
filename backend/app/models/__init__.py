@@ -1,4 +1,4 @@
-from app.models.catalog import Product, Supplier, SupplierAgreement
+from app.models.catalog import Product, Supplier, SupplierAgreement, SupplierClosure
 from app.models.inventory import DailySales, Lot, StockMovement
 from app.models.ops import (
     AppMeta,
@@ -29,5 +29,6 @@ __all__ = [
     "StockMovement",
     "Supplier",
     "SupplierAgreement",
+    "SupplierClosure",
     "User",
 ]

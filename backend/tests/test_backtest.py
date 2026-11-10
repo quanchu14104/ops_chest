@@ -11,11 +11,22 @@ from app.sim.policies import BaselineGoldenHourPolicy, BaselinePolicy, OpsChestP
 from app.sim.world import OPTIMISTIC_WORLD, PESSIMISTIC_WORLD, REFERENCE_WORLD
 
 
-def test_ops_chest_reduces_waste_without_hurting_profit():
+def test_ops_chest_reduces_waste_without_hurting_profit_or_availability():
+    # Tu khi co san muc phuc vu (N6), B doi bot phan giam huy de khong het hang nhieu hon A:
+    # khong con ky vong giam huy >= 20% nhu truoc.
     res = run_backtest(date(2026, 8, 1), days=30, warmup=120)
     a, b = list(res["results"].values())
-    assert b["waste_cost"] < a["waste_cost"] * 0.8
+    assert b["waste_cost"] < a["waste_cost"]
     assert b["gross_profit"] > a["gross_profit"]
+    assert b["oos_rate"] <= a["oos_rate"]
+    assert b["oos_traffic"] <= a["oos_traffic"]
+
+
+def test_service_floor_lowers_stockouts_vs_old_policy():
+    base = warm_base(date(2026, 8, 1), warmup=120)
+    new = compare(base, date(2026, 8, 1), 21)["results"]["B: Ops Chest"]
+    old = compare(base, date(2026, 8, 1), 21, ops=OpsChestPolicy(service_floors=False))["results"]["B: Ops Chest"]
+    assert new["oos_rate"] < old["oos_rate"] and new["oos_class_a"] < old["oos_class_a"]
 
 
 def test_default_baseline_also_marks_down():

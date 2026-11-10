@@ -93,6 +93,8 @@ class EditIn(BaseModel):
     lines: list[dict] | None = None
     items: list[dict] | None = None
     note: str | None = None
+    # Don duoi gia tri toi thieu: SM xac nhan da thoa thuan voi NCC
+    min_order_ack: bool | None = None
 
     def edits(self) -> dict:
         return {k: v for k, v in self.model_dump().items() if v is not None}

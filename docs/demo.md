@@ -22,8 +22,10 @@
 
 - Mở đề xuất **Đặt hàng Bếp Trung Tâm** (trong hộp duyệt ở trang Trợ lý). Chỉ cho người xem:
   - cột *Dự báo phủ* và *Đề xuất*;
-  - nhãn *trần HSD*;
+  - nhãn *trần HSD*, *sức chứa* (tủ kem), *giữ ≥95%* / *giữ ≥90%* cho hàng kéo khách và nhóm A;
   - phân loại ABC-XYZ của từng dòng.
+- Nếu đơn dưới giá trị tối thiểu của NCC, thẻ hiện hai phương án: **Áp dụng bù đơn** (kéo sớm hàng bền ít ngày tồn nhất) hoặc hoãn. Duyệt đơn vẫn thiếu mức tối thiểu mà không tick "đã thỏa thuận với NCC" sẽ bị từ chối khi thực thi.
+- Hỏi agent *"Nhà cung cấp nào sắp nghỉ?"*: demo có lịch nghỉ Tết của các đại lý; trong 14 ngày trước kỳ nghỉ bản tin nhắc ngày đặt đơn cuối, và đơn đó tự lớn lên để phủ kỳ nghỉ.
 - **Sửa bằng lời:** nói với agent *"giảm mỗi món còn một nửa"* hoặc bấm **Hỏi lại** trên thẻ. Agent tạo đề xuất **mới** chờ duyệt, bản cũ chuyển sang "Đã có bản sửa". Agent không tự duyệt.
 - **Sửa bằng tay:** đổi số lượng một dòng (ô chuyển màu vàng), rồi bấm **Duyệt với chỉnh sửa**.
 - Sang Mailpit: email đơn hàng kèm **PDF** (font tiếng Việt), ghi rõ người duyệt.
@@ -66,4 +68,4 @@ Hỏi lần lượt:
 
 ## 5. Chứng minh hiệu quả (1 phút)
 
-Vào **Phân tích → Mô phỏng A/B → Chạy 60 ngày**. So sánh lợi nhuận gộp, tỷ lệ hủy, tỷ lệ hết hàng giữa chính sách "kinh nghiệm" và Ops Chest trên cùng nhu cầu khách. Kéo xuống bảng **độ nhạy**: nhấn mạnh rằng giả lập cố tình cho khách phản ứng với giảm giá yếu hơn engine tin, và kết quả vẫn dương ở mọi kịch bản. Nói thẳng đánh đổi là hết hàng cao hơn (xem `nghiep-vu.md` mục 5).
+Vào **Phân tích → Mô phỏng A/B → Chạy 60 ngày**. So sánh lợi nhuận gộp, tỷ lệ hủy, tỷ lệ hết hàng giữa chính sách "kinh nghiệm" và Ops Chest trên cùng nhu cầu khách. Kéo xuống bảng **độ nhạy**: nhấn mạnh rằng giả lập cố tình cho khách phản ứng với giảm giá yếu hơn engine tin, và kết quả vẫn dương ở mọi kịch bản. Nói thẳng đánh đổi: nhờ sàn mức phục vụ B không hết hàng nhiều hơn A, nhưng phần lợi nhuận tăng thêm nhỏ hơn bản trước; dòng "B không có sàn mức phục vụ" cho thấy cách đặt cũ lãi hơn nhưng để thiếu hàng nhiều hơn (xem `nghiep-vu.md` mục 5).

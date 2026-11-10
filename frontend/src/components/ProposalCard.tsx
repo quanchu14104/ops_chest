@@ -9,7 +9,12 @@ import { STATUS_LABEL, TYPE_LABEL, WASTE_REASON_LABEL, dateTimeVi, dateVi, money
 export const ASK_EVENT = "opschest:ask";
 export type AskDetail = { text: string; handled: boolean };
 
-type Edits = { lines?: { product_id: number; qty: number }[]; items?: Record<string, unknown>[]; note?: string };
+type Edits = { lines?: { product_id: number; qty: number }[]; items?: Record<string, unknown>[]; note?: string; min_order_ack?: boolean };
+type MinOrder = {
+  shortfall: number;
+  top_up: { lines: { product_id: number; sku: string; name: string; add_qty: number; line_value: number; days_cover_before: number }[]; added_value: number; reaches_min: boolean };
+  defer: { feasible: boolean; at_risk: string[] };
+};
 
 export function StatusBadge({ status }: { status: string }) {
   return (
@@ -31,6 +36,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
   const [md, setMd] = useState<Record<string, number>>({});
   const [excluded, setExcluded] = useState<Record<string, boolean>>({});
   const [note, setNote] = useState("");
+  const [ack, setAck] = useState<boolean | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +47,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
       const lines = Object.entries(qty).map(([pid, q]) => ({ product_id: Number(pid), qty: q }));
       if (lines.length) e.lines = lines;
       if (note) e.note = note;
+      if (ack !== null) e.min_order_ack = ack;
     } else if (["MARKDOWN", "RETURN", "DISPOSE"].includes(p.type)) {
       const ids = new Set([...Object.keys(qty), ...Object.keys(md), ...Object.keys(excluded)]);
       const items = [...ids].map((id) => ({
@@ -52,7 +59,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
       if (items.length) e.items = items;
     }
     return Object.keys(e).length ? e : undefined;
-  }, [p.type, qty, md, excluded, note]);
+  }, [p.type, qty, md, excluded, note, ack]);
 
   const done = (np: Proposal) => {
     setP(np);
@@ -142,6 +149,8 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                     <td>
                       {l.name}
                       {l.explain?.capped_by_shelf_life && <span className="badge" style={{ marginLeft: 6 }} title="Bị chặn theo hạn sử dụng">trần HSD</span>}
+                      {l.explain?.capped_by_capacity && <span className="badge" style={{ marginLeft: 6 }} title="Bị chặn theo sức chứa kệ/tủ">sức chứa</span>}
+                      {l.explain?.service_floor >= 0.9 && <span className="badge accent" style={{ marginLeft: 6 }} title="Hàng kéo khách / nhóm A: giữ mức phục vụ tối thiểu">giữ ≥{pct(l.explain.service_floor, 0)}</span>}
                       {(l.explain?.hypotheses ?? []).map((h: { hypothesis_id: number; factor: number }) => (
                         <span key={h.hypothesis_id} className="badge accent" style={{ marginLeft: 6 }} title="Dự báo đã áp dụng giả thuyết của Store Manager">giả thuyết ×{num(h.factor, 2)}</span>
                       ))}
@@ -165,6 +174,17 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
               })}
             </tbody>
           </table>
+          {pl.min_order && (
+            <MinOrderPanel mo={pl.min_order as MinOrder} lines={pl.lines} editable={editable} ack={ack ?? !!pl.min_order_ack} setAck={setAck}
+              applyTopUp={() => {
+                const cur: Record<string, number> = { ...qty };
+                for (const t of (pl.min_order as MinOrder).top_up.lines) {
+                  const existing = (pl.lines as { product_id: number; qty: number }[]).find((l) => l.product_id === t.product_id);
+                  cur[t.product_id] = (cur[t.product_id] ?? existing?.qty ?? 0) + t.add_qty;
+                }
+                setQty(cur);
+              }} />
+          )}
           {editable && (
             <input style={{ width: "100%", marginTop: 8 }} placeholder="Ghi chú gửi nhà cung cấp (tuỳ chọn)" value={note} onChange={(e) => setNote(e.target.value)} />
           )}
@@ -331,6 +351,32 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
       {!canDecide && p.status === "PENDING" && user?.role !== "manager" && (
         <p className="small muted" style={{ marginTop: 8 }}>Chờ Store Manager duyệt.</p>
       )}
+    </div>
+  );
+}
+
+// Đơn dưới giá trị tối thiểu: engine tính sẵn hai phương án, Store Manager chọn.
+function MinOrderPanel({ mo, lines, editable, ack, setAck, applyTopUp }: {
+  mo: MinOrder; lines: { product_id: number }[]; editable: boolean; ack: boolean; setAck: (v: boolean) => void; applyTopUp: () => void;
+}) {
+  const topUp = mo.top_up.lines.map((l) => `${l.name} +${l.add_qty}${lines.some((x) => x.product_id === l.product_id) ? "" : " (dòng mới)"}`).join("; ");
+  return (
+    <div className="alert warn" style={{ marginTop: 8 }}>
+      <b>Đơn thiếu {money(mo.shortfall)} so với giá trị tối thiểu.</b>
+      <div className="small" style={{ marginTop: 4 }}>
+        <b>Bù đơn:</b> kéo sớm {mo.top_up.lines.length} mặt hàng bền nhóm A/B ít ngày tồn nhất (+{money(mo.top_up.added_value)})
+        {mo.top_up.reaches_min ? "" : ", vẫn chưa đủ mức tối thiểu"}: {topUp || "không có mặt hàng phù hợp"}.{" "}
+        {editable && mo.top_up.lines.length > 0 && <button className="sm" onClick={applyTopUp}>Áp dụng bù đơn</button>}
+      </div>
+      <div className="small" style={{ marginTop: 4 }}>
+        <b>Hoãn:</b>{" "}
+        {mo.defer.feasible
+          ? "được, không mặt hàng nào hết trước lần giao sau (theo dự báo). Từ chối đề xuất với lý do hoãn."
+          : `không nên, ${mo.defer.at_risk.length} mặt hàng sẽ hết trước lần giao sau (${mo.defer.at_risk.slice(0, 5).join(", ")}).`}
+      </div>
+      <label className="small" style={{ display: "block", marginTop: 6 }}>
+        <input type="checkbox" checked={ack} disabled={!editable} onChange={(e) => setAck(e.target.checked)} /> Đã thỏa thuận với NCC về đơn dưới mức tối thiểu (bắt buộc nếu duyệt khi đơn chưa đủ mức)
+      </label>
     </div>
   );
 }

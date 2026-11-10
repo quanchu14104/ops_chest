@@ -11,7 +11,7 @@ def test_eval_cases_reference_real_tools():
 
 def test_eval_covers_chat_first_features():
     names = {t for c in evals.CASES for t in c.tools}
-    assert {"revise_proposal", "open_receive_form"} <= names
+    assert {"revise_proposal", "open_receive_form", "open_pull_form", "open_date_check_form", "propose_write_off"} <= names
     assert {c.widget for c in evals.CASES if c.widget} == {"table", "kpis"}
     assert any(c.no_receive for c in evals.CASES)
 

@@ -549,3 +549,136 @@ def test_invoice_cost_used_for_lot_and_flagged(db):
                                   "expiry_date": (T + timedelta(days=6)).isoformat()}], _staff(db))
     lot = db.get(Lot, out["lots"][0]["lot_id"])
     assert lot.unit_cost == product.unit_cost + 500 and any("hóa đơn" in w for w in out["warnings"])
+
+
+# ======================= Dot 2: dat hang =======================
+from app.engines.replenishment import schedule, service_floor  # noqa: E402
+from app.models import SupplierClosure  # noqa: E402
+
+
+def _engine_order(**kw):
+    fc = Forecast(start=T, daily=[10.0] * 60, sigma_daily=4.0, level=10.0, weekday_index=[1.0] * 7)
+    base = dict(today=T, first_demand_day=T, lead_time_days=1, review_period_days=1, shelf_life_days=2, forecast=fc,
+                lots=[], unit_cost=9000, unit_price=10000, salvage_per_unit=0)
+    base.update(kw)
+    return compute_order(ReplenishmentInput(**base))
+
+
+# ---- N6: san muc phuc vu
+def test_newsvendor_never_plans_below_service_floor():
+    low = _engine_order()  # lai mong, khong thu hoi: newsvendor tu chon muc phuc vu rat thap
+    floored = _engine_order(min_service_level=0.95)
+    assert low.service_level < 0.5
+    assert floored.service_level == pytest.approx(0.95) and floored.qty > low.qty
+
+
+def test_order_up_to_z_raised_to_floor():
+    res = _engine_order(shelf_life_days=180, z=0.84, min_service_level=0.90)
+    assert res.mode == "order_up_to" and res.service_level == pytest.approx(0.90, abs=1e-3)
+
+
+def test_floor_by_role():
+    assert service_floor(True, "C") == 0.95 and service_floor(False, "A") == 0.90 and service_floor(False, "B") == 0.50
+
+
+def test_po_lines_carry_service_floor(db):
+    sug = replenish.suggest_po(db, replenish.get_supplier(db, "NCC01"))
+    traffic = {p.sku for p in db.scalars(select(Product).where(Product.is_traffic_driver.is_(True)))}
+    lines = [l for l in sug["lines"] if l["sku"] in traffic]
+    assert lines and all(l["explain"]["service_level"] >= 0.95 - 1e-6 for l in lines)
+
+
+# ---- N9: suc chua va ton trung bay
+def test_capacity_caps_order_and_is_flagged():
+    free = _engine_order(shelf_life_days=180, z=1.65)
+    # 15 tren ke, hom nay ban 10 -> luc hang ve con 5; suc chua 12 -> chi con cho cho 7
+    capped = _engine_order(shelf_life_days=180, z=1.65, pack_size=6, max_stock=12, lots=[LotState(15, T + timedelta(days=100))])
+    assert free.qty > 7
+    assert capped.capped_by_capacity and capped.qty == 6
+
+
+def test_min_display_sets_safety_floor_for_durables():
+    fc = Forecast(start=T, daily=[0.2] * 60, sigma_daily=0.1, level=0.2, weekday_index=[1.0] * 7)
+    res = _engine_order(shelf_life_days=180, z=1.0, forecast=fc, min_display=6)
+    assert res.safety_stock >= 6 and res.qty >= 6
+
+
+def test_suggest_po_respects_capacity(db):
+    sup = replenish.get_supplier(db, "NCC08")  # kem: tu dong co suc chua
+    for l in replenish.suggest_po(db, sup)["lines"]:
+        p = db.get(Product, l["product_id"])
+        assert p.max_stock_qty and l["explain"]["projected_usable_at_arrival"] + l["qty"] <= p.max_stock_qty
+
+
+# ---- N7: lich giao va lich nghi
+def test_last_order_before_closure_covers_the_break():
+    mon = date(2026, 11, 9)
+    closed = lambda d: date(2026, 11, 12) <= d <= date(2026, 11, 20)  # noqa: E731
+    arrival, R = schedule(mon, 2, [0, 3], [1, 2, 4, 5], closed)
+    assert arrival == date(2026, 11, 11) and R == (date(2026, 11, 25) - arrival).days
+    assert schedule(mon, 2, [0, 3], [1, 2, 4, 5]) == (arrival, 3)
+
+
+def test_supplier_closure_enlarges_order_and_warns(db):
+    sup = replenish.get_supplier(db, "NCC05")
+    mon = date(2026, 11, 9)
+    normal = replenish.suggest_po(db, sup, order_date=mon)
+    row = SupplierClosure(supplier_id=sup.id, start_date=date(2026, 11, 12), end_date=date(2026, 11, 20), reason="Thử")
+    db.add(row)
+    db.commit()
+    try:
+        db.refresh(sup)
+        holiday = replenish.suggest_po(db, sup, order_date=mon)
+        assert holiday["review_period_days"] > normal["review_period_days"]
+        assert holiday["total_value"] > normal["total_value"]
+        assert any("nghỉ từ 12/11/2026" in w and "đơn cuối" in w for w in holiday["warnings"])
+        clock.set_today(date(2026, 11, 13))
+        assert sup not in replenish.suppliers_due(db)  # dang nghi: khong den lich dat
+    finally:
+        db.delete(row)
+        db.commit()
+
+
+# ---- N8: don duoi gia tri toi thieu
+def test_below_minimum_requires_ack(db, outbox):
+    _clear_open(db, "PURCHASE_ORDER")
+    sup = replenish.get_supplier(db, "NCC01")  # hang tuoi, ngay nao cung can dat
+    original = sup.min_order_value
+    sup.min_order_value = 10 ** 10
+    db.commit()
+    try:
+        p, created, _ = builders.purchase_order(db, sup, "job")
+        db.commit()
+        mo = p.payload["min_order"]
+        assert created and mo["shortfall"] > 0 and "feasible" in mo["defer"] and "lines" in mo["top_up"]
+        done = service.approve(db, p.id, _mgr(db))
+        assert done.status == "FAILED" and "tối thiểu" in done.execution_result["error"] and outbox == []
+        done = service.approve(db, p.id, _mgr(db), edits={"min_order_ack": True})
+        assert done.status == "EXECUTED" and len(outbox) == 1
+    finally:
+        sup.min_order_value = original
+        db.commit()
+
+
+def test_top_up_pulls_forward_lowest_cover_within_room():
+    pool = [{"product_id": 1, "sku": "A1", "name": "a", "pack_size": 6, "unit_cost": 1000, "daily": 2.0, "position": 4, "room": 12},
+            {"product_id": 2, "sku": "B1", "name": "b", "pack_size": 12, "unit_cost": 1000, "daily": 1.0, "position": 30, "room": 100}]
+    mo = replenish.min_order_options(40_000, 10_000, pool, [])
+    added = {l["sku"]: l["add_qty"] for l in mo["top_up"]["lines"]}
+    assert added["A1"] == 12  # it ngay ton nhat duoc keo truoc, dung toi da cho trong (room)
+    assert mo["top_up"]["reaches_min"] and mo["top_up"]["added_value"] >= 30_000
+    assert mo["defer"]["feasible"] is True
+
+
+# ---- N15: dong SM tu them cung duoc chiet khau
+def test_line_added_by_manager_gets_agreement_discount(db):
+    sup = replenish.get_supplier(db, "NCC05")
+    payload = {"supplier_id": sup.id, "lines": [], "total_value": 0, "note": ""}
+    p = Proposal(type="PURCHASE_ORDER", status="PENDING", title="t", rationale="r", evidence={}, payload=payload,
+                 original_payload=payload, created_by="job", created_at=datetime(2026, 11, 7))
+    extra = db.scalars(select(Product).where(Product.supplier_id == sup.id).order_by(Product.sku)).first()
+    service.apply_edits(db, p, {"lines": [{"product_id": extra.id, "qty": 24}]}, _mgr(db))
+    line = next(l for l in p.payload["lines"] if l["product_id"] == extra.id)
+    disc = sup.agreement_on(T).discount_pct
+    assert disc > 0 and line["unit_cost"] == int(round(extra.unit_cost * (1 - disc)))
+    db.rollback()

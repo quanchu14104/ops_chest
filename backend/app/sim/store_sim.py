@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from app.engines.kpi import KpiTotals
+from app.engines.replenishment import next_delivery
 from app.sim.catalog import ProductSpec, SupplierSpec
 from app.sim.demand import _poisson, _rng, expected_demand, sample_demand
 from app.sim.world import REFERENCE_WORLD, WorldParams
@@ -55,6 +56,11 @@ class Policy:
 
     def place_orders(self, sim: "StoreSim", d: date) -> None:
         pass
+
+
+def can_order(sup, d: date) -> bool:
+    """Den lich dat va NCC khong nghi."""
+    return d.weekday() in sup.order_weekdays and not sup.is_closed(d)
 
 
 class StoreSim:
@@ -111,7 +117,7 @@ class StoreSim:
         sup = self.suppliers[supplier]
         self.po_seq += 1
         code = f"PO{d:%y%m%d}-{supplier[-2:]}{self.po_seq % 1000:03d}"
-        arrival = d + timedelta(days=sup.lead_time_days)
+        arrival = next_delivery(d, sup.lead_time_days, sup.delivery_weekdays, sup.is_closed)
         rec = PoRecord(code, supplier, d, arrival)
         for sku, qty in lines:
             cost = int(round(self.by_sku[sku].unit_cost * (1 - sup.discount_pct)))

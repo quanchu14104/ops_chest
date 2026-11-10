@@ -11,7 +11,10 @@ type Cost = {
 };
 type Cand = { sku: string; name: string; category: string; cell: string; margin_90d: number; waste_rate: number; reasons: string[] };
 type BT = { start: string; days: number; results: Record<string, Record<string, number>>; delta: Record<string, number> };
-type SensRow = { key: string; label: string; note: string; gain: number; gain_pct: number; waste_a: number; waste_b: number; oos_a: number; oos_b: number };
+type SensRow = {
+  key: string; label: string; note: string; gain: number; gain_pct: number; waste_a: number; waste_b: number; oos_a: number; oos_b: number;
+  oos_traffic_a?: number; oos_traffic_b?: number; oos_class_a_a?: number; oos_class_a_b?: number;
+};
 type Sens = { start: string; days: number; rows: SensRow[] };
 
 const METRICS: [string, string][] = [
@@ -133,7 +136,7 @@ export default function Reports() {
         <h2>Mô phỏng A/B: "kinh nghiệm" và Ops Chest</h2>
         <p className="small secondary">
           Chạy lại cùng cửa hàng với <b>cùng nhu cầu khách</b> (tất định) bằng 2 chính sách đặt hàng. A: mức tồn theo trung bình 4 tuần, cuối ngày giảm 30% hàng hết hạn hôm nay.
-          B: dự báo + newsvendor/order-up-to + trần HSD + giảm giá giờ vàng/trả NCC (coi như SM duyệt hết). Trong mô phỏng, khách chỉ phản ứng với giảm giá bằng một nửa mức engine giả định. Mất khoảng 10-30 giây.
+          B: dự báo + newsvendor/order-up-to có sàn mức phục vụ (kéo khách 95%, nhóm A 90%) + trần HSD và sức chứa + giảm giá giờ vàng/trả NCC (coi như SM duyệt hết). Trong mô phỏng, khách chỉ phản ứng với giảm giá bằng một nửa mức engine giả định. Mất khoảng 10-30 giây.
         </p>
         <div className="row">
           {[30, 60, 90].map((d) => <button key={d} disabled={bt.isPending} onClick={() => bt.mutate(d)}>Chạy {d} ngày</button>)}
@@ -151,6 +154,7 @@ function Sensitivity({ d }: { d: Sens }) {
   const signed = (v: number) => `${v >= 0 ? "+" : ""}${pct(v)}`;
   const core = d.rows.filter((r) => r.key === "reference" || r.key.startsWith("seed_")).map((r) => r.gain_pct);
   const oosWorse = d.rows.every((r) => r.oos_b > r.oos_a);
+  const ref = d.rows.find((r) => r.key === "reference");
   return (
     <div className="table-wrap" style={{ marginTop: 16 }}>
       <h2>Kết quả phụ thuộc vào giả định đến đâu</h2>
@@ -158,17 +162,24 @@ function Sensitivity({ d }: { d: Sens }) {
         Tính sẵn từ {dateVi(d.start)}, {d.days} ngày. Mỗi dòng chỉ đổi một điều so với dòng tham chiếu. Lợi nhuận gộp của B so với A ở kịch bản tham chiếu và các chuỗi nhu cầu khác: <b>{signed(Math.min(...core))} đến {signed(Math.max(...core))}</b>.
       </p>
       <table>
-        <thead><tr><th>Kịch bản</th><th className="num">Lợi nhuận B so với A</th><th className="num">Tỷ lệ hủy A / B</th><th className="num">Hết hàng A / B</th></tr></thead>
+        <thead><tr><th>Kịch bản</th><th className="num">Lợi nhuận B so với A</th><th className="num">Tỷ lệ hủy A / B</th><th className="num">Hết hàng A / B</th><th className="num">Hàng kéo khách A / B</th><th className="num">Nhóm A A / B</th></tr></thead>
         <tbody>{d.rows.map((r) => (
           <tr key={r.key}>
             <td><b>{r.label}</b><div className="small muted">{r.note}</div></td>
             <td className="num">{signed(r.gain_pct)}</td>
             <td className="num">{pct(r.waste_a)} / {pct(r.waste_b)}</td>
             <td className="num">{pct(r.oos_a)} / {pct(r.oos_b)}</td>
+            <td className="num">{r.oos_traffic_a == null ? "—" : `${pct(r.oos_traffic_a)} / ${pct(r.oos_traffic_b)}`}</td>
+            <td className="num">{r.oos_class_a_a == null ? "—" : `${pct(r.oos_class_a_a)} / ${pct(r.oos_class_a_b)}`}</td>
           </tr>
         ))}</tbody>
       </table>
       {oosWorse && <div className="alert" style={{ marginTop: 10 }}>Đánh đổi: tỷ lệ hết hàng của B cao hơn A ở mọi kịch bản. Lợi nhuận tăng chủ yếu nhờ hủy ít hơn, không phải nhờ bán được nhiều hơn.</div>}
+      {!oosWorse && ref && ref.oos_b <= ref.oos_a && (
+        <div className="alert" style={{ marginTop: 10 }}>
+          Ở kịch bản tham chiếu, B không hết hàng nhiều hơn A ({pct(ref.oos_b)} so với {pct(ref.oos_a)}) nhờ sàn mức phục vụ. Cái giá là phần lợi nhuận tăng thêm nhỏ hơn cách đặt cũ (dòng "B không có sàn mức phục vụ").
+        </div>
+      )}
     </div>
   );
 }

@@ -180,7 +180,7 @@ def _delist_cands(ctx: ToolContext) -> ToolOutput:
     return ToolOutput(reports.delist_report(ctx.db))
 
 
-@tool("list_suppliers", "read", "Suppliers: order days, lead time, minimum order, near-expiry return terms.")
+@tool("list_suppliers", "read", "Suppliers: order days, delivery days, upcoming closures (e.g. Tết), lead time, minimum order, near-expiry return terms.")
 def _suppliers(ctx: ToolContext) -> ToolOutput:
     sups = ctx.db.scalars(select(Supplier).options(joinedload(Supplier.agreements)).order_by(Supplier.code)).unique()
     wd = replenish.WEEKDAY_NAMES
@@ -190,6 +190,9 @@ def _suppliers(ctx: ToolContext) -> ToolOutput:
         rows.append({
             "code": s.code, "name": s.name, "email": s.email, "lead_time_days": s.lead_time_days,
             "order_days": [wd[i] for i in s.order_weekdays], "min_order_value": s.min_order_value,
+            "delivery_days": [wd[i] for i in s.delivery_weekdays] if s.delivery_weekdays else "mọi ngày",
+            "closures": [{"from": c.start_date.isoformat(), "to": c.end_date.isoformat(), "reason": c.reason}
+                         for c in s.closures if c.end_date >= today()][:3],
             "accepts_near_expiry_return": a.accepts_near_expiry_return if a else False,
             "return_min_days_before_expiry": a.return_min_days_before_expiry if a else None,
             "return_credit_pct": a.return_credit_pct if a else None,
@@ -205,7 +208,9 @@ def _preview(ctx: ToolContext, supplier: str) -> ToolOutput:
         return ToolOutput({"error": f"Không tìm thấy nhà cung cấp '{supplier}'"})
     s = replenish.suggest_po(ctx.db, sup)
     s["lines"] = [{k: l[k] for k in ("sku", "name", "qty", "on_hand", "forecast_cover", "line_value", "abc_xyz")}
-                  | {"mode": l["explain"]["mode"], "capped_by_shelf_life": l["explain"]["capped_by_shelf_life"]}
+                  | {"mode": l["explain"]["mode"], "capped_by_shelf_life": l["explain"]["capped_by_shelf_life"],
+                     "capped_by_capacity": l["explain"]["capped_by_capacity"],
+                     "service_level": round(l["explain"]["service_level"], 2)}
                   for l in s["lines"]]
     ui = [W.table(f"Dự kiến đặt {sup.name} (chỉ xem trước, chưa tạo đề xuất)", [
         W.col("name", "Hàng"), W.col("qty", "SL đặt", "num"), W.col("on_hand", "Tồn", "num"),

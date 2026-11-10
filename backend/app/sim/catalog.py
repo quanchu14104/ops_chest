@@ -18,6 +18,11 @@ class SupplierSpec:
     return_credit_pct: float = 0.0
     discount_pct: float = 0.0
     phone: str = ""
+    delivery_weekdays: list[int] | None = None  # None = giao moi ngay
+    closures: list[tuple] = field(default_factory=list)  # [(start, end, ly do)]
+
+    def is_closed(self, d) -> bool:
+        return any(a <= d <= b for a, b, _ in self.closures)
 
 
 @dataclass
@@ -36,6 +41,8 @@ class ProductSpec:
     is_traffic_driver: bool
     supplier_code: str
     substitutes: list[str] = field(default_factory=list)
+    max_stock_qty: int | None = None  # suc chua ke/tu
+    min_display_qty: int = 0  # ton trung bay toi thieu (hang ben)
 
 
 ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
@@ -60,6 +67,30 @@ SUPPLIERS = [
 ]
 for i, s in enumerate(SUPPLIERS):
     s.phone = f"0909 {100 + i:03d} {200 + i * 7:03d}"
+
+
+def _tet_closures() -> None:
+    """Dai ly nghi Tet: bep/lo banh nghi lau nhat, nuoc giai khat/thuc pham kho nghi ngan hon."""
+    from datetime import timedelta
+
+    from app.engines.calendar import TET_DATES
+
+    days = {"NCC01": (-1, 6), "NCC02": (-1, 6), "NCC04": (-2, 6), "NCC05": (-1, 4), "NCC06": (-1, 4),
+            "NCC07": (-2, 5), "NCC09": (-2, 6), "NCC10": (-1, 3)}
+    for s in SUPPLIERS:
+        if s.code in days:
+            a, b = days[s.code]
+            s.closures = [(tet + timedelta(days=a), tet + timedelta(days=b), f"Nghỉ Tết {tet.year}")
+                          for tet in TET_DATES.values()]
+
+
+_tet_closures()
+# Nuoc giai khat va hoa my pham chi giao vao mot so ngay trong tuan
+SUPPLIERS[4].delivery_weekdays = [1, 2, 4, 5]
+SUPPLIERS[8].delivery_weekdays = [0, 1, 2, 3, 4]
+# Suc chua tu dong (don vi) theo nhom, ton trung bay toi thieu cho hang ben
+CAPACITY = {"ice_cream": 36}
+MIN_DISPLAY = {"household": 2, "dry_goods": 2}
 
 GROUP_K = {
     "office_food": 12, "bakery": 6, "dairy": 15, "eggs": 10, "water": 25, "soft_drink": 20,
@@ -258,7 +289,8 @@ def build_catalog(seed: int = 42) -> tuple[list[SupplierSpec], list[ProductSpec]
                 sku=sku, name=name, category=category, group=group, freshness_class=klass,
                 shelf_life_days=shelf, unit_cost=cost, unit_price=price, pack_size=item_pack,
                 base_rate=float(rate), dispersion_k=round(k, 2), is_traffic_driver=traffic,
-                supplier_code=sup,
+                supplier_code=sup, max_stock_qty=CAPACITY.get(group),
+                min_display_qty=MIN_DISPLAY.get(group, 3) if klass == "LONG" else 0,
             ))
     by_cat: dict[str, list[ProductSpec]] = {}
     for p in products:

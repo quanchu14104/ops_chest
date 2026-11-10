@@ -7,7 +7,10 @@ Hai che do:
 
 Ca hai deu:
 - Mo phong FEFO ton hien co den ngay hang ve -> chi tinh phan ton CON HAN khi hang moi ve.
-- Bi chan tran boi luong ban duoc truoc khi lo moi het han (tran HSD).
+- Bi chan tran boi luong ban duoc truoc khi lo moi het han (tran HSD) va boi suc chua ke/tu.
+- Co SAN muc phuc vu theo vai tro mat hang (hang keo khach, nhom A, con lai): khach vao cua hang tien loi
+  vi tin la co hang, nen engine khong duoc chu dong de thieu hang chi vi lai thap.
+- Ngay hang ve va chu ky phu tinh theo lich giao va lich nghi cua NCC (vd nghi Tet).
 """
 from __future__ import annotations
 
@@ -51,6 +54,14 @@ class ReplenishmentInput:
     # Ngay dau tien con nhu cau phai tru vao ton: today+1 neu dat cuoi ngay (mac dinh),
     # = today neu dat buoi sang truoc gio ban (ung dung that). forecast.start nen trung ngay nay.
     first_demand_day: date | None = None
+    # San muc phuc vu (0 = khong co san). Xem service_floor().
+    min_service_level: float = 0.0
+    # Suc chua ke/tu: ton sau khi hang ve khong vuot qua (None = khong gioi han)
+    max_stock: float | None = None
+    # Ton trung bay toi thieu cua hang ben: ton an toan khong thap hon so nay (ke trong mot nua ban kem hon)
+    min_display: float = 0.0
+    # Ngay hang ve theo lich giao/lich nghi NCC. None = today + lead_time.
+    arrival_date: date | None = None
 
 
 @dataclass
@@ -68,6 +79,9 @@ class ReplenishmentResult:
     service_level: float
     shelf_life_cap: float
     capped_by_shelf_life: bool
+    capacity_cap: float | None = None
+    capped_by_capacity: bool = False
+    service_floor: float = 0.0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -109,6 +123,19 @@ def newsvendor_service_level(unit_cost: float, unit_price: float, salvage: float
     return min(0.98, max(0.3, under / (under + over)))
 
 
+SERVICE_FLOORS = {"traffic": 0.95, "A": 0.90, "other": 0.50}
+
+
+def service_floor(is_traffic_driver: bool, abc: str | None, floors: dict | None = None) -> float:
+    """San muc phuc vu theo vai tro: hang keo khach >= 95%, nhom A >= 90%, con lai >= 50%."""
+    f = floors or SERVICE_FLOORS
+    if is_traffic_driver:
+        return f["traffic"]
+    if abc == "A":
+        return f["A"]
+    return f["other"]
+
+
 def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     fc = inp.forecast
     base = inp.first_demand_day or inp.today + timedelta(days=1)
@@ -116,7 +143,7 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     def demand_at(d: date) -> float:
         return fc.at((d - fc.start).days)
 
-    arrival = inp.today + timedelta(days=max(inp.lead_time_days, 1))
+    arrival = inp.arrival_date or inp.today + timedelta(days=max(inp.lead_time_days, 1))
     R = max(inp.review_period_days, 1)
     L = max(inp.lead_time_days, 1)
     new_expiry = arrival + timedelta(days=inp.shelf_life_days - 1)
@@ -149,16 +176,19 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
 
     perishable = inp.shelf_life_days <= R + 7
     sigma_cov = fc.sigma_daily * math.sqrt(R if perishable else L + R)
+    floor = min(max(inp.min_service_level, 0.0), 0.99)
     if perishable:
-        sl = newsvendor_service_level(inp.unit_cost, inp.unit_price, inp.salvage_per_unit,
-                                      inp.stockout_penalty_per_unit)
+        sl = max(floor, newsvendor_service_level(inp.unit_cost, inp.unit_price, inp.salvage_per_unit,
+                                                 inp.stockout_penalty_per_unit))
         z = NormalDist().inv_cdf(sl)
         mode = "perishable_newsvendor"
     else:
-        z = inp.z
+        z = max(inp.z, NormalDist().inv_cdf(floor)) if floor > 0 else inp.z
         sl = NormalDist().cdf(z)
         mode = "order_up_to"
     safety = z * sigma_cov
+    if not perishable:
+        safety = max(safety, inp.min_display)
     raw = unmet + safety - leftover
 
     # 3) Tran HSD: luong lo moi co the ban duoc truoc new_expiry
@@ -170,6 +200,12 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     cap = max(0.0, demand_window - served_win) + z_cap * fc.sigma_daily * math.sqrt(window)
     capped = raw > cap
     qty_f = max(0.0, min(raw, cap))
+    cap_room = None
+    if inp.max_stock is not None:  # suc chua: ton luc hang ve + so dat <= suc chua
+        cap_room = max(0.0, inp.max_stock - usable_at_arrival)
+    capped_capacity = cap_room is not None and qty_f > cap_room
+    if capped_capacity:
+        qty_f = cap_room
 
     pack = max(1, inp.pack_size)
     if qty_f <= 0:
@@ -178,6 +214,8 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
         qty = int(round(qty_f / pack)) * pack  # lam tron gan nhat de tranh du thua hang tuoi
     else:
         qty = int(math.ceil(qty_f / pack - 1e-9)) * pack
+    if cap_room is not None and qty > cap_room:  # khong lam tron vuot suc chua
+        qty = int(math.floor(cap_room / pack + 1e-9)) * pack
 
     return ReplenishmentResult(
         qty=qty,
@@ -193,7 +231,36 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
         service_level=sl,
         shelf_life_cap=cap,
         capped_by_shelf_life=capped,
+        capacity_cap=cap_room,
+        capped_by_capacity=capped_capacity,
+        service_floor=floor,
     )
+
+
+def next_delivery(order_day: date, lead_time_days: int, delivery_weekdays: list[int] | None = None,
+                  closed=None) -> date:
+    """Ngay hang ve som nhat: sau lead time, roi vao ngay NCC giao hang va khong nam trong ky nghi."""
+    d = order_day + timedelta(days=max(lead_time_days, 1))
+    for _ in range(90):
+        if (not delivery_weekdays or d.weekday() in delivery_weekdays) and not (closed and closed(d)):
+            return d
+        d += timedelta(days=1)
+    return d
+
+
+def schedule(order_day: date, lead_time_days: int, order_weekdays: list[int], delivery_weekdays: list[int] | None = None,
+             closed=None) -> tuple[date, int]:
+    """(ngay hang ve cua don hom nay, so ngay can phu = tu luc hang ve den luc don ke tiep ve).
+
+    Don cuoi truoc ky nghi cua NCC tu lon len de phu ca ky nghi (tran HSD van chan)."""
+    arrival = next_delivery(order_day, lead_time_days, delivery_weekdays, closed)
+    nxt = order_day + timedelta(days=review_period(order_weekdays, order_day))
+    for _ in range(90):
+        if not (closed and closed(nxt)) and (not order_weekdays or nxt.weekday() in order_weekdays):
+            break
+        nxt += timedelta(days=1)
+    next_arrival = next_delivery(nxt, lead_time_days, delivery_weekdays, closed)
+    return arrival, max(1, (next_arrival - arrival).days)
 
 
 def review_period(order_weekdays: list[int], today: date) -> int:
