@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import Boolean, Date, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -7,6 +7,22 @@ from app.db import Base
 from app.models.catalog import Product
 
 MOVEMENT_TYPES = ("IN", "WASTE", "RETURN", "MARKDOWN", "ADJUST")
+# Ly do huy (WASTE) va dieu chinh (ADJUST). Tach ly do de biet tu mat hong va dat du la hai van de khac nhau.
+WASTE_REASONS = {
+    "EXPIRED": "Hết hạn",
+    "DAMAGED": "Vỡ, móp, rách bao bì",
+    "SPOILED": "Hỏng do bảo quản (tủ mát, nhiệt độ)",
+    "SUPPLIER_DEFECT": "Lỗi từ nhà cung cấp",
+    "OTHER": "Lý do khác",
+}
+ADJUST_REASONS = {
+    "COUNT": "Kiểm kê theo SKU",
+    "DATE_CHECK": "Kiểm date theo lô",
+    "SHRINK": "Hao hụt khi rút kệ/ghi hủy",
+}
+# ACTIVE: dang ban. PULLED: da go khoi ke (qua ngay ban cuoi), cho SM duyet ghi huy, khong con la ton ban duoc.
+# Cac trang thai dong: SOLD / WASTED / RETURNED / ADJUSTED.
+LOT_STATUSES = ("ACTIVE", "PULLED", "SOLD", "WASTED", "RETURNED", "ADJUSTED")
 
 
 class Lot(Base):
@@ -25,8 +41,16 @@ class Lot(Base):
     markdown_pct: Mapped[float] = mapped_column(Float, default=0.0)
     po_line_id: Mapped[int | None] = mapped_column(ForeignKey("po_lines.id"))
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    # So nhan vien thuc go khoi ke (co the khac so tren so) va ngay go
+    pulled_qty: Mapped[int | None] = mapped_column(Integer)
+    pulled_date: Mapped[date | None] = mapped_column(Date)
 
     product: Mapped[Product] = relationship()
+
+    @property
+    def sell_by(self) -> date:
+        """Ngay ban cuoi = HSD - so ngay rut ke truoc han cua mat hang."""
+        return self.expiry_date - timedelta(days=self.product.pull_days_before_expiry or 0)
 
 
 class StockMovement(Base):
@@ -49,6 +73,8 @@ class StockMovement(Base):
     value: Mapped[int] = mapped_column(Integer)
     ref: Mapped[str | None] = mapped_column(String(50))
     note: Mapped[str | None] = mapped_column(Text)
+    # WASTE: WASTE_REASONS; ADJUST: ADJUST_REASONS
+    reason: Mapped[str | None] = mapped_column(String(20))
 
 
 class DailySales(Base):

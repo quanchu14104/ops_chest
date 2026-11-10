@@ -14,7 +14,7 @@ from app.db import get_db
 from app.models import DemandHypothesis, OrderAdjustment, Product, Proposal, User
 from app.proposals import builders
 from app.proposals.views import to_dict
-from app.services import hypotheses, learning, stockcount
+from app.services import datecheck, hypotheses, learning, shelf, stockcount
 
 router = APIRouter(prefix="/api")
 
@@ -102,6 +102,88 @@ def submit_count(body: CountIn, db: Session = Depends(get_db), user: User = Depe
         raise HTTPException(422, str(e)) from e
     db.commit()
     return {"counted": n, "proposal": to_dict(p) if p else None}
+
+
+@router.get("/date-check/sheet")
+def date_check_sheet(freshness: str | None = None, category: str | None = None, db: Session = Depends(get_db),
+                     user: User = Depends(current_user)):
+    """Phieu kiem date: SKU co lo sap toi ngay ban cuoi va cac HSD tren so (khong kem so luong)."""
+    return {"due_today": datecheck.due_classes(), "lines": datecheck.sheet(db, freshness, category)}
+
+
+class DateLine(BaseModel):
+    sku: str
+    expiry_date: str
+    counted_qty: int
+
+
+class DateCheckIn(BaseModel):
+    lines: list[DateLine]
+    note: str | None = None
+
+
+@router.post("/date-checks")
+def submit_date_check(body: DateCheckIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Nhan vien gui so dem theo HSD. Khong doi ton kho: lech thi tao de xuat cap lo cho Store Manager duyet."""
+    try:
+        p, n = builders.date_check(db, [l.model_dump() for l in body.lines], f"user:{user.username}", body.note)
+    except (datecheck.DateCheckError, ValueError) as e:
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
+    db.commit()
+    return {"counted": n, "proposal": to_dict(p) if p else None}
+
+
+@router.get("/shelf/pull-list")
+def get_pull_list(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Danh sach rut ke cuoi ngay (lo het ngay ban). Khong kem so tren so."""
+    return {"closing_hour": settings.closing_hour, "lots": shelf.pull_list(db)}
+
+
+class PullLine(BaseModel):
+    lot_id: int
+    pulled_qty: int
+
+
+class PullIn(BaseModel):
+    lines: list[PullLine]
+
+
+@router.post("/shelf/pull")
+def confirm_pull(body: PullIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Nhan vien xac nhan so thuc go khoi ke. Bat buoc, khong can duyet (co audit). Lo chuyen PULLED: khong con
+    ban, khong tinh vao don dat hang. But toan ghi huy van la de xuat cho Store Manager duyet."""
+    try:
+        out = shelf.confirm_pull(db, [l.model_dump() for l in body.lines], user.username)
+    except shelf.PullError as e:
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
+    p, _ = builders.dispose_expired(db, "job")
+    db.commit()
+    return {**out, "proposal": to_dict(p) if p else None}
+
+
+class WriteOffLine(BaseModel):
+    lot_id: int
+    qty: int
+    reason: str
+
+
+class WriteOffIn(BaseModel):
+    lines: list[WriteOffLine]
+    note: str | None = None
+
+
+@router.post("/write-offs")
+def write_off(body: WriteOffIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Bao huy hang vo/hong/loi NCC kem ly do. Chi tao de xuat; SM duyet moi tru ton."""
+    try:
+        p = builders.write_off(db, [l.model_dump() for l in body.lines], f"user:{user.username}", body.note)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
+    db.commit()
+    return to_dict(p)
 
 
 class VisionIn(BaseModel):

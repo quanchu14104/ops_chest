@@ -13,7 +13,7 @@ type Learning = {
   active: { id: number; category: string; factor: number; reason: string }[];
 };
 type Advance = {
-  from: string; to: string; proposals_expired_unanswered: number; expired_on_shelf_value: number;
+  from: string; to: string; proposals_expired_unanswered: number; pulled_awaiting_writeoff_value: number;
   totals: { revenue: number; sold: number; lost: number; received_pos: number };
   new_proposals: { id: number; title: string; created: boolean }[];
   hypotheses_evaluated: Hypothesis[];
@@ -131,7 +131,7 @@ export function FastForward() {
         <div className="alert ok" style={{ marginTop: 10 }}>
           Từ {dateVi(r.from)} đến {dateVi(r.to)}: doanh thu {money(r.totals.revenue)}, bán {num(r.totals.sold)} đơn vị, hụt {num(r.totals.lost)} đơn vị do hết hàng, nhận {r.totals.received_pos} đơn.{" "}
           {r.proposals_expired_unanswered > 0 && `${r.proposals_expired_unanswered} đề xuất hết hiệu lực vì không ai duyệt. `}
-          {r.expired_on_shelf_value > 0 && `Hàng quá hạn còn trên kệ: ${money(r.expired_on_shelf_value)}. `}
+          {r.pulled_awaiting_writeoff_value > 0 && `Hàng đã rút kệ chờ ghi hủy: ${money(r.pulled_awaiting_writeoff_value)}. `}
           {r.new_proposals.filter((p) => p.created).length} đề xuất mới chờ duyệt.
           {r.hypotheses_evaluated.map((h) => <div key={h.id}>Giả thuyết "{h.reason}": <b>{h.verdict_label}</b> (thực tế ×{num(h.ratio, 2)} so với dự báo nền, dự đoán ×{num(h.factor, 2)}).</div>)}
         </div>

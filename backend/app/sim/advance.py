@@ -1,8 +1,8 @@
 """Tua nhanh ngay cho demo: mo phong hang ve + ban hang len DB that de thay hau qua cua quyet dinh.
 
 Cac buoc thuoc ve Store Manager van KHONG tu xay ra: khong duyet de xuat, khong dat hang, khong ghi huy.
-Bo qua duyet thi ke se trong dan, hang qua han nam tren ke: do chinh la dieu can cho thay. Viec "nhan vien
-nhan hang" duoc gia lap voi actor `sim` va HSD chuan.
+Bo qua duyet thi ke se trong dan va lo da rut ke nam cho ghi huy: do chinh la dieu can cho thay. Viec cua
+nhan vien (nhan hang voi HSD chuan, rut ke cuoi ngay dung so tren so) duoc gia lap voi actor `sim`.
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from app.proposals import service
 from app.services import hypotheses
 from app.services.inventory import active_lots
 from app.services.receiving import default_expiry, receive_po
+from app.services.shelf import confirm_pull, pull_list
 from app.sim.catalog import build_catalog
 from app.sim.demand import _poisson, _rng, expected_demand, sample_demand
 from app.sim.world import REFERENCE_WORLD
@@ -72,11 +73,11 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         need = sample_demand(SEED, spec, d)
         if realize_hypotheses:
             need = int(round(need * _true_multiplier(p, active, d)))
-        lots = sorted((l for l in lots_by_pid.get(p.id, []) if l.expiry_date >= d), key=lambda l: (l.expiry_date, l.id))
+        lots = sorted((l for l in lots_by_pid.get(p.id, []) if l.sell_by >= d), key=lambda l: (l.expiry_date, l.id))
         a = {"sold": 0, "revenue": 0.0, "cogs": 0.0, "md_loss": 0.0, "discounted": 0, "weighted": 0.0, "evening": 0}
 
         def all_day_pct(l: Lot) -> float:
-            return l.markdown_pct if l.expiry_date > d else 0.0
+            return l.markdown_pct if l.sell_by > d else 0.0
 
         for lot in lots:
             take = min(lot.qty_remaining, need)
@@ -102,7 +103,7 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
                     a["discounted"] += take
                     a["weighted"] += take * lot.markdown_pct
                     extra -= take
-        evening = [l for l in lots if l.expiry_date == d and l.markdown_pct > 0 and l.qty_remaining > 0]
+        evening = [l for l in lots if l.sell_by == d and l.markdown_pct > 0 and l.qty_remaining > 0]
         if evening:
             top = max(l.markdown_pct for l in evening)
             rebate = (min(REFERENCE_WORLD.evening_share * (a["sold"] - a["discounted"]), sum(l.qty_remaining for l in evening))
@@ -130,6 +131,13 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         day["lost"] += lost
         day["stockout_skus"] += lost > 0
     day["revenue"] = int(round(day["revenue"]))
+    # Cuoi ngay nhan vien rut ke cac lo het ngay ban (gia lap: tim thay dung so tren so)
+    due = pull_list(db, d)
+    if due:
+        by_id = {l.id: l for ls in lots_by_pid.values() for l in ls}
+        confirm_pull(db, [{"lot_id": x["lot_id"], "pulled_qty": by_id[x["lot_id"]].qty_remaining if x["lot_id"] in by_id
+                           else db.get(Lot, x["lot_id"]).qty_remaining} for x in due], "sim")
+    day["pulled_lots"] = len(due)
     db.commit()
     return day
 
@@ -156,13 +164,13 @@ def advance(db: Session, days: int, actor: str, realize_hypotheses: bool = True)
         db.commit()
     morning = run_morning(db)
     new_today = clock.today()
-    stale = db.scalars(select(Lot).where(Lot.status == "ACTIVE", Lot.qty_remaining > 0, Lot.expiry_date < new_today)).all()
+    stale = db.scalars(select(Lot).where(Lot.status == "PULLED")).all()
     out = {
         "from": start.isoformat(), "to": new_today.isoformat(), "days": log, "proposals_expired_unanswered": expired,
         "hypotheses_evaluated": evaluated + morning["hypotheses_evaluated"], "new_proposals": morning["proposals"],
         "totals": {"revenue": sum(x["revenue"] for x in log), "sold": sum(x["sold"] for x in log),
                    "lost": sum(x["lost"] for x in log), "received_pos": sum(x["received_pos"] for x in log)},
-        "expired_on_shelf_value": sum(l.qty_remaining * l.unit_cost for l in stale),
+        "pulled_awaiting_writeoff_value": sum(l.qty_remaining * l.unit_cost for l in stale),
     }
     audit.log(db, actor, "SIM_ADVANCED", "clock", new_today.isoformat(),
               {"from": start.isoformat(), "days": days, "realize_hypotheses": realize_hypotheses})

@@ -60,13 +60,15 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
     adjustments = active_adjustments(db)
     lines = []
     for p in products:
-        fc = forecast_for(db, p, horizon=L + R + min(p.shelf_life_days, 30) + 2, start=t)
+        pull = p.pull_days_before_expiry or 0
+        life = max(1, p.shelf_life_days - pull)  # so ngay ban duoc cua lo moi
+        fc = forecast_for(db, p, horizon=L + R + min(life, 30) + 2, start=t)
         cell = classes[p.sku].cell if p.sku in classes else "BY"
         res = compute_order(ReplenishmentInput(
             today=t, first_demand_day=t, lead_time_days=L, review_period_days=R,
-            shelf_life_days=p.shelf_life_days, forecast=fc,
-            lots=[LotState(l.qty_remaining, l.expiry_date) for l in lots.get(p.id, []) if l.expiry_date >= t],
-            incoming=[Incoming(q, po.expected_date, po.expected_date + timedelta(days=p.shelf_life_days - 1))
+            shelf_life_days=life, forecast=fc,
+            lots=[LotState(l.qty_remaining, l.sell_by) for l in lots.get(p.id, []) if l.sell_by >= t],
+            incoming=[Incoming(q, po.expected_date, po.expected_date + timedelta(days=life - 1))
                       for q, po in incoming.get(p.id, [])],
             pack_size=p.pack_size, z=Z_BY_CLASS.get(cell, 1.28), unit_cost=p.unit_cost, unit_price=p.unit_price,
             salvage_per_unit=salvage_value(p, agr), stockout_penalty_per_unit=stockout_penalty(p),

@@ -61,11 +61,12 @@ def inventory_summary(db: Session) -> dict:
         if units == 0 and p.status == "ACTIVE":
             c["out_of_stock"] += 1
         for l in lots.get(p.id, []):
-            dl = (l.expiry_date - t).days
+            dl = (l.sell_by - t).days
             if dl < 0:
                 expired_value += l.qty_remaining * l.unit_cost
             elif dl <= 3:
                 expiring_3d_value += l.qty_remaining * l.unit_cost
+    pulled = db.scalar(select(func.coalesce(func.sum(Lot.qty_remaining * Lot.unit_cost), 0)).where(Lot.status == "PULLED"))
     pending = db.scalar(select(func.count()).select_from(Proposal).where(Proposal.status == "PENDING"))
     incoming = db.scalar(select(func.count()).select_from(PurchaseOrder).where(PurchaseOrder.status == "SENT"))
     return {
@@ -77,6 +78,7 @@ def inventory_summary(db: Session) -> dict:
         "out_of_stock_skus": sum(c["out_of_stock"] for c in by_cat.values()),
         "value_expiring_within_3_days": expiring_3d_value,
         "value_already_expired_on_shelf": expired_value,
+        "value_pulled_awaiting_writeoff": int(pulled or 0),
         "pending_proposals": pending,
         "purchase_orders_awaiting_delivery": incoming,
         "by_category": [{"category": k, **v} for k, v in sorted(by_cat.items(), key=lambda kv: -kv[1]["value"])],
@@ -84,29 +86,30 @@ def inventory_summary(db: Session) -> dict:
 
 
 def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_options: bool = True) -> dict:
-    """Lo con han <= `days` ngay (va lo da qua han con tren ke), kem du kien huy va phuong an xu ly."""
+    """Lo con <= `days` ngay toi NGAY BAN CUOI (va lo da qua ngay ban cuoi con tren ke), kem du kien huy va
+    phuong an xu ly. Ngay ban cuoi = HSD - so ngay rut ke truoc han cua mat hang."""
     t = today()
     q = (select(Lot).options(joinedload(Lot.product).joinedload(Product.supplier).joinedload(Supplier.agreements))
-         .where(Lot.status == "ACTIVE", Lot.qty_remaining > 0, Lot.expiry_date <= t + timedelta(days=days)))
+         .where(Lot.status == "ACTIVE", Lot.qty_remaining > 0, Lot.expiry_date <= t + timedelta(days=days + 60)))
     if category:
         q = q.join(Product).where(Product.category.ilike(f"%{category}%"))
-    near = db.scalars(q).unique().all()
+    near = [l for l in db.scalars(q).unique().all() if l.sell_by <= t + timedelta(days=days)]
     pids = sorted({l.product_id for l in near})
     all_lots = active_lots(db, pids)
     items = []
     for pid in pids:
         p = all_lots[pid][0].product if all_lots[pid] else next(l.product for l in near if l.product_id == pid)
         lots = all_lots[pid]
-        max_exp = max(l.expiry_date for l in lots)
+        max_exp = max(l.sell_by for l in lots)
         horizon = max(1, min(120, (max_exp - t).days + 1))
         fc = forecast_for(db, p, horizon=horizon, start=t)
         risks = {r.lot_id: r for r in project_lots(
-            [LotInput(l.id, l.qty_remaining, l.expiry_date) for l in lots if l.expiry_date >= t], fc.daily, t)}
+            [LotInput(l.id, l.qty_remaining, l.sell_by) for l in lots if l.sell_by >= t], fc.daily, t)}
         agr = p.supplier.agreement_on(t)
         for l in lots:
-            if l.expiry_date > t + timedelta(days=days):
+            if l.sell_by > t + timedelta(days=days):
                 continue
-            dl = (l.expiry_date - t).days
+            dl = (l.sell_by - t).days
             if dl < 0:
                 item = dict(expected_sold=0, expected_waste=l.qty_remaining, status="EXPIRED")
                 options = []
@@ -122,12 +125,12 @@ def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_
                         accepts_return=bool(agr and agr.accepts_near_expiry_return),
                         return_min_days_before_expiry=agr.return_min_days_before_expiry if agr else 0,
                         return_credit_pct=agr.return_credit_pct if agr else 0.0, daily_demand=fc.daily[0],
-                        current_markdown=l.markdown_pct,
+                        current_markdown=l.markdown_pct, days_to_expiry=(l.expiry_date - t).days,
                     ))][:3]
             items.append({
                 "lot_id": l.id, "product_id": p.id, "sku": p.sku, "name": p.name, "category": p.category,
                 "freshness_class": p.freshness_class, "qty": l.qty_remaining, "expiry_date": l.expiry_date.isoformat(),
-                "days_left": dl, "bucket": "Đã quá hạn" if dl < 0 else bucket(dl), "unit_cost": l.unit_cost,
+                "sell_by": l.sell_by.isoformat(), "days_left": dl, "bucket": "Quá ngày bán cuối" if dl < 0 else bucket(dl), "unit_cost": l.unit_cost,
                 "unit_price": p.unit_price, "markdown_pct": l.markdown_pct,
                 "value_at_risk": int(round(item["expected_waste"] * l.unit_cost)),
                 "supplier": p.supplier.name, **item, "options": options,
@@ -162,8 +165,10 @@ def product_detail(db: Session, sku: str) -> dict | None:
         "supplier": {"code": p.supplier.code, "name": p.supplier.name, "lead_time_days": p.supplier.lead_time_days,
                      "order_weekdays": p.supplier.order_weekdays},
         "on_hand": sum(l.qty_remaining for l in lots),
+        "pull_days_before_expiry": p.pull_days_before_expiry,
         "lots": [{"lot_id": l.id, "qty": l.qty_remaining, "received": l.received_date.isoformat(),
-                  "expiry_date": l.expiry_date.isoformat(), "days_left": (l.expiry_date - t).days,
+                  "expiry_date": l.expiry_date.isoformat(), "sell_by": l.sell_by.isoformat(),
+                  "days_left": (l.sell_by - t).days,
                   "markdown_pct": l.markdown_pct} for l in lots],
         "incoming": [{"po": po.code, "qty": q, "expected_date": po.expected_date.isoformat()} for q, po in incoming],
         "sales_last_28d": {"total": sum(sales28), "avg_per_day": round(sum(sales28) / 28, 2),

@@ -46,8 +46,9 @@ Hỏi lần lượt:
 ## 4. Nhận hàng và HSD (1 phút)
 
 - Nói trong chat: *"Nhận đơn hàng đang chờ giao"*. Agent **chỉ mở form** nhận hàng trong chat (không tự nhận, và không bao giờ nói "đã nhận"). Điền số lượng thực nhận và HSD từng dòng rồi bấm xác nhận.
-- Hoặc vào **Đặt & nhận hàng**, chọn một đơn "Chờ giao" và bấm **Nhận hàng** (cùng một endpoint).
-- Ô HSD là bắt buộc. Để trống sẽ báo lỗi, nhập ngày đã qua cũng bị từ chối.
+- Hoặc vào **Đặt & nhận hàng**, chọn một đơn "Chờ giao" và bấm **Nhận hàng** (cùng một endpoint). Form đầy đủ ở trang này: bấm **+ HSD** để tách một dòng thành hai lô có hai HSD, nhập số **từ chối** kèm lý do, nhập **giá hóa đơn** nếu khác đơn.
+- Ô HSD là bắt buộc. Để trống sẽ báo lỗi, nhập ngày đã qua cũng bị từ chối. Nhập HSD còn ít hơn 2/3 vòng đời bằng tài khoản nhân viên: bị chặn; chỉ Store Manager tick xác nhận mới nhận được.
+- Nhận thiếu so với đơn: kết quả báo giao thiếu và bản tin hôm sau có dòng "Đơn … giao thiếu".
 - Đơn quá ngày giao có nhãn "trễ N ngày" và hiện trong bản tin. Store Manager bấm **Huỷ đơn** (bắt buộc ghi lý do) khi NCC không giao nữa; đơn chưa huỷ vẫn được tính là hàng đang về nên không bị đặt trùng.
 - Giải thích: đây là dữ liệu POS không có, nền tảng cho FEFO và cảnh báo cận date. Nguyên tắc chung: LLM không có quyền ghi, mọi thao tác ghi là một cú bấm của con người.
 
@@ -55,9 +56,11 @@ Hỏi lần lượt:
 
 - Nói trong chat: *"Thứ Bảy này có trận bóng, nhóm Bia bán gấp rưỡi"* (nêu rõ ngày). Thẻ đề xuất hiện dự báo trước và sau. Bấm **Duyệt**.
 - Vào **Số liệu tổng quan → Tua nhanh → Tua 7 ngày**. Giả thuyết được chấm đúng/sai và hiện trong bản tin. Bỏ chọn "Giả thuyết đang áp dụng xảy ra đúng" để xem trường hợp sai.
-- Nhấn mạnh: tua nhanh **không tự duyệt**. Nếu không ai duyệt đơn hàng, kệ trống dần và hàng quá hạn nằm trên kệ.
+- Nhấn mạnh: tua nhanh **không tự duyệt**. Nếu không ai duyệt đơn hàng, kệ trống dần và các lô đã rút kệ nằm chờ ghi hủy.
 - Bấm **Nạp lịch sử sửa mẫu**: thẻ "Học từ cách anh/chị sửa đơn" hiện thói quen và nút đề xuất hệ số.
-- Vào **Kiểm kê**: phiếu không có số trên sổ. Nhập số đếm lệch để tạo đề xuất điều chỉnh.
+- Vào **Kiểm kê → Kiểm date theo HSD**: phiếu chỉ có các HSD trên sổ, không có số lượng. Nhập số theo từng HSD, bấm **Thêm HSD** cho một ngày sổ chưa có: đề xuất điều chỉnh cấp lô hiện ra, lô đó xuất hiện trong báo cáo cận date sau khi duyệt. Tab **Kiểm kê theo SKU** giữ cách đếm cũ.
+- Vào **Hàng cận date**: thẻ **Rút kệ cuối ngày** liệt kê lô hết ngày bán. Ghi số thực gỡ rồi xác nhận: không cần duyệt, lô rời khỏi tồn ngay; Store Manager chỉ duyệt đề xuất ghi hủy (phần chênh với sổ ghi hao hụt). Chọn một lô và **Báo hủy** với lý do "Vỡ, móp" để thấy đề xuất hủy có lý do.
+- Tua nhanh giả lập cả việc rút kệ của nhân viên, nên sau khi tua sẽ có đề xuất ghi hủy chờ duyệt.
 - Trong form nhận hàng, bấm **Chụp HSD** để đọc tem bằng ảnh.
 - Ngày đã tua được lưu lại. Muốn quay về, seed lại DB rồi khởi động lại backend.
 

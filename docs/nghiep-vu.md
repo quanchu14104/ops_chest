@@ -76,9 +76,38 @@ Dự báo từ lịch sử không biết tuần này có trận bóng. Cách là
 
 Chỉ gợi ý khi có ít nhất 5 lần sửa trên 3 đơn đã duyệt, trung vị lệch từ 15% và 70% số lần cùng chiều. Hệ số do code tính (làm tròn 0,05, trong khoảng 0,5–1,5), agent không chọn được. Áp dụng phải qua duyệt, tắt được bất cứ lúc nào. Hệ số tăng vẫn không vượt trần HSD.
 
-### Kiểm kê (`services/stockcount.py`)
+### Kiểm kê theo SKU (`services/stockcount.py`)
 
-Đếm **mù**: phiếu không hiện số trên sổ, vì người đếm thấy số sẽ có xu hướng đếm cho khớp. Nhân viên gửi số đếm; chênh lệch thành đề xuất cho Store Manager duyệt. Thiếu thì trừ lô gần hết hạn trước (không biết mất ở lô nào), dư thì cộng vào lô mới nhất. Nếu tồn đã thay đổi giữa lúc đếm và lúc duyệt, đề xuất thất bại và phải đếm lại, thay vì ghi đè bằng số cũ.
+Đếm **mù**: phiếu không hiện số trên sổ, vì người đếm thấy số sẽ có xu hướng đếm cho khớp. Nhân viên gửi số đếm; chênh lệch thành đề xuất cho Store Manager duyệt. Thiếu thì trừ lô gần hết hạn trước (không biết mất ở lô nào), dư thì cộng vào lô mới nhất. Nếu tồn đã thay đổi giữa lúc đếm và lúc duyệt, đề xuất thất bại và phải đếm lại, thay vì ghi đè bằng số cũ. Cách đếm này chỉ còn dùng cho hàng dài ngày còn xa hạn.
+
+### Kiểm date theo lô (`services/datecheck.py`)
+
+POS chỉ biết SKU, và khách hay với tay lấy lô mới ở phía trong kệ. Sổ ghi lô cũ đã bán hết trong khi lô cũ vẫn nằm trên kệ, nên lô sắp hết hạn không hiện trong báo cáo cận date và quá hạn ngay trên kệ mà sổ không biết.
+
+- **Phiếu kiểm date** liệt kê các mặt hàng có lô sắp tới ngày bán cuối (hàng tươi ≤ 2 ngày, ngắn ngày ≤ 7, dài ngày ≤ 30), kèm các HSD sổ đang có nhưng **không kèm số lượng** (vẫn đếm mù). Nhân viên đếm theo từng HSD in trên bao bì và thêm được HSD mà sổ chưa có.
+- Lịch: hàng tươi mỗi ngày, hàng ngắn ngày thứ Hai, hàng dài ngày ngày 1 hằng tháng; bản tin nhắc khi đến lịch.
+- Mặt hàng đã nhập số thì HSD trên sổ mà phiếu để trống được tính là 0: người đếm đã xem hết kệ của mặt hàng đó.
+- Chênh lệch thành đề xuất `STOCK_ADJUST` **cấp lô**. Duyệt thì sổ ghi đúng số của từng HSD; lô đã đóng trên sổ được mở lại, HSD chưa từng có thì tạo lô mới. Chuyển số giữa các lô cùng mặt hàng trong một phiếu không bị tính là hao hụt.
+
+### Ngày bán cuối và rút kệ (`services/shelf.py`)
+
+- Mỗi mặt hàng có `pull_days_before_expiry` (demo: tươi 0, ngắn ngày 1, dài ngày 7). **Ngày bán cuối** = HSD − số ngày này. Báo cáo cận date, đề xuất giảm giá, số lượng đặt (tồn còn bán được, trần HSD) đều tính theo ngày bán cuối; điều khoản trả NCC vẫn tính theo HSD in trên bao bì.
+- Bán hàng quá hạn là vi phạm an toàn thực phẩm, nên **gỡ kệ là việc bắt buộc của ca làm, không chờ duyệt**. Cửa hàng có giờ đóng cửa (`CLOSING_HOUR`, mặc định 22h): sau giờ này có **danh sách rút kệ** cho các lô hết ngày bán. Nhân viên ghi **số thực gỡ** (phiếu không hiện số trên sổ). Xác nhận xong lô chuyển `PULLED`: không còn là tồn bán được, không tính vào đơn đặt hàng, có ghi nhật ký.
+- Store Manager duyệt **bút toán ghi hủy** (`DISPOSE`) theo số thực gỡ. Phần chênh với sổ ghi `ADJUST` lý do hao hụt, lô đóng hẳn. Lô quá ngày bán cuối mà chưa ai xác nhận gỡ vẫn được đề xuất ghi hủy (theo số sổ, có cảnh báo); SM sửa số nhỏ hơn thì phần còn lại cũng ghi hao hụt, không còn nằm trên sổ để bị đề xuất lại mãi.
+
+### Hủy có lý do
+
+Mọi bút toán hủy có `reason`: `EXPIRED` (hết hạn), `DAMAGED` (vỡ, móp), `SPOILED` (hỏng do bảo quản, tủ mát), `SUPPLIER_DEFECT` (lỗi NCC), `OTHER`. Nhân viên báo hủy hàng vỡ, hỏng theo lô kèm lý do (trang Hàng cận date hoặc chat); đây là đề xuất, SM duyệt mới trừ tồn. Báo cáo chi phí tách hủy theo lý do: tủ mát hỏng và đặt dư là hai vấn đề khác nhau.
+
+### Nhận hàng (`services/receiving.py`)
+
+- Một dòng PO nhận được nhiều cặp (số lượng, HSD); mỗi cặp thành một lô.
+- **Từ chối tại cửa** (`rejected_qty` + lý do: móp, date ngắn, sai hàng). Sau khi ký nhận, rủi ro thuộc về cửa hàng.
+- **Chuẩn nhận hàng**: lô phải còn ≥ 2/3 vòng đời (`RECEIVE_MIN_REMAINING_LIFE_PCT`). Dưới chuẩn thì mặc định bị chặn; chỉ Store Manager nhận được (tick xác nhận, có ghi nhật ký).
+- **Giao thiếu** được lưu theo dòng (`short_qty`), hiện trong bản tin. Không tạo đơn bù; lần đặt sau engine tự tính lại.
+- **Giao dư** quá 10% hoặc quá một quy cách (lấy mức lớn hơn) cần Store Manager xác nhận.
+- **Giá hóa đơn** khác PO: nhập `actual_unit_cost`, lô dùng giá thực và hệ thống cảnh báo chênh lệch.
+- Chưa hỗ trợ nhận hàng ngoài đơn.
 
 ### Đọc ảnh tem HSD (`agent/vision.py`)
 
@@ -93,7 +122,8 @@ Model chỉ đọc chữ in trên bao bì; việc hiểu ngày (ngày trước t
 | Lợi nhuận gộp sau hủy | doanh thu − giá vốn bán − giá vốn hủy − giá vốn hàng trả + tiền NCC hoàn |
 | Số ngày tồn | tồn kho trung bình (giá vốn) / giá vốn bán trung bình mỗi ngày |
 | Mức tin cậy của agent | tỷ lệ đề xuất được duyệt, tỷ lệ bị sửa, mức sửa số lượng trung bình |
-| Hao hụt kiểm kê | tổng giá trị các điều chỉnh âm; báo cáo riêng, chưa trừ vào lợi nhuận gộp |
+| Hao hụt | điều chỉnh âm ròng theo từng (mặt hàng, phiếu), gồm kiểm kê, kiểm date và chênh lệch khi rút kệ; chuyển số giữa các lô cùng phiếu không tính |
+| Hủy theo lý do | giá vốn hủy tách theo `EXPIRED` / `DAMAGED` / `SPOILED` / `SUPPLIER_DEFECT` / `OTHER` |
 
 Lưu ý: dữ liệu giả lập biết chính xác "nhu cầu hụt". Cửa hàng thật không biết số này, nên phải ước tính từ dự báo trong những ngày hết hàng.
 

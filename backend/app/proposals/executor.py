@@ -124,23 +124,50 @@ def _return(db: Session, p: Proposal, user: User) -> dict:
 
 
 def _dispose(db: Session, p: Proposal, user: User) -> dict:
+    """Dong `close_lot` (het han): ghi huy so thuc go, phan lech voi so ghi hao hut, lo dong han.
+    Dong khac (vo, hong...): chi tru dung so luong bao huy, lo con lai van ban tiep."""
     t = today()
-    total, n = 0, 0
+    ref = f"proposal:{p.id}"
+    total, shrink, n = 0, 0, 0
+    by_reason: dict[str, int] = {}
     for it in p.payload["items"]:
         q = int(it["qty"])
-        if q <= 0:
-            continue
-        lot = _active_lot(db, it["lot_id"])
-        q = min(q, lot.qty_remaining)
-        lot.qty_remaining -= q
-        if lot.qty_remaining == 0:
+        reason = it.get("reason") or "EXPIRED"
+        if it.get("close_lot"):
+            lot = db.get(Lot, it["lot_id"])
+            if not lot or lot.status not in ("ACTIVE", "PULLED"):
+                raise ExecutionError(f"Lô {it['lot_id']} đã được xử lý trước đó.")
+            if q < 0:
+                raise ExecutionError("Số lượng hủy không được âm.")
+            book = lot.qty_remaining
+            if q != book:  # chenh lech giua so tren so va so thuc te: hao hut (hoac du so)
+                v = (q - book) * lot.unit_cost
+                db.add(StockMovement(product_id=lot.product_id, lot_id=lot.id, date=t, type="ADJUST", qty=q - book,
+                                     unit_cost=lot.unit_cost, value=v, ref=ref, reason="SHRINK",
+                                     note="Chênh lệch giữa sổ và số thực gỡ khỏi kệ"))
+                shrink += v
+            lot.qty_remaining = 0
             lot.status = "WASTED"
-        v = q * lot.unit_cost
-        total += v
+        else:
+            if q <= 0:
+                continue
+            lot = _active_lot(db, it["lot_id"])
+            if q > lot.qty_remaining:
+                raise ExecutionError(f"Lô {lot.id} chỉ còn {lot.qty_remaining}, không hủy được {q}.")
+            lot.qty_remaining -= q
+            if lot.qty_remaining == 0:
+                lot.status = "WASTED"
+        if q > 0:
+            v = q * lot.unit_cost
+            total += v
+            by_reason[reason] = by_reason.get(reason, 0) + v
+            db.add(StockMovement(product_id=lot.product_id, lot_id=lot.id, date=t, type="WASTE", qty=q,
+                                 unit_cost=lot.unit_cost, value=v, ref=ref, reason=reason,
+                                 note=it.get("reason_label") or "Hủy hàng quá hạn"))
         n += 1
-        db.add(StockMovement(product_id=lot.product_id, lot_id=lot.id, date=t, type="WASTE", qty=q,
-                             unit_cost=lot.unit_cost, value=v, ref=f"proposal:{p.id}", note="Hủy hàng quá hạn"))
-    return {"lots_disposed": n, "waste_cost": total}
+    if not n:
+        raise ExecutionError("Không còn dòng hủy nào có số lượng > 0.")
+    return {"lots_disposed": n, "waste_cost": total, "shrink_value": -shrink, "by_reason": by_reason}
 
 
 def _delist(db: Session, p: Proposal, user: User) -> dict:
@@ -180,8 +207,55 @@ def _order_adjust(db: Session, p: Proposal, user: User) -> dict:
     return {"adjustment_id": row.id, "note": f"Số lượng đề xuất nhóm {pl['category']} sẽ nhân ×{pl['factor']:g}. Có thể tắt ở trang Tổng quan."}
 
 
+def _lot_adjust(db: Session, p: Proposal) -> dict:
+    """Kiem date: sua so theo tung HSD. Lo co HSD do da dong (vd ban het tren so) thi mo lai; chua tung co
+    thi tao lo moi. So tren so cua HSD da doi tu luc dem thi that bai va phai dem lai."""
+    t = today()
+    ref = f"proposal:{p.id}"
+    total = 0
+    for it in p.payload["items"]:
+        exp = date.fromisoformat(it["expiry_date"])
+        lots = list(db.scalars(select(Lot).where(Lot.product_id == it["product_id"], Lot.expiry_date == exp,
+                                                 Lot.status == "ACTIVE", Lot.qty_remaining > 0).order_by(Lot.id)))
+        if sum(l.qty_remaining for l in lots) != it["system_qty"]:
+            raise ExecutionError(f"Tồn lô HSD {exp:%d/%m/%Y} của {it['sku']} đã thay đổi sau khi đếm, hãy đếm lại.")
+        diff = int(it["diff"])
+        if diff > 0:
+            lot = lots[-1] if lots else db.scalar(
+                select(Lot).where(Lot.product_id == it["product_id"], Lot.expiry_date == exp,
+                                  Lot.status.in_(["ACTIVE", "SOLD", "ADJUSTED"])).order_by(Lot.id.desc()))
+            if lot is None:
+                prev = db.scalar(select(Lot).where(Lot.product_id == it["product_id"]).order_by(Lot.id.desc()))
+                prod = db.get(Product, it["product_id"])
+                lot = Lot(product_id=prod.id, qty_received=0, qty_remaining=0, received_date=t, expiry_date=exp,
+                          unit_cost=prev.unit_cost if prev else prod.unit_cost, status="ACTIVE")
+                db.add(lot)
+                db.flush()
+            lot.status = "ACTIVE"
+            lot.qty_remaining += diff
+            moves = [(lot, diff)]
+        else:
+            moves, left = [], -diff
+            for lot in lots:
+                q = min(lot.qty_remaining, left)
+                lot.qty_remaining -= q
+                left -= q
+                if lot.qty_remaining == 0:
+                    lot.status = "ADJUSTED"
+                moves.append((lot, -q))
+        for lot, q in moves:
+            v = q * lot.unit_cost
+            total += v
+            db.add(StockMovement(product_id=it["product_id"], lot_id=lot.id, date=t, type="ADJUST", qty=q,
+                                 unit_cost=lot.unit_cost, value=v, ref=ref, reason="DATE_CHECK",
+                                 note=f"Kiểm date: HSD {exp:%d/%m/%Y} {'dư' if q > 0 else 'thiếu'} so với sổ"))
+    return {"items": len(p.payload["items"]), "net_value": total, "mode": "LOT"}
+
+
 def _stock_adjust(db: Session, p: Proposal, user: User) -> dict:
     """Thieu: tru tu lo gan het han truoc (khong biet mat o lo nao). Du: cong vao lo moi nhat."""
+    if p.payload.get("mode") == "LOT":
+        return _lot_adjust(db, p)
     t = today()
     ref = f"proposal:{p.id}"
     total = 0
@@ -202,7 +276,7 @@ def _stock_adjust(db: Session, p: Proposal, user: User) -> dict:
             lot.qty_remaining += remaining
             v = remaining * lot.unit_cost
             db.add(StockMovement(product_id=it["product_id"], lot_id=lot.id, date=t, type="ADJUST", qty=remaining,
-                                 unit_cost=lot.unit_cost, value=v, ref=ref, note="Kiểm kê: dư so với sổ"))
+                                 unit_cost=lot.unit_cost, value=v, ref=ref, reason="COUNT", note="Kiểm kê: dư so với sổ"))
             total += v
             continue
         for lot in lots:
@@ -215,7 +289,7 @@ def _stock_adjust(db: Session, p: Proposal, user: User) -> dict:
                 lot.status = "ADJUSTED"
             v = -q * lot.unit_cost
             db.add(StockMovement(product_id=it["product_id"], lot_id=lot.id, date=t, type="ADJUST", qty=-q,
-                                 unit_cost=lot.unit_cost, value=v, ref=ref, note="Kiểm kê: thiếu so với sổ"))
+                                 unit_cost=lot.unit_cost, value=v, ref=ref, reason="COUNT", note="Kiểm kê: thiếu so với sổ"))
             total += v
     return {"items": len(p.payload["items"]), "net_value": total}
 

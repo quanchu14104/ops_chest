@@ -19,6 +19,8 @@ QUICK: dict[str, tuple[str, str, dict]] = {
     "expired": ("Lô đã quá hạn còn trên kệ", "get_expiring_lots", {"days": 0}),
     "kpi": ("KPI 30 ngày", "get_kpi_dashboard", {"days": 30}),
     "pending": ("Đề xuất đang chờ duyệt", "list_proposals", {"status": "PENDING"}),
+    "pull": ("Rút kệ cuối ngày", "open_pull_form", {}),
+    "date_check": ("Kiểm date hôm nay", "open_date_check_form", {}),
 }
 REORDER_PREFIX = "reorder:"
 

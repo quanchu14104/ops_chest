@@ -176,9 +176,30 @@ export type WidgetSpec =
       lines: CountLine[];
       submit: { method: string; path: string };
       note: string | null;
+    }
+  | {
+      kind: "form";
+      form: "date_check";
+      title: string;
+      meta: { classes: string[] };
+      lines: DateCheckLine[];
+      submit: { method: string; path: string };
+      note: string | null;
+    }
+  | {
+      kind: "form";
+      form: "pull_list";
+      title: string;
+      meta: Record<string, never>;
+      lines: PullLine[];
+      submit: { method: string; path: string };
+      note: string | null;
     };
 
 export type CountLine = { sku: string; name: string; category: string };
+// Kiem date: chi co cac HSD tren so, khong co so luong (dem mu)
+export type DateCheckLine = { sku: string; name: string; category: string; freshness_class: string; dates: string[] };
+export type PullLine = { lot_id: number; sku: string; name: string; category: string; expiry_date: string; sell_by: string; overdue_days: number };
 
 export type ChartSpec = {
   metric: string;
@@ -196,6 +217,8 @@ export type ChartSpec = {
 export type Proposal = {
   id: number;
   type: "PURCHASE_ORDER" | "MARKDOWN" | "RETURN" | "DISPOSE" | "DELIST" | "DEMAND_HYPOTHESIS" | "ORDER_ADJUST" | "STOCK_ADJUST";
+  // DISPOSE: EXPIRED (het han) / WRITE_OFF (bao huy co ly do); STOCK_ADJUST: SKU (kiem ke) / LOT (kiem date)
+  subtype: string | null;
   status: "PENDING" | "APPROVED" | "EXECUTED" | "FAILED" | "REJECTED" | "EXPIRED" | "SUPERSEDED";
   title: string;
   rationale: string;

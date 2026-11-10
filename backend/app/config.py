@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     llm_vision_api_key: str = ""
     llm_vision_model: str = ""
 
+    # Chuan nhan hang: lo phai con >= ty le vong doi nay (mac dinh 2/3), duoi nguong thi mac dinh tu choi
+    receive_min_remaining_life_pct: float = 0.67
+    # Giao du qua ty le nay (hoac qua mot quy cach, lay muc lon hon) can Store Manager xac nhan
+    receive_over_tolerance_pct: float = 0.10
+    # Gio dong cua: danh sach rut ke chay sau gio nay (cua hang khong mo 24 gio)
+    closing_hour: int = 22
+
     # Nut tua nhanh ngay cho demo. Tat khi chay voi du lieu that.
     enable_sim_controls: bool = True
 

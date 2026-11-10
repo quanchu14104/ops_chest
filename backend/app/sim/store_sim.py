@@ -90,10 +90,10 @@ class StoreSim:
     def incoming(self, sku: str) -> list[SimOrder]:
         return [o for o in self.pipeline if o.sku == sku]
 
-    def _mv(self, sku, d, typ, qty, unit_cost, value, ref=None, note=None):
+    def _mv(self, sku, d, typ, qty, unit_cost, value, ref=None, note=None, reason=None):
         if self.record:
             self.movements.append(dict(sku=sku, date=d, type=typ, qty=int(qty), unit_cost=int(unit_cost),
-                                       value=int(round(value)), ref=ref, note=note))
+                                       value=int(round(value)), ref=ref, note=note, reason=reason))
 
     def add_lot(self, sku: str, qty: int, received: date, unit_cost: int, expiry: date | None = None,
                 po_code: str | None = None) -> SimLot:
@@ -260,7 +260,7 @@ class StoreSim:
                     waste_cost += lot.qty * lot.unit_cost
                     t.waste_units += lot.qty
                     self._mv(sku, d, "WASTE", lot.qty, lot.unit_cost, lot.qty * lot.unit_cost,
-                             note="Hết hạn sử dụng")
+                             note="Hết hạn sử dụng", reason="EXPIRED")
                 else:
                     keep.append(lot)
             self.lots[sku] = keep

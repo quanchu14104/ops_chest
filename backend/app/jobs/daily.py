@@ -8,7 +8,9 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.proposals import builders, service
+from app.services.shelf import pull_list
 from app.services import hypotheses, learning
 from app.services.replenish import suppliers_due
 
@@ -50,4 +52,14 @@ def run_morning(db: Session) -> dict:
 def run_evening(db: Session) -> dict:
     p, c = builders.markdown(db, JOB, days=0, evening_only=True)
     db.commit()
-    return {"proposals": [_ref(p, c)] if p else []}
+    return {"proposals": [_ref(p, c)] if p else [], "pull_list": len(pull_list(db))}
+
+
+def run_closing(db: Session) -> dict:
+    """Sau gio dong cua: danh sach rut ke da san sang. Viec go hang la cua nhan vien (xac nhan so thuc go),
+    job khong tu doi trang thai lo."""
+    lots = pull_list(db)
+    if lots:
+        audit.log(db, JOB, "PULL_LIST_READY", "lot", None, {"lots": len(lots)})
+        db.commit()
+    return {"pull_list": len(lots)}

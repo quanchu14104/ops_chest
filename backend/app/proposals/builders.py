@@ -38,7 +38,7 @@ def _open_by_lot(db: Session, type: str) -> dict[int, Proposal]:
     out: dict[int, Proposal] = {}
     for p in db.scalars(select(Proposal).where(Proposal.type == type, _still_open())):
         for it in p.payload["items"]:
-            if int(it["qty"]) > 0:
+            if int(it["qty"]) > 0 or it.get("close_lot"):
                 out[it["lot_id"]] = p
     return out
 
@@ -174,26 +174,84 @@ def supplier_return(db: Session, created_by: str, lot_ids: list[int] | None = No
 
 
 def dispose_expired(db: Session, created_by: str, chat_session_id: int | None = None) -> tuple[Proposal | None, bool]:
+    """Ghi huy lo qua ngay ban cuoi. Lo da rut ke (PULLED) dung so THUC go; lo chua rut dung so tren so.
+
+    Moi dong o day DONG HAN lo khi duyet: phan so tren so khong tim thay ghi thanh hao hut (ADJUST),
+    thay vi de lai tren so nhu hang qua han va bi de xuat lai mai.
+    """
+    from app.services.shelf import _due_lots, pulled_awaiting
+
     t = today()
-    lots = db.scalars(select(Lot).options(joinedload(Lot.product))
-                      .where(Lot.status == "ACTIVE", Lot.qty_remaining > 0, Lot.expiry_date < t)).all()
+    pulled = pulled_awaiting(db)
+    overdue = _due_lots(db, t - timedelta(days=1))  # qua ngay ban cuoi ma chua ai xac nhan go
+    lots = pulled + overdue
     if not lots:
         return None, False
     open_by_lot = _open_by_lot(db, "DISPOSE")
     fresh = [l for l in lots if l.id not in open_by_lot]
     if not fresh:
         return open_by_lot[lots[0].id], False
-    lots = fresh
-    items = [{"lot_id": l.id, "sku": l.product.sku, "name": l.product.name, "qty": l.qty_remaining,
-              "expiry_date": l.expiry_date.isoformat(), "unit_cost": l.unit_cost} for l in lots]
+    items = []
+    for l in fresh:
+        is_pulled = l.status == "PULLED"
+        items.append({"lot_id": l.id, "sku": l.product.sku, "name": l.product.name,
+                      "qty": l.pulled_qty if is_pulled else l.qty_remaining, "book_qty": l.qty_remaining,
+                      "expiry_date": l.expiry_date.isoformat(), "unit_cost": l.unit_cost, "reason": "EXPIRED",
+                      "close_lot": True, "pulled": is_pulled})
     value = sum(i["qty"] * i["unit_cost"] for i in items)
+    shrink = sum((i["book_qty"] - i["qty"]) * i["unit_cost"] for i in items)
+    n_pulled = sum(1 for i in items if i["pulled"])
+    rationale = f"{len(items)} lô đã quá ngày bán cuối (giá vốn hủy {vnd(value)}). "
+    if n_pulled:
+        rationale += f"{n_pulled} lô đã được nhân viên gỡ khỏi kệ; số hủy lấy theo số thực gỡ. "
+    if n_pulled < len(items):
+        rationale += f"{len(items) - n_pulled} lô chưa có xác nhận gỡ kệ: cần gỡ ngay, số hủy đang lấy theo sổ. "
+    if shrink:
+        rationale += f"Phần chênh với sổ ({vnd(shrink)}) được ghi là hao hụt. "
+    rationale += "Duyệt thì lô được đóng hẳn trên sổ. Agent không tự ghi hủy."
+    warnings = [f"{len(items) - n_pulled} lô quá hạn chưa được xác nhận gỡ khỏi kệ."] if n_pulled < len(items) else []
     key = f"DS:{t.isoformat()}:{','.join(str(i['lot_id']) for i in items)}"
     return _create(
-        db, type="DISPOSE", title=f"Ghi nhận hủy {len(items)} lô đã quá hạn",
-        rationale=(f"{len(items)} lô đã quá HSD vẫn còn trong kho (giá vốn {vnd(value)}). Cần gỡ khỏi kệ và ghi "
-                   "nhận hủy để tồn kho đúng thực tế. Agent không tự ghi hủy."),
-        payload={"items": items, "total_cost": value}, evidence={}, est_value=-value, created_by=created_by,
+        db, type="DISPOSE", title=f"Ghi nhận hủy {len(items)} lô quá hạn",
+        rationale=rationale, payload={"items": items, "total_cost": value, "shrink_cost": shrink},
+        evidence={"warnings": warnings}, est_value=-(value + shrink), created_by=created_by,
         dedupe_key=key, chat_session_id=chat_session_id)
+
+
+def write_off(db: Session, items: list[dict], created_by: str, note: str | None = None,
+              chat_session_id: int | None = None) -> Proposal:
+    """Bao huy hang khong phai vi het han (vo, hong do tu mat, loi NCC...). items: [{lot_id, qty, reason}].
+
+    Chi tao de xuat; ton kho va chi phi huy chi doi khi Store Manager duyet.
+    """
+    from app.models.inventory import WASTE_REASONS
+
+    if not items:
+        raise ValueError("Chưa có lô nào được báo hủy.")
+    out = []
+    for it in items:
+        reason = str(it.get("reason") or "").upper()
+        if reason not in WASTE_REASONS or reason == "EXPIRED":
+            raise ValueError(f"Lý do hủy không hợp lệ: {it.get('reason')}. Hàng hết hạn đi theo danh sách rút kệ.")
+        q = int(it["qty"])
+        lot = db.get(Lot, int(it["lot_id"]))
+        if not lot or lot.status != "ACTIVE" or lot.qty_remaining <= 0:
+            raise ValueError(f"Lô {it['lot_id']} không còn hàng trên kệ.")
+        if not 0 < q <= lot.qty_remaining:
+            raise ValueError(f"Số lượng hủy của lô {lot.id} phải từ 1 đến {lot.qty_remaining}.")
+        out.append({"lot_id": lot.id, "sku": lot.product.sku, "name": lot.product.name, "qty": q,
+                    "expiry_date": lot.expiry_date.isoformat(), "unit_cost": lot.unit_cost, "reason": reason,
+                    "reason_label": WASTE_REASONS[reason]})
+    value = sum(i["qty"] * i["unit_cost"] for i in out)
+    labels = sorted({i["reason_label"] for i in out})
+    note_txt = f"Ghi chú: {note.strip()}. " if note and note.strip() else ""
+    prop, _ = _create(
+        db, type="DISPOSE", title=f"Báo hủy {len(out)} lô: {', '.join(labels).lower()}",
+        rationale=(f"Nhân viên báo hủy {sum(i['qty'] for i in out)} đơn vị ({vnd(value)} giá vốn), lý do: "
+                   f"{', '.join(labels).lower()}. {note_txt}Duyệt thì trừ tồn và ghi chi phí hủy theo đúng lý do."),
+        payload={"items": out, "total_cost": value, "note": note or ""}, evidence={}, est_value=-value,
+        created_by=created_by, expires_at=_end_of(today() + timedelta(days=2)), chat_session_id=chat_session_id)
+    return prop
 
 
 def delist(db: Session, sku: str, created_by: str, chat_session_id: int | None = None) -> tuple[Proposal | None, bool, str]:
@@ -292,6 +350,37 @@ def stock_adjust(db: Session, counted: dict[str, int], created_by: str, note: st
         payload={"items": items, "counted_lines": len(counted), "note": note or ""}, evidence={"warnings": warnings},
         est_value=net, created_by=created_by, expires_at=_end_of(today()), chat_session_id=chat_session_id)
     return prop, len(counted)
+
+
+def date_check(db: Session, lines: list[dict], created_by: str, note: str | None = None,
+               chat_session_id: int | None = None) -> tuple[Proposal | None, int]:
+    """Kiem date: tra ve (de xuat, so SKU da dem). Lech theo tung HSD -> STOCK_ADJUST cap lo cho SM duyet."""
+    from app.services import datecheck as DC
+
+    items = DC.diffs(db, lines)
+    n_skus = len({str(l["sku"]).upper() for l in lines})
+    if not items:
+        return None, n_skus
+    t = today()
+    net = sum(i["value"] for i in items)
+    expired = [i for i in items if i["diff"] > 0 and date.fromisoformat(i["expiry_date"]) < t]
+    found = [i for i in items if i["new_date"]]
+    warnings = []
+    if expired:
+        warnings.append(f"Tìm thấy hàng đã quá HSD trên kệ: {', '.join(i['name'] for i in expired[:5])}. "
+                        "Gỡ khỏi kệ ngay; sau khi duyệt các lô này vào danh sách rút kệ.")
+    if found:
+        warnings.append(f"{len(found)} HSD có trên kệ nhưng sổ không có (thường do khách lấy lô mới trước).")
+    moved = sum(1 for i in items if i["diff"] != 0)
+    prop, _ = _create(
+        db, type="STOCK_ADJUST", title=f"Kiểm date: sửa sổ theo lô cho {len({i['sku'] for i in items})} mặt hàng",
+        rationale=(f"Đếm theo HSD {n_skus} mặt hàng, {moved} dòng HSD lệch với sổ. Giá trị lệch ròng {vnd(net)} "
+                   "(lệch giữa các lô cùng mặt hàng không làm đổi tổng tồn). Duyệt thì sổ ghi đúng số của từng HSD, "
+                   "để cảnh báo cận date và đề xuất giảm giá dựa trên lô thật trên kệ."),
+        payload={"mode": "LOT", "items": items, "counted_skus": n_skus, "note": note or ""},
+        evidence={"warnings": warnings}, est_value=net, created_by=created_by, expires_at=_end_of(t),
+        chat_session_id=chat_session_id)
+    return prop, n_skus
 
 
 class ReviseError(Exception):

@@ -40,6 +40,14 @@ export const TYPE_LABEL: Record<string, string> = {
   STOCK_ADJUST: "Kiểm kê",
 };
 
+export const WASTE_REASON_LABEL: Record<string, string> = {
+  EXPIRED: "Hết hạn",
+  DAMAGED: "Vỡ, móp, rách bao bì",
+  SPOILED: "Hỏng do bảo quản",
+  SUPPLIER_DEFECT: "Lỗi từ nhà cung cấp",
+  OTHER: "Lý do khác",
+};
+
 export const STATUS_LABEL: Record<string, string> = {
   PENDING: "Chờ duyệt",
   APPROVED: "Đã duyệt",
