@@ -31,21 +31,28 @@ function DateCheck() {
   );
 }
 
+const DUE = "__due__";
+
 function SkuCount() {
   const q = useQuery({ queryKey: ["count-sheet"], queryFn: () => api<CountLine[]>("/stock-count/sheet") });
+  const due = useQuery({ queryKey: ["count-due"], queryFn: () => api<(CountLine & { reason: string })[]>("/stock-count/sheet?due=true") });
   const categories = useMemo(() => [...new Set((q.data ?? []).map((l) => l.category))], [q.data]);
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState(DUE);
   const active = category || categories[0] || "";
-  const lines = (q.data ?? []).filter((l) => l.category === active);
+  const lines = active === DUE ? (due.data ?? []) : (q.data ?? []).filter((l) => l.category === active);
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
         <select value={active} onChange={(e) => setCategory(e.target.value)} aria-label="Nhóm hàng">
+          <option value={DUE}>Đến lịch đếm (A mỗi tuần, B 2 tuần, C mỗi tháng) và nghi tồn ảo ({due.data?.length ?? "…"})</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
       {q.error && <div className="alert error">{(q.error as Error).message}</div>}
-      {q.isLoading ? <p className="muted">Đang tải…</p> : <StockCountForm key={active} lines={lines} title={`Phiếu đếm: ${active}`} note="Dòng để trống là chưa đếm." />}
+      {q.isLoading || due.isLoading ? <p className="muted">Đang tải…</p> : (
+        <StockCountForm key={active} lines={lines} title={active === DUE ? "Phiếu đếm: đến lịch và nghi tồn ảo" : `Phiếu đếm: ${active}`}
+          note={active === DUE ? "Nghi tồn ảo: mặt hàng bán đều nhưng nhiều ngày không bán trong khi sổ còn hàng (kệ có thể đã trống). Dòng để trống là chưa đếm." : "Dòng để trống là chưa đếm."} />
+      )}
     </>
   );
 }

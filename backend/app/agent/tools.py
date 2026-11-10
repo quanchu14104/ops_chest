@@ -16,11 +16,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.agent import widgets as W
 from app.clock import today
-from app.models import Proposal, PurchaseOrder, Supplier, User
+from app.models import Proposal, PurchaseOrder, Supplier, SupplierReturn, User
 from app.proposals import builders
 from app.proposals.views import acceptance_stats, to_dict
 from app.models.inventory import WASTE_REASONS
-from app.services import charts, datecheck, hypotheses, inventory, learning, replenish, reports, shelf, stockcount
+from app.services import (charts, datecheck, hypotheses, inventory, learning, replenish, reports, returns, shelf,
+                          stockcount)
 from app.services.receiving import default_expiry  # chi lay HSD goi y; viec nhan hang that di qua REST
 
 
@@ -175,7 +176,7 @@ def _abc(ctx: ToolContext, cell: str | None = None) -> ToolOutput:
     return ToolOutput({"matrix": r["matrix"], "items": items[:20], "items_total": len(items)})
 
 
-@tool("get_delist_candidates", "read", "Delisting candidates (C-Y/C-Z, high waste or loss, not traffic drivers) with reasons and substitutes.")
+@tool("get_delist_candidates", "read", "Delisting candidates (C-Y/C-Z, high waste or loss, not traffic drivers, listed for at least 8 weeks) with reasons and substitutes.")
 def _delist_cands(ctx: ToolContext) -> ToolOutput:
     return ToolOutput(reports.delist_report(ctx.db))
 
@@ -198,6 +199,36 @@ def _suppliers(ctx: ToolContext) -> ToolOutput:
             "return_credit_pct": a.return_credit_pct if a else None,
         })
     return ToolOutput(rows)
+
+
+@tool("list_supplier_returns", "read", "Return-to-supplier slips and their lifecycle: requested, confirmed, picked up, credited, refused. Money (or exchanged goods) is booked only when the supplier picks up; pending slips still hold goods in the store.",
+      {"status": {"type": "string", "description": "REQUESTED, CONFIRMED, PICKED_UP, CREDITED, REFUSED; empty = all"}})
+def _list_returns(ctx: ToolContext, status: str | None = None) -> ToolOutput:
+    q = select(SupplierReturn).order_by(SupplierReturn.id.desc()).limit(20)
+    if status:
+        q = q.where(SupplierReturn.status == status.upper())
+    rows = [returns.view(r) for r in ctx.db.scalars(q)]
+    slim = [{k: r[k] for k in ("code", "supplier", "status_label", "mode_label", "est_credit", "credit_value",
+                               "requested_date", "days_open")} for r in rows]
+    ui = [W.table("Phiếu trả nhà cung cấp", [
+        W.col("code", "Phiếu"), W.col("supplier", "NCC"), W.col("status_label", "Trạng thái"),
+        W.col("mode_label", "Hình thức"), W.col("est_credit", "Hoàn dự kiến", "money"),
+        W.col("credit_value", "Đã ghi nhận", "money"), W.col("days_open", "Số ngày", "num")], slim,
+        empty="Chưa có phiếu trả nào.")]
+    return ToolOutput(slim, ui=ui)
+
+
+@tool("get_supplier_scorecard", "read", "Supplier scorecard over a period (default 30 days): fill rate, on-time rate, short-dated deliveries, rejected units.",
+      {"start": DATE, "end": DATE})
+def _scorecard(ctx: ToolContext, start=None, end=None) -> ToolOutput:
+    s, e = reports.default_range(_d(start), _d(end))
+    rows = reports.supplier_scorecard(ctx.db, s, e)
+    ui = [W.table(f"Điểm nhà cung cấp {s:%d/%m}–{e:%d/%m}", [
+        W.col("supplier", "NCC"), W.col("orders", "Số đơn", "num"), W.col("fill_rate", "Giao đủ", "pct"),
+        W.col("on_time_rate", "Đúng hẹn", "pct"), W.col("short", "Thiếu (đv)", "num"),
+        W.col("short_dated", "Date ngắn", "num"), W.col("rejected", "Từ chối (đv)", "num")], rows,
+        empty="Chưa có đơn nào được nhận trong kỳ.")]
+    return ToolOutput({"start": s.isoformat(), "end": e.isoformat(), "suppliers": rows}, ui=ui)
 
 
 @tool("preview_reorder", "read", "PREVIEW suggested order quantities for one supplier (does not create a proposal).", {"supplier": {"type": "string", "description": "code (NCC01) or name"}},
@@ -235,11 +266,11 @@ def _list_props(ctx: ToolContext, status: str = "PENDING", type: str | None = No
     return ToolOutput(rows, ui=ui)
 
 
-@tool("get_kpi_dashboard", "read", "KPIs of the last N days vs the previous N days, plus how often the manager accepted agent proposals.", {"days": {"type": "integer", "default": 30}})
+@tool("get_kpi_dashboard", "read", "KPIs of the last N days vs the previous N days (gross profit after waste and shrink, GMROI, waste/stockout rate, inventory days from daily snapshots), plus how often the manager accepted agent proposals.", {"days": {"type": "integer", "default": 30}})
 def _kpi(ctx: ToolContext, days: int = 30) -> ToolOutput:
     r = reports.kpi_compare(ctx.db, days)
     keep = ("revenue", "gross_profit", "waste_cost", "waste_rate", "oos_rate", "lost_margin", "markdown_loss",
-            "return_credit", "inventory_days")
+            "return_credit", "inventory_days", "shrink_cost", "gmroi")
     cur, prev = r["current"]["kpi"], r["previous"]["kpi"]
     ui = [W.kpis(f"KPI {days} ngày gần nhất so với {days} ngày trước", [
         W.kpi("Doanh thu", cur["revenue"], "money", prev["revenue"]),
@@ -248,7 +279,9 @@ def _kpi(ctx: ToolContext, days: int = 30) -> ToolOutput:
         W.kpi("Tỷ lệ hủy", cur["waste_rate"], "pct", prev["waste_rate"], True),
         W.kpi("Tỷ lệ hết hàng", cur["oos_rate"], "pct", prev["oos_rate"], True),
         W.kpi("Ngày tồn kho", cur["inventory_days"], "num", prev["inventory_days"], True),
-    ], note=f"{r['current']['start']} → {r['current']['end']}")]
+        W.kpi("Hao hụt", cur["shrink_cost"], "money", prev["shrink_cost"], True),
+        W.kpi("GMROI (lãi gộp / tồn TB)", cur["gmroi"], "num", prev["gmroi"]),
+    ], note=f"{r['current']['start']} → {r['current']['end']} · tồn trung bình theo ảnh chụp cuối ngày")]
     return ToolOutput({
         "current": {"start": r["current"]["start"], "end": r["current"]["end"],
                     **{k: r["current"]["kpi"][k] for k in keep}},
@@ -283,10 +316,17 @@ def _open_receive_form(ctx: ToolContext, po: str) -> ToolOutput:
                                   "chưa có hàng nào được nhận."}, ui=[form])
 
 
-@tool("open_stock_count_form", "read", "Show a blind stock-count FORM in the chat for one category. Staff type what they counted and press confirm in the UI; any difference becomes a proposal for the manager. This only displays the form.",
-      {"category": CATEGORY}, ["category"])
-def _open_count_form(ctx: ToolContext, category: str) -> ToolOutput:
-    lines = stockcount.sheet(ctx.db, category)
+@tool("open_stock_count_form", "read", "Show a blind stock-count FORM in the chat, for one category, or with due=true for SKUs due by the ABC count schedule (A weekly, B every 2 weeks, C monthly) plus suspected phantom stock. Staff type what they counted and press confirm in the UI; any difference becomes a proposal for the manager. This only displays the form.",
+      {"category": CATEGORY, "due": {"type": "boolean", "description": "true = SKUs due for counting / suspected phantom stock"}})
+def _open_count_form(ctx: ToolContext, category: str | None = None, due: bool | None = None) -> ToolOutput:
+    if due or not category:
+        lines = stockcount.count_due(ctx.db)
+        category = "Đến lịch đếm và nghi tồn ảo"
+        if not lines:
+            return ToolOutput({"message": "Không có mặt hàng nào đến lịch kiểm kê."},
+                              ui=[W.table("Kiểm kê", [W.col("sku", "SKU")], [], empty="Không có mặt hàng nào đến lịch.")])
+    else:
+        lines = stockcount.sheet(ctx.db, category)
     if not lines:
         return ToolOutput({"error": f"Không tìm thấy nhóm hàng '{category}'"})
     form = W.form("stock_count", f"Kiểm kê: {category}", lines, {"method": "POST", "path": "/stock-counts"},

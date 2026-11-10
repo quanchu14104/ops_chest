@@ -77,6 +77,9 @@ def _active_lot(db: Session, lot_id: int) -> Lot:
 
 
 def _markdown(db: Session, p: Proposal, user: User) -> dict:
+    from app.services import policies
+
+    pol = policies.by_category(db)
     done, kept = [], []
     for it in p.payload["items"]:
         if it.get("include") is False:
@@ -85,6 +88,10 @@ def _markdown(db: Session, p: Proposal, user: User) -> dict:
         pct = float(it["markdown_pct"])
         if not 0 < pct < 0.95:
             raise ExecutionError(f"Mức giảm {pct} không hợp lệ cho lô {lot.id}.")
+        try:  # rang buoc theo nhom hang kiem tra lai luc thuc thi (cau hinh co the doi sau khi tao de xuat)
+            policies.check_markdown(pol, lot.product.category, pct)
+        except policies.MarkdownPolicyError as e:
+            raise ExecutionError(str(e)) from e
         if pct <= lot.markdown_pct:  # tem da dan: khong tang gia tro lai
             kept.append({"lot_id": lot.id, "sku": it["sku"], "markdown_pct": lot.markdown_pct})
             continue
@@ -97,34 +104,44 @@ def _markdown(db: Session, p: Proposal, user: User) -> dict:
 
 
 def _return(db: Session, p: Proposal, user: User) -> dict:
+    """Duyet = tach hang ra cho tra + gui email. CHUA ghi tien: tien (hoac hang doi) chi ghi khi NCC lay hang."""
+    from app.models import SupplierReturn
+    from app.services.returns import MODE_LABEL, ReturnError, split_for_return
+
     pl = p.payload
     t = today()
-    credit_pct = float(pl["credit_pct"])
-    if db.get(Supplier, pl["supplier_id"]).agreement_on(t) is None:
+    sup = db.get(Supplier, pl["supplier_id"])
+    agr = sup.agreement_on(t)
+    if agr is None:
         raise ExecutionError(f"Thỏa thuận với {pl['supplier_name']} đã hết hiệu lực, không còn căn cứ để trả hàng.")
-    items, credit = [], 0
+    credit_pct = float(pl["credit_pct"])
+    mode = pl.get("return_mode") or agr.return_mode or "CREDIT"
+    items, est = [], 0
     for it in pl["items"]:
         q = int(it["qty"])
         if q <= 0:
             continue
         lot = _active_lot(db, it["lot_id"])
-        if q > lot.qty_remaining:
-            raise ExecutionError(f"Lô {lot.id} chỉ còn {lot.qty_remaining}, không trả được {q}.")
-        lot.qty_remaining -= q
-        if lot.qty_remaining == 0:
-            lot.status = "RETURNED"
-        c = int(round(q * lot.unit_cost * credit_pct))
-        credit += c
-        db.add(StockMovement(product_id=lot.product_id, lot_id=lot.id, date=t, type="RETURN", qty=q,
-                             unit_cost=lot.unit_cost, value=c, ref=f"proposal:{p.id}", note="Trả NCC hàng cận date"))
-        items.append({**it, "qty": q})
+        try:
+            part = split_for_return(db, lot, q)
+        except ReturnError as e:
+            raise ExecutionError(str(e)) from e
+        est += int(round(q * lot.unit_cost * credit_pct))
+        items.append({"lot_id": part.id, "source_lot_id": lot.id, "sku": it["sku"], "name": it["name"], "qty": q,
+                      "unit_cost": lot.unit_cost, "expiry_date": it["expiry_date"]})
     if not items:
         raise ExecutionError("Không còn dòng trả hàng nào có số lượng > 0.")
     code = f"RT{t:%y%m%d}-{p.id}"
+    r = SupplierReturn(code=code, supplier_id=sup.id, proposal_id=p.id, status="REQUESTED", mode=mode,
+                       credit_pct=credit_pct, items=items, est_credit=est if mode == "CREDIT" else 0, requested_date=t)
+    db.add(r)
+    db.flush()
     html = email.render("return_email.html", supplier_name=pl["supplier_name"], code=code, items=items,
-                        credit=credit, approved_by=user.full_name)
+                        credit=est, mode=mode, mode_label=MODE_LABEL[mode], approved_by=user.full_name)
     msg_id = email.send_email(pl["supplier_email"], f"[{settings.store_name}] Đề nghị trả hàng cận hạn {code}", html)
-    return {"code": code, "credit": credit, "items": len(items), "email_to": pl["supplier_email"], "message_id": msg_id}
+    return {"code": code, "return_id": r.id, "mode": mode, "est_credit": r.est_credit, "items": len(items),
+            "email_to": pl["supplier_email"], "message_id": msg_id,
+            "note": "Hàng đã tách khỏi kệ chờ NCC lấy. Tiền hoàn/hàng đổi chỉ ghi khi NCC lấy hàng."}
 
 
 def _dispose(db: Session, p: Proposal, user: User) -> dict:

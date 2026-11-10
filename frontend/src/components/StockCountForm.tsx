@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api, type CountLine, type Proposal } from "../api";
 
 // Đếm mù: phiếu không hiện số trên sổ. Nhìn thấy số thì người đếm có xu hướng đếm cho khớp.
-export default function StockCountForm({ lines, title, note }: { lines: CountLine[]; title: string; note?: string | null }) {
+export default function StockCountForm({ lines, title, note }: { lines: (CountLine & { reason?: string })[]; title: string; note?: string | null }) {
   const qc = useQueryClient();
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -41,7 +41,7 @@ export default function StockCountForm({ lines, title, note }: { lines: CountLin
           <tbody>
             {lines.map((l) => (
               <tr key={l.sku}>
-                <td>{l.sku} · {l.name}</td>
+                <td>{l.sku} · {l.name}{l.reason && <div className="muted small">{l.reason}</div>}</td>
                 <td className="muted small">{l.category}</td>
                 <td className="num">
                   <input

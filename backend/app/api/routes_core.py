@@ -95,10 +95,13 @@ def products(query: str | None = None, category: str | None = None, limit: int =
     prods = inventory.find_products(db, query, category, limit)
     lots = inventory.active_lots(db, [p.id for p in prods])
     classes = abc_xyz_classes(db)
-    return [{"sku": p.sku, "name": p.name, "category": p.category, "status": p.status,
+    return [{"sku": p.sku, "name": p.name, "category": p.category, "status": p.status, "is_new": reports.is_new(p),
+             "listed_date": p.listed_date.isoformat() if p.listed_date else None,
+             "max_stock_qty": p.max_stock_qty, "min_display_qty": p.min_display_qty,
              "freshness_class": p.freshness_class, "shelf_life_days": p.shelf_life_days, "unit_cost": p.unit_cost,
              "unit_price": p.unit_price, "pack_size": p.pack_size, "supplier": p.supplier.name,
-             "is_traffic_driver": p.is_traffic_driver, "abc_xyz": classes[p.sku].cell if p.sku in classes else None,
+             "is_traffic_driver": p.is_traffic_driver,
+             "abc_xyz": None if reports.is_new(p) else classes[p.sku].cell if p.sku in classes else None,
              "on_hand": sum(l.qty_remaining for l in lots.get(p.id, []))} for p in prods]
 
 

@@ -12,7 +12,7 @@ from app.clock import today
 from app.config import settings
 from app.fmt import dmy, vnd
 from app.models import Proposal, PurchaseOrder, Supplier
-from app.services import datecheck, hypotheses, inventory, receiving, replenish, shelf
+from app.services import datecheck, hypotheses, inventory, receiving, replenish, returns, shelf, stockcount
 
 
 def build(db: Session) -> dict:
@@ -52,6 +52,22 @@ def build(db: Session) -> dict:
         items.append({"id": "date_check", "level": "info", "count": n_check,
                       "text": f"Hôm nay kiểm date {labels}: {n_check} mặt hàng có lô sắp tới ngày bán cuối",
                       "prompt": "Mở phiếu kiểm date hôm nay", "quick": "date_check"})
+    for r in returns.overdue(db):
+        items.append({"id": f"return-{r.code}", "level": "warn", "count": 1,
+                      "text": (f"Phiếu trả {r.code} ({r.supplier.name}) gửi {(today() - r.requested_date).days} ngày, "
+                               "NCC chưa lấy hàng: hàng vẫn nằm chờ ở cửa hàng"),
+                      "prompt": "Các phiếu trả nhà cung cấp đang ở trạng thái nào?"})
+    due_count = stockcount.count_due(db)
+    phantom = [x for x in due_count if x["reason"].startswith("Bán đều")]
+    if phantom:
+        items.append({"id": "phantom", "level": "warn", "count": len(phantom),
+                      "text": (f"{len(phantom)} mặt hàng nghi tồn ảo (sổ còn hàng nhưng nhiều ngày không bán): "
+                               f"{', '.join(x['name'] for x in phantom[:3])}. Cần đếm lại"),
+                      "prompt": "Mở phiếu kiểm kê các mặt hàng đến lịch đếm"})
+    if len(due_count) > len(phantom):
+        items.append({"id": "count_due", "level": "info", "count": len(due_count) - len(phantom),
+                      "text": f"{len(due_count) - len(phantom)} mặt hàng đến lịch kiểm kê (nhóm A mỗi tuần, B hai tuần, C mỗi tháng)",
+                      "prompt": "Mở phiếu kiểm kê các mặt hàng đến lịch đếm"})
     for s in receiving.recent_shortages(db, days=3):
         items.append({"id": f"short-{s['code']}", "level": "warn", "count": s["lines"],
                       "text": f"Đơn {s['code']} ({s['supplier']}) giao thiếu {s['lines']} mặt hàng, {s['units']} đơn vị",

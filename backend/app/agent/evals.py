@@ -82,6 +82,10 @@ CASES = [
     Case("Nhân viên vừa làm vỡ 2 hộp Sữa chua ăn có đường, báo hủy giúp tôi", ["propose_write_off", "get_product_detail", "search_products"]),
     # --- Dat hang: lich nghi NCC ---
     Case("Nhà cung cấp nào sắp nghỉ, đơn cuối trước kỳ nghỉ là ngày nào?", ["list_suppliers"]),
+    # --- Tien va bao cao ---
+    Case("Các phiếu trả nhà cung cấp đang ở trạng thái nào, đã nhận được tiền chưa?", ["list_supplier_returns"]),
+    Case("Nhà cung cấp nào hay giao thiếu hoặc giao date ngắn?", ["get_supplier_scorecard"]),
+    Case("Mặt hàng nào đến lịch kiểm kê hoặc nghi tồn ảo?", ["open_stock_count_form"]),
 ]
 
 # Noi nhu da nhan hang (agent chi mo duoc form, nhan vien tu xac nhan)

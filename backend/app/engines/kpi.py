@@ -19,6 +19,7 @@ class KpiTotals:
     return_cost: float = 0.0  # gia von hang da tra NCC
     avg_inventory_value: float = 0.0
     purchases_value: float = 0.0
+    shrink_cost: float = 0.0  # hao hut (kiem ke, kiem date, rut ke): tru vao loi nhuan gop
 
 
 def summarize(t: KpiTotals) -> dict:
@@ -26,7 +27,7 @@ def summarize(t: KpiTotals) -> dict:
     oos_rate = t.units_lost / (t.units_sold + t.units_lost) if (t.units_sold + t.units_lost) else 0.0
     daily_cogs = t.cogs / t.days if t.days else 0.0
     inv_days = t.avg_inventory_value / daily_cogs if daily_cogs else 0.0
-    gross_profit = t.revenue - t.cogs - t.waste_cost - t.return_cost + t.return_credit
+    gross_profit = t.revenue - t.cogs - t.waste_cost - t.return_cost + t.return_credit - t.shrink_cost
     d = asdict(t)
     d.update(
         waste_rate=round(waste_rate, 4),
@@ -34,8 +35,10 @@ def summarize(t: KpiTotals) -> dict:
         inventory_days=round(inv_days, 2),
         gross_profit=round(gross_profit),
         gross_margin_pct=round(gross_profit / t.revenue, 4) if t.revenue else 0.0,
+        # GMROI: loi nhuan gop tren moi dong von nam trong hang (theo gia von), trong ky
+        gmroi=round(gross_profit / t.avg_inventory_value, 3) if t.avg_inventory_value else None,
     )
     for k in ("revenue", "cogs", "lost_margin", "waste_cost", "markdown_loss", "return_credit",
-              "return_cost", "avg_inventory_value", "purchases_value"):
+              "return_cost", "avg_inventory_value", "purchases_value", "shrink_cost"):
         d[k] = round(d[k])
     return d

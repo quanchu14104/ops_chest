@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.proposals import builders, service
 from app.services.shelf import pull_list
-from app.services import hypotheses, learning
+from datetime import timedelta
+
+from app.clock import today
+from app.services import hypotheses, learning, snapshots
 from app.services.replenish import suppliers_due
 
 log = logging.getLogger(__name__)
@@ -25,6 +28,8 @@ def _ref(p, created: bool) -> dict:
 def run_morning(db: Session) -> dict:
     out: dict = {"expired": service.expire_stale(db), "proposals": [],
                  "hypotheses_evaluated": hypotheses.evaluate_finished(db)}
+    # Ton dau ngay = ton cuoi ngay hom qua (chua ban gi): anh chup cho KPI ton trung binh
+    snapshots.record(db, today() - timedelta(days=1))
     switched_off = learning.switched_off_categories(db)  # SM da tat thi job khong nhac lai; van de xuat tay duoc
     for pattern in learning.patterns(db):
         if pattern["category"] in switched_off:

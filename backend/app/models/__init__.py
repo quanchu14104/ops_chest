@@ -1,5 +1,5 @@
-from app.models.catalog import Product, Supplier, SupplierAgreement, SupplierClosure
-from app.models.inventory import DailySales, Lot, StockMovement
+from app.models.catalog import CategoryPolicy, Product, Supplier, SupplierAgreement, SupplierClosure
+from app.models.inventory import DailySales, InventorySnapshot, Lot, StockMovement
 from app.models.ops import (
     AppMeta,
     AuditLog,
@@ -10,12 +10,15 @@ from app.models.ops import (
     POLine,
     Proposal,
     PurchaseOrder,
+    SupplierReturn,
     User,
 )
 
 __all__ = [
     "AppMeta",
     "AuditLog",
+    "CategoryPolicy",
+    "InventorySnapshot",
     "ChatMessage",
     "ChatSession",
     "DailySales",
@@ -30,5 +33,6 @@ __all__ = [
     "Supplier",
     "SupplierAgreement",
     "SupplierClosure",
+    "SupplierReturn",
     "User",
 ]

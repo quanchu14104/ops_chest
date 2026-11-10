@@ -10,7 +10,27 @@ from dataclasses import asdict, dataclass
 
 ELASTICITY = {"FRESH": 3.0, "SHORT": 2.0, "LONG": 1.2}
 DISPOSAL_COST_PER_UNIT = 500  # VND: chi phi xu ly/huy uoc tinh moi don vi
-EVENING_SHARE = 0.3  # ty trong luot khach sau 18h; giam gia gio vang chi ap cho phan con du
+EVENING_SHARE = 0.3  # mac dinh: ty trong luot khach sau 18h; giam gia gio vang chi ap cho phan con du
+# Khung ban trong ngay: sang 6-11h, trua 11-14h, chieu 14-17h, toi 17-22h (cua hang dong cua 22h)
+DAYPARTS = ((6, 11), (11, 14), (14, 17), (17, 22))
+DEFAULT_DAYPART_SHARES = (0.2, 0.2, 0.225, 0.375)  # sau 18h = 0,3 nhu gia dinh cu
+
+
+def share_after(shares, hour: int) -> float:
+    """Ty trong nhu cau trong ngay con lai TU `hour` (phan bo deu trong moi khung)."""
+    total = 0.0
+    for (a, b), s in zip(DAYPARTS, shares):
+        if hour <= a:
+            total += s
+        elif hour < b:
+            total += s * (b - hour) / (b - a)
+    return total
+
+
+def peak_end_hour(shares) -> int:
+    """Gio giam gia: ngay sau khung ban dinh cua nhom (com hop: sau trua; banh mi: sau sang), som nhat 11h."""
+    i = max(range(len(shares)), key=lambda k: shares[k])
+    return max(11, DAYPARTS[i][1]) if i < len(DAYPARTS) - 1 else 18
 
 
 @dataclass
@@ -32,6 +52,12 @@ class DispositionInput:
     evening_full_price_units: float | None = None
     # So ngay toi HSD in tren bao bi (dieu khoan tra NCC tinh theo HSD). None = bang days_left.
     days_to_expiry: int | None = None
+    # Gio vang theo nhom hang: ty trong nhu cau con lai sau gio giam gia, va gio bat dau giam
+    remaining_share: float = EVENING_SHARE
+    markdown_hour: int = 18
+    # Rang buoc giam gia theo nhom hang (cau hinh; can doi chieu quy dinh ve khuyen mai truoc khi dung that)
+    markdown_allowed: bool = True
+    max_markdown: float = 0.95
 
 
 @dataclass
@@ -65,16 +91,17 @@ def evaluate(inp: DispositionInput) -> list[Option]:
     value_full = sold_full * price - waste_full * disposal
     last_day = inp.days_left <= 0
     day_demand = inp.daily_demand if inp.daily_demand is not None else sold_full
+    share = inp.remaining_share
     evening_buyers = (inp.evening_full_price_units if inp.evening_full_price_units is not None
-                      else min(sold_full, day_demand * EVENING_SHARE))
+                      else min(sold_full, day_demand * share))
 
     def outcome(p: float) -> tuple[float, float]:
         """(so ban duoc, tien thu ve) neu ap muc giam p."""
         if p <= 0:
             return sold_full, value_full
         if last_day:
-            # Ban ngay van gia goc; sau 18h nguoi vao mua them, nhung khach toi von tra gia goc cung duoc giam
-            extra = min(waste_full, day_demand * EVENING_SHARE * inp.elasticity * p)
+            # Truoc gio vang ban gia goc; sau do nguoi vao mua them, nhung khach von tra gia goc cung duoc giam
+            extra = min(waste_full, day_demand * share * inp.elasticity * p)
             return sold_full + extra, value_full + extra * (price * (1 - p) + disposal) - evening_buyers * price * p
         sold = min(q, sold_full * (1 + inp.elasticity * p))
         return sold, sold * price * (1 - p) - (q - sold) * disposal
@@ -87,14 +114,15 @@ def evaluate(inp: DispositionInput) -> list[Option]:
                keep_value, 0.0, True, "Không làm gì, phần không bán được sẽ bị hủy."),
     ]
     for p in inp.markdown_steps:
-        if p <= p0:
+        if p <= p0 or not inp.markdown_allowed or p > inp.max_markdown + 1e-9:
             continue
         sold, value = outcome(p)
         if last_day:
             opts.append(Option(
-                "MARKDOWN", f"Giảm giá giờ vàng {int(p * 100)}% (sau 18h)", p, sold, 0.0, q - sold, value,
+                "MARKDOWN", f"Giảm giá giờ vàng {int(p * 100)}% (từ {inp.markdown_hour}h)", p, sold, 0.0, q - sold, value,
                 value - keep_value, True,
-                "Chỉ giảm giá phần còn dư cuối ngày. Đã trừ phần khách buổi tối vốn sẽ trả giá gốc.",
+                f"Chỉ giảm giá phần còn dư sau {inp.markdown_hour}h (sau khung bán đỉnh của nhóm hàng). "
+                "Đã trừ phần khách sau giờ này vốn sẽ trả giá gốc.",
                 timing="EVENING",
             ))
         else:

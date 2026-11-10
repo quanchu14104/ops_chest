@@ -22,6 +22,7 @@ class SimLot:
     unit_cost: int
     markdown: float = 0.0
     evening_md: float = 0.0
+    md_hour: int = 18  # gio bat dau giam gia gio vang cua lo
     po_code: str | None = None
 
 
@@ -140,9 +141,10 @@ class StoreSim:
             a[5] += take
             a[6] += take * md
 
-    def apply_markdown(self, lot: SimLot, pct: float, d: date, evening: bool = False) -> None:
+    def apply_markdown(self, lot: SimLot, pct: float, d: date, evening: bool = False, hour: int = 18) -> None:
         if evening:
             lot.evening_md = max(lot.evening_md, pct)
+            lot.md_hour = hour
         elif pct > lot.markdown:
             lot.markdown = pct
 
@@ -217,11 +219,12 @@ class StoreSim:
             ev_lots = [l for l in self.lots[sku] if l.evening_md > 0 and l.qty > 0 and l.expiry <= d]
             if ev_lots:
                 top = max(l.evening_md for l in ev_lots)
-                # Vong ban o tren da tinh ca ngay gia goc; khach toi trong so do cung duoc huong gia giam
-                rebate = min(self.world.evening_share * (a[0] - a[5]), sum(l.qty for l in ev_lots)) * p.unit_price * top
+                share = self.world.share_after(p.category, min(l.md_hour for l in ev_lots))
+                # Vong ban o tren da tinh ca ngay gia goc; khach sau gio giam gia trong so do cung duoc huong gia giam
+                rebate = min(share * (a[0] - a[5]), sum(l.qty for l in ev_lots)) * p.unit_price * top
                 a[1] -= rebate
                 a[3] += rebate
-                lam = (expected_demand(self.seed, p, d) * self.world.evening_share
+                lam = (expected_demand(self.seed, p, d) * share
                        * self.world.elasticity[p.freshness_class] * top)
                 extra = _poisson(_rng(self.seed, "ev", sku, d.toordinal()), lam)
                 for lot in ev_lots:

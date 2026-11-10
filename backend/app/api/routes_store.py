@@ -11,10 +11,10 @@ from app.agent import vision
 from app.auth import current_user, require_manager
 from app.config import settings
 from app.db import get_db
-from app.models import DemandHypothesis, OrderAdjustment, Product, Proposal, User
+from app.models import DemandHypothesis, OrderAdjustment, Product, Proposal, SupplierReturn, User
 from app.proposals import builders
 from app.proposals.views import to_dict
-from app.services import datecheck, hypotheses, learning, shelf, stockcount
+from app.services import datecheck, hypotheses, learning, returns, shelf, stockcount
 
 router = APIRouter(prefix="/api")
 
@@ -78,8 +78,10 @@ def deactivate_adjustment(aid: int, db: Session = Depends(get_db), user: User = 
 
 
 @router.get("/stock-count/sheet")
-def stock_count_sheet(category: str | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return stockcount.sheet(db, category)
+def stock_count_sheet(category: str | None = None, due: bool = False, db: Session = Depends(get_db),
+                      user: User = Depends(current_user)):
+    """due=true: chi SKU den lich dem theo ABC va SKU nghi ton ao (kem ly do, khong kem so ton)."""
+    return stockcount.count_due(db) if due else stockcount.sheet(db, category)
 
 
 class CountLine(BaseModel):
@@ -100,6 +102,7 @@ def submit_count(body: CountIn, db: Session = Depends(get_db), user: User = Depe
     except stockcount.StockCountError as e:
         db.rollback()
         raise HTTPException(422, str(e)) from e
+    stockcount.mark_counted(db, [l.sku for l in body.lines])
     db.commit()
     return {"counted": n, "proposal": to_dict(p) if p else None}
 
@@ -130,6 +133,7 @@ def submit_date_check(body: DateCheckIn, db: Session = Depends(get_db), user: Us
     except (datecheck.DateCheckError, ValueError) as e:
         db.rollback()
         raise HTTPException(422, str(e)) from e
+    stockcount.mark_counted(db, [l.sku for l in body.lines])
     db.commit()
     return {"counted": n, "proposal": to_dict(p) if p else None}
 
@@ -184,6 +188,69 @@ def write_off(body: WriteOffIn, db: Session = Depends(get_db), user: User = Depe
         raise HTTPException(422, str(e)) from e
     db.commit()
     return to_dict(p)
+
+
+@router.get("/supplier-returns")
+def list_returns(status: str | None = None, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    q = select(SupplierReturn).order_by(SupplierReturn.id.desc()).limit(100)
+    if status:
+        q = q.where(SupplierReturn.status.in_([s.strip().upper() for s in status.split(",")]))
+    return [returns.view(r) for r in db.scalars(q)]
+
+
+def _return_action(db: Session, fn):
+    try:
+        out = fn()
+    except returns.ReturnError as e:
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
+    db.commit()
+    return out
+
+
+@router.post("/supplier-returns/{rid}/confirm")
+def return_confirm(rid: int, db: Session = Depends(get_db), user: User = Depends(require_manager)):
+    """NCC xac nhan se lay hang. Chua ghi tien."""
+    return _return_action(db, lambda: returns.view(returns.confirm(db, rid, user)))
+
+
+class PickupLine(BaseModel):
+    lot_id: int
+    qty: int
+
+
+class PickupIn(BaseModel):
+    lines: list[PickupLine] = []
+
+
+@router.post("/supplier-returns/{rid}/pickup")
+def return_pickup(rid: int, body: PickupIn, db: Session = Depends(get_db), user: User = Depends(require_manager)):
+    """NCC da lay hang: SM nhap so thuc nhan. Luc nay moi ghi RETURN (tien hoan) hoac nhap hang doi."""
+    return _return_action(db, lambda: returns.view(returns.pick_up(db, rid, {l.lot_id: l.qty for l in body.lines}, user)))
+
+
+class CreditIn(BaseModel):
+    amount: int | None = None
+
+
+@router.post("/supplier-returns/{rid}/credited")
+def return_credited(rid: int, body: CreditIn, db: Session = Depends(get_db), user: User = Depends(require_manager)):
+    return _return_action(db, lambda: returns.view(returns.mark_credited(db, rid, user, body.amount)))
+
+
+class RefuseIn(BaseModel):
+    reason: str
+
+
+@router.post("/supplier-returns/{rid}/refuse")
+def return_refuse(rid: int, body: RefuseIn, db: Session = Depends(get_db), user: User = Depends(require_manager)):
+    """NCC tu choi: lo quay lai ban; he thong xet lai phuong an giam gia (tao de xuat neu co loi)."""
+    def run():
+        r, lots = returns.refuse(db, rid, body.reason, user)
+        db.flush()
+        p, _ = builders.markdown(db, "job", lot_ids=lots, days=60) if lots else (None, False)
+        return {**returns.view(r), "markdown_proposal": to_dict(p) if p else None}
+    return _return_action(db, run)
 
 
 class VisionIn(BaseModel):

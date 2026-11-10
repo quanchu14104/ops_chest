@@ -3,7 +3,7 @@
 <body style="font-family: Arial, Helvetica, sans-serif; color:#1f2328; font-size:14px;">
   <p>Kính gửi <strong>{{ supplier_name }}</strong>,</p>
   <p>Theo điều khoản đổi trả hàng cận hạn trong thỏa thuận hợp tác, {{ store.store_name }} đề nghị trả lại
-     các lô hàng sau (phiếu <strong>{{ code }}</strong>):</p>
+     các lô hàng sau (phiếu <strong>{{ code }}</strong>), hình thức: <strong>{{ mode_label }}</strong>.</p>
   <table cellpadding="6" cellspacing="0" style="border-collapse:collapse; border:1px solid #d0d7de;">
     <thead style="background:#f6f8fa;">
       <tr><th align="left">Mã hàng</th><th align="left">Tên hàng</th><th align="right">Số lượng</th>
@@ -17,8 +17,12 @@
     {% endfor %}
     </tbody>
   </table>
-  <p>Giá trị hoàn dự kiến theo thỏa thuận: <strong>{{ credit|money }}</strong>.
-     Đề nghị quý công ty sắp xếp thu hồi trong lần giao hàng tới.</p>
+  {% if mode == "EXCHANGE" %}
+  <p>Đề nghị quý công ty đổi hàng mới với số lượng tương ứng khi thu hồi.</p>
+  {% else %}
+  <p>Giá trị hoàn dự kiến theo thỏa thuận: <strong>{{ credit|money }}</strong>, tính theo số lượng quý công ty thực nhận khi thu hồi.</p>
+  {% endif %}
+  <p>Hàng đã được tách riêng, chờ quý công ty sắp xếp thu hồi trong lần giao hàng tới. Vui lòng phản hồi nếu không nhận trả.</p>
   <p>Trân trọng,<br>{{ approved_by }}<br>Store Manager, {{ store.store_name }}</p>
 </body>
 </html>

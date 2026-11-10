@@ -56,6 +56,8 @@ class SupplierAgreement(Base):
     # Chi duoc tra neu con >= N ngay truoc HSD
     return_min_days_before_expiry: Mapped[int] = mapped_column(Integer, default=0)
     return_credit_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    # CREDIT: hoan tien / tru vao don sau; EXCHANGE: doi hang moi mot-mot (doi date), pho bien voi dai ly VN
+    return_mode: Mapped[str] = mapped_column(String(10), default="CREDIT", server_default="CREDIT")
     valid_from: Mapped[date] = mapped_column(Date)
     valid_to: Mapped[date] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -75,6 +77,24 @@ class SupplierClosure(Base):
     reason: Mapped[str | None] = mapped_column(String(200))
 
     supplier: Mapped[Supplier] = relationship(back_populates="closures")
+
+
+class CategoryPolicy(Base):
+    """Cau hinh theo nhom hang: rang buoc giam gia va gio giam gia.
+
+    Muc tran giam gia va nhom cam khuyen mai la CAU HINH; can doi chieu Nghi dinh 81/2018/ND-CP (va van ban
+    sua doi) truoc khi dung that, he thong khong khang dinh noi dung phap ly.
+    """
+
+    __tablename__ = "category_policies"
+
+    category: Mapped[str] = mapped_column(String(100), primary_key=True)
+    markdown_allowed: Mapped[bool] = mapped_column(Boolean, default=True)
+    max_markdown_pct: Mapped[float] = mapped_column(Float, default=0.5)
+    # Ty trong ban theo khung gio {morning, noon, afternoon, evening}; gio bat dau giam gia (sau khung dinh)
+    daypart_shares: Mapped[dict | None] = mapped_column(JSON)
+    markdown_hour: Mapped[int] = mapped_column(Integer, default=18)
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class Product(Base):
@@ -99,5 +119,9 @@ class Product(Base):
     max_stock_qty: Mapped[int | None] = mapped_column(Integer)
     # Ton trung bay toi thieu cua hang ben: ke trong mot nua ban kem hon ke day
     min_display_qty: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Ngay bat dau ban: SKU duoi 8 tuan la "hang moi", khong bi xet ngung nhap
+    listed_date: Mapped[date | None] = mapped_column(Date)
+    # Lan dem gan nhat (kiem ke hoac kiem date), de lap lich dem theo ABC
+    last_counted_date: Mapped[date | None] = mapped_column(Date)
 
     supplier: Mapped[Supplier] = relationship(back_populates="products")

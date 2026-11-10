@@ -16,7 +16,7 @@ from app import audit, clock
 from app.jobs.daily import run_morning
 from app.models import AppMeta, DailySales, Lot, Product, PurchaseOrder, StockMovement
 from app.proposals import service
-from app.services import hypotheses
+from app.services import hypotheses, policies, snapshots
 from app.services.inventory import active_lots
 from app.services.receiving import default_expiry, receive_po
 from app.services.shelf import confirm_pull, pull_list
@@ -65,6 +65,7 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
     products = db.scalars(select(Product)).all()
     lots_by_pid = active_lots(db, [p.id for p in products])
     active = list(db.scalars(select(hypotheses.DemandHypothesis).where(hypotheses.DemandHypothesis.status == "ACTIVE")))
+    pol = policies.by_category(db)
     day = {"date": d.isoformat(), "received_pos": received, "revenue": 0.0, "sold": 0, "lost": 0, "stockout_skus": 0}
     for p in products:
         spec = specs.get(p.sku)
@@ -106,12 +107,13 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         evening = [l for l in lots if l.sell_by == d and l.markdown_pct > 0 and l.qty_remaining > 0]
         if evening:
             top = max(l.markdown_pct for l in evening)
-            rebate = (min(REFERENCE_WORLD.evening_share * (a["sold"] - a["discounted"]), sum(l.qty_remaining for l in evening))
-                      * p.unit_price * top)  # khach toi von tra gia goc cung duoc huong gia giam
+            share = REFERENCE_WORLD.share_after(p.category, policies.for_category(pol, p.category)["markdown_hour"])
+            rebate = (min(share * (a["sold"] - a["discounted"]), sum(l.qty_remaining for l in evening))
+                      * p.unit_price * top)  # khach sau gio giam gia von tra gia goc cung duoc huong gia giam
             a["revenue"] -= rebate
             a["md_loss"] += rebate
             extra = _poisson(_rng(SEED, "ev", p.sku, d.toordinal()),
-                             expected * REFERENCE_WORLD.evening_share * REFERENCE_WORLD.elasticity[p.freshness_class] * top)
+                             expected * share * REFERENCE_WORLD.elasticity[p.freshness_class] * top)
             for lot in evening:
                 take = min(lot.qty_remaining, extra)
                 if take > 0:
@@ -138,6 +140,7 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         confirm_pull(db, [{"lot_id": x["lot_id"], "pulled_qty": by_id[x["lot_id"]].qty_remaining if x["lot_id"] in by_id
                            else db.get(Lot, x["lot_id"]).qty_remaining} for x in due], "sim")
     day["pulled_lots"] = len(due)
+    snapshots.record(db, d)
     db.commit()
     return day
 

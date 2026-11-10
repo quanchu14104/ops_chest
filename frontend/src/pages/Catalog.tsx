@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api } from "../api";
 import { WEEKDAYS, money, num, pct } from "../format";
 
-type Prod = { sku: string; name: string; category: string; status: string; freshness_class: string; shelf_life_days: number; unit_cost: number; unit_price: number; supplier: string; is_traffic_driver: boolean; abc_xyz: string | null; on_hand: number };
+type Prod = { sku: string; name: string; category: string; status: string; freshness_class: string; shelf_life_days: number; unit_cost: number; unit_price: number; supplier: string; is_traffic_driver: boolean; abc_xyz: string | null; on_hand: number; is_new?: boolean };
 type Sup = { code: string; name: string; email: string; phone: string; lead_time_days: number; order_weekdays: number[]; min_order_value: number; agreement: { accepts_near_expiry_return: boolean; return_min_days_before_expiry: number; return_credit_pct: number; discount_pct: number; notes: string } | null };
 
 const FRESH: Record<string, string> = { FRESH: "Tươi ≤3 ngày", SHORT: "Ngắn ≤30 ngày", LONG: "Dài" };
@@ -41,7 +41,7 @@ export default function Catalog() {
                     </td>
                     <td className="small">{p.category}</td>
                     <td className="small">{FRESH[p.freshness_class]} · {p.shelf_life_days}n</td>
-                    <td>{p.abc_xyz ?? "—"}</td>
+                    <td>{p.is_new ? <span className="badge accent" title="Bán chưa đủ 8 tuần: chưa xếp ABC-XYZ, không xét ngừng nhập">hàng mới</span> : p.abc_xyz ?? "—"}</td>
                     <td className="num">{money(p.unit_cost)}</td>
                     <td className="num">{money(p.unit_price)}</td>
                     <td className="num">{num(p.on_hand)}</td>

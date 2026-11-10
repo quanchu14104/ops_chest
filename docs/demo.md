@@ -66,6 +66,14 @@ Hỏi lần lượt:
 - Trong form nhận hàng, bấm **Chụp HSD** để đọc tem bằng ảnh.
 - Ngày đã tua được lưu lại. Muốn quay về, seed lại DB rồi khởi động lại backend.
 
+## 4c. Tiền và báo cáo (2 phút, tùy chọn)
+
+- Duyệt một đề xuất **Trả NCC**: thẻ ghi rõ chỉ tách hàng chờ NCC lấy. Vào **Đặt & nhận hàng → Phiếu trả nhà cung cấp**: phiếu ở trạng thái "Đã gửi đề nghị", lợi nhuận gộp chưa đổi. Bấm **NCC đã lấy hàng**, sửa số NCC thực nhận: lúc này mới ghi tiền hoàn (NCC sữa demo đổi hàng mới thay vì hoàn tiền). Thử **NCC từ chối**: hàng quay lại bán.
+- **Phân tích**: KPI có thêm GMROI và hao hụt (đã trừ vào lợi nhuận gộp), tồn trung bình lấy từ ảnh chụp cuối ngày; bảng **Hủy theo lý do** và **Điểm nhà cung cấp**.
+- **Kiểm kê → Kiểm kê theo SKU**: mặc định là phiếu "đến lịch đếm và nghi tồn ảo", mỗi dòng có lý do.
+- **Danh mục**: mặt hàng bán chưa đủ 8 tuần hiện nhãn "hàng mới", không bị đề xuất ngừng nhập. Thẻ đề xuất ngừng nhập có kế hoạch xả tồn.
+- Đề xuất giờ vàng cho cơm hộp ghi "từ 14h" (sau giờ trưa), bánh mì "từ 11h"; mức giảm không vượt trần cấu hình của nhóm hàng.
+
 ## 5. Chứng minh hiệu quả (1 phút)
 
 Vào **Phân tích → Mô phỏng A/B → Chạy 60 ngày**. So sánh lợi nhuận gộp, tỷ lệ hủy, tỷ lệ hết hàng giữa chính sách "kinh nghiệm" và Ops Chest trên cùng nhu cầu khách. Kéo xuống bảng **độ nhạy**: nhấn mạnh rằng giả lập cố tình cho khách phản ứng với giảm giá yếu hơn engine tin, và kết quả vẫn dương ở mọi kịch bản. Nói thẳng đánh đổi: nhờ sàn mức phục vụ B không hết hàng nhiều hơn A, nhưng phần lợi nhuận tăng thêm nhỏ hơn bản trước; dòng "B không có sàn mức phục vụ" cho thấy cách đặt cũ lãi hơn nhưng để thiếu hàng nhiều hơn (xem `nghiep-vu.md` mục 5).

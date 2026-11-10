@@ -22,7 +22,8 @@ ADJUST_REASONS = {
 }
 # ACTIVE: dang ban. PULLED: da go khoi ke (qua ngay ban cuoi), cho SM duyet ghi huy, khong con la ton ban duoc.
 # Cac trang thai dong: SOLD / WASTED / RETURNED / ADJUSTED.
-LOT_STATUSES = ("ACTIVE", "PULLED", "SOLD", "WASTED", "RETURNED", "ADJUSTED")
+# RETURN_PENDING: da tach ra cho NCC lay (phieu tra dang mo), khong ban, khong tinh ton.
+LOT_STATUSES = ("ACTIVE", "PULLED", "RETURN_PENDING", "SOLD", "WASTED", "RETURNED", "ADJUSTED")
 
 
 class Lot(Base):
@@ -75,6 +76,16 @@ class StockMovement(Base):
     note: Mapped[str | None] = mapped_column(Text)
     # WASTE: WASTE_REASONS; ADJUST: ADJUST_REASONS
     reason: Mapped[str | None] = mapped_column(String(20))
+
+
+class InventorySnapshot(Base):
+    """Gia tri ton cuoi ngay (gia von), de tinh ton trung binh dung cho tung ky."""
+
+    __tablename__ = "inventory_snapshots"
+
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    value: Mapped[int] = mapped_column(Integer)
+    units: Mapped[int] = mapped_column(Integer)
 
 
 class DailySales(Base):
