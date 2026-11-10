@@ -17,6 +17,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+from app.engines.abc_xyz import SkuStats, classify
 from app.engines.kpi import summarize
 from app.sim.catalog import build_catalog
 from app.sim.policies import BaselineGoldenHourPolicy, BaselinePolicy, OpsChestPolicy
@@ -45,10 +46,46 @@ def warm_base(start: date, seed: int = 7, warmup: int = WARMUP_DAYS) -> StoreSim
     return base
 
 
+def _class_a(base: StoreSim, lookback: int = 90) -> set[str]:
+    """Nhom A (theo loi nhuan 90 ngay truoc ky so sanh), co dinh cho ca hai chinh sach de so cung mot tap SKU."""
+    stats = []
+    for p in base.products:
+        h = base.hist[p.sku]
+        sales = h["sales"][-lookback:]
+        if not sales:
+            continue
+        margin = sum(h["revenue"][-lookback:]) - sum(h["cogs"][-lookback:]) - sum(h["waste_cost"][-lookback:])
+        weekly = [sum(sales[i:i + 7]) for i in range(len(sales) % 7, len(sales), 7)]
+        stats.append(SkuStats(p.sku, p.name, margin, weekly))
+    return {k for k, v in classify(stats).items() if v.cell[0] == "A"} if stats else set()
+
+
+def _role_breakdown(sim: StoreSim, days: int, class_a: set[str]) -> dict:
+    """Ty le het hang theo vai tro (hang keo khach, nhom A) va het hang CAP NHOM cua hang tuoi:
+    ngay ma moi SKU trong nhom deu het hang (khach khong con mon thay the). Chi do, chua doi cach dat."""
+    def rate(skus):
+        sold = sum(sum(sim.hist[s]["sales"][-days:]) for s in skus)
+        lost = sum(sum(sim.hist[s]["lost"][-days:]) for s in skus)
+        return round(lost / (sold + lost), 4) if sold + lost else 0.0
+    traffic = [p.sku for p in sim.products if p.is_traffic_driver]
+    groups = defaultdict(list)
+    for p in sim.products:
+        if p.freshness_class == "FRESH":
+            groups[p.category].append(p.sku)
+    empty = total = 0
+    for skus in groups.values():
+        for k in range(1, days + 1):
+            total += 1
+            empty += all(sim.hist[s]["lost"][-k] > 0 for s in skus)
+    return {"oos_traffic": rate(traffic), "oos_class_a": rate(sorted(class_a)),
+            "group_oos_fresh": round(empty / total, 4) if total else 0.0}
+
+
 def compare(base: StoreSim, start: date, days: int, world: WorldParams = REFERENCE_WORLD,
             baseline: Policy | None = None, ops: OpsChestPolicy | None = None) -> dict:
     results = {}
     by_class = {}
+    class_a = _class_a(base)
     for policy in (baseline or BaselineGoldenHourPolicy(), ops or OpsChestPolicy()):
         sim = copy.deepcopy(base)
         sim.world = world
@@ -59,6 +96,7 @@ def compare(base: StoreSim, start: date, days: int, world: WorldParams = REFEREN
         k["runtime_s"] = round(time.perf_counter() - t0, 1)
         if isinstance(policy, OpsChestPolicy):
             k["actions"] = policy.actions
+        k.update(_role_breakdown(sim, days, class_a))
         results[policy.name] = k
         by_class[policy.name] = _class_breakdown(sim, days)
     a, b = list(results.values())
@@ -86,6 +124,9 @@ def _row(key: str, label: str, note: str, res: dict) -> dict:
         "gain_pct": round(b["gross_profit"] / a["gross_profit"] - 1, 4),
         "waste_a": a["waste_rate"], "waste_b": b["waste_rate"],
         "oos_a": a["oos_rate"], "oos_b": b["oos_rate"],
+        "oos_traffic_a": a["oos_traffic"], "oos_traffic_b": b["oos_traffic"],
+        "oos_class_a_a": a["oos_class_a"], "oos_class_a_b": b["oos_class_a"],
+        "group_oos_fresh_a": a["group_oos_fresh"], "group_oos_fresh_b": b["group_oos_fresh"],
     }
 
 
@@ -95,6 +136,10 @@ def run_sensitivity(start: date = SENSITIVITY_START, days: int = SENSITIVITY_DAY
     rows = [
         _row("reference", "Tham chiếu", "A có giờ vàng, khách phản ứng bằng 50% giả định của engine",
              compare(base, start, days)),
+        _row("no_floor", "B không có sàn mức phục vụ", "Cách đặt cũ: newsvendor được để thiếu hàng tới 70% số ngày",
+             compare(base, start, days, ops=OpsChestPolicy(service_floors=False))),
+        _row("floor_a80", "Sàn nhóm A 80% (thay vì 90%)", "Đánh đổi: hết hàng nhích lên, hủy giảm",
+             compare(base, start, days, ops=OpsChestPolicy(floors={"traffic": 0.95, "A": 0.80, "other": 0.50}))),
     ]
     for seed in (11, 23):
         rows.append(_row(f"seed_{seed}", f"Nhu cầu khác (seed {seed})", "Đổi chuỗi nhu cầu ngẫu nhiên",
@@ -145,7 +190,9 @@ def _class_breakdown(sim: StoreSim, days: int) -> dict:
 def _fmt(results: dict) -> str:
     keys = [("revenue", "Doanh thu", "{:,.0f}"), ("gross_profit", "Lợi nhuận gộp", "{:,.0f}"),
             ("waste_cost", "Giá vốn hàng hủy", "{:,.0f}"), ("waste_rate", "Tỷ lệ hủy", "{:.2%}"),
-            ("oos_rate", "Tỷ lệ hết hàng", "{:.2%}"), ("lost_margin", "Lãi mất do hết hàng", "{:,.0f}"),
+            ("oos_rate", "Tỷ lệ hết hàng", "{:.2%}"), ("oos_traffic", "Hết hàng: kéo khách", "{:.2%}"),
+            ("oos_class_a", "Hết hàng: nhóm A", "{:.2%}"), ("group_oos_fresh", "Cả nhóm tươi trống", "{:.2%}"),
+            ("lost_margin", "Lãi mất do hết hàng", "{:,.0f}"),
             ("markdown_loss", "Giảm giá đã chi", "{:,.0f}"), ("return_credit", "NCC hoàn tiền", "{:,.0f}"),
             ("avg_inventory_value", "Tồn kho TB (giá vốn)", "{:,.0f}"), ("inventory_days", "Số ngày tồn", "{:.1f}")]
     names = list(results)
@@ -169,7 +216,10 @@ def main() -> None:
         SENSITIVITY_FILE.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
         for r in out["rows"]:
             print(f"{r['key']:<14} {r['gain_pct']:+7.1%}  hủy {r['waste_a']:.1%}/{r['waste_b']:.1%}"
-                  f"  hết hàng {r['oos_a']:.1%}/{r['oos_b']:.1%}")
+                  f"  hết hàng {r['oos_a']:.1%}/{r['oos_b']:.1%}"
+                  f"  kéo khách {r['oos_traffic_a']:.1%}/{r['oos_traffic_b']:.1%}"
+                  f"  nhóm A {r['oos_class_a_a']:.1%}/{r['oos_class_a_b']:.1%}"
+                  f"  cả nhóm tươi trống {r['group_oos_fresh_a']:.1%}/{r['group_oos_fresh_b']:.1%}")
         return
     from app.clock import today
     start = args.start or today() - timedelta(days=args.days)

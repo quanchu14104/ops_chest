@@ -17,7 +17,7 @@ from app.db import SessionLocal
 from app.db_init import migrate
 from app.db_init import reset as reset_db
 from app.models import (AppMeta, DailySales, Lot, POLine, Product, PurchaseOrder, StockMovement, Supplier,
-                        SupplierAgreement, User)
+                        SupplierAgreement, SupplierClosure, User)
 from app.sim.backtest import initial_stock
 from app.sim.catalog import PULL_DAYS, build_catalog
 from app.sim.policies import BaselinePolicy
@@ -55,9 +55,12 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
         sup_ids = {}
         for s in suppliers:
             row = Supplier(code=s.code, name=s.name, email=s.email, phone=s.phone, lead_time_days=s.lead_time_days,
-                           order_weekdays=s.order_weekdays, min_order_value=s.min_order_value)
+                           order_weekdays=s.order_weekdays, min_order_value=s.min_order_value,
+                           delivery_weekdays=s.delivery_weekdays)
             db.add(row)
             db.flush()
+            for a, b, why in s.closures:
+                db.add(SupplierClosure(supplier_id=row.id, start_date=a, end_date=b, reason=why))
             sup_ids[s.code] = row.id
             notes = ("Nhận trả hàng cận hạn nếu báo trước; hoàn tiền trừ vào đơn kế tiếp." if s.accepts_return
                      else "Không nhận trả hàng cận hạn.")
@@ -72,7 +75,8 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
                           shelf_life_days=p.shelf_life_days, unit_cost=p.unit_cost, unit_price=p.unit_price,
                           pack_size=p.pack_size, supplier_id=sup_ids[p.supplier_code],
                           is_traffic_driver=p.is_traffic_driver, substitute_skus=p.substitutes,
-                          pull_days_before_expiry=PULL_DAYS[p.freshness_class])
+                          pull_days_before_expiry=PULL_DAYS[p.freshness_class],
+                          max_stock_qty=p.max_stock_qty, min_display_qty=p.min_display_qty)
             db.add(row)
             db.flush()
             pid[p.sku] = row.id

@@ -14,6 +14,11 @@ Mặc định đã dùng cho các câu hỏi ở mục 8 (chờ xác nhận): (1
 | N2 | Xong (đợt 1) | Lô `PULLED`, danh sách rút kệ sau giờ đóng cửa, `DISPOSE` đóng lô và ghi hao hụt. `pull_days_before_expiry` dùng trong báo cáo cận date, đặt hàng, tua nhanh; bộ backtest vẫn bán đến HSD. |
 | N3 | Xong (đợt 1) | `StockMovement.reason`; báo hủy có lý do là đề xuất `DISPOSE` (không thêm loại mới), báo cáo tách theo lý do. |
 | N4 | Xong (đợt 1) | Nhiều lô mỗi dòng, từ chối tại cửa, chuẩn 2/3 vòng đời, giao thiếu/dư, giá hóa đơn. Form nhận hàng trong chat vẫn một HSD mỗi dòng; form đầy đủ ở trang Đặt & nhận hàng. |
+| N6 | Xong (đợt 2) | Sàn 95/90/50% trong config, dùng cả ở engine DB và bộ giả lập. Backtest đo thêm hết hàng của hàng kéo khách, nhóm A và "cả nhóm tươi trống". Thêm dòng "B không có sàn" và "sàn nhóm A 80%". |
+| N9 | Xong (đợt 2) | `max_stock_qty`, `min_display_qty`; demo: tủ kem 36 đơn vị, hàng bền trưng bày tối thiểu 2–3. |
+| N7 | Xong (đợt 2) | `delivery_weekdays`, bảng `supplier_closures`; demo seed lịch nghỉ Tết cho 8 đại lý. Baseline A trong backtest không tính trước kỳ nghỉ (giống cửa hàng làm tay). |
+| N8 | Xong (đợt 2) | Phương án bù đơn/hoãn trong payload, duyệt đơn dưới mức cần `min_order_ack`. Bộ giả lập vẫn bỏ qua đơn tối thiểu. |
+| N15 | Xong (đợt 2) | Dòng SM tự thêm được áp chiết khấu của thỏa thuận. |
 
 
 ## 1. Kết luận ngắn

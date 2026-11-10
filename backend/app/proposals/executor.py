@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.clock import now, today
 from app.config import settings
+from app.fmt import vnd
 from app.models import (DemandHypothesis, Lot, OrderAdjustment, POLine, Product, Proposal, PurchaseOrder,
                         StockMovement, Supplier, User)
 from app.notify import email, pdf
@@ -39,8 +40,11 @@ def _purchase_order(db: Session, p: Proposal, user: User) -> dict:
         raise ExecutionError("Đơn không còn dòng hàng nào có số lượng > 0.")
     sup = db.get(Supplier, pl["supplier_id"])
     t = today()
-    expected = t + timedelta(days=sup.lead_time_days)
+    expected, _ = sup.schedule(t)  # theo lich giao va lich nghi cua NCC
     total = sum(int(l["qty"]) * int(l["unit_cost"]) for l in lines)
+    if sup.min_order_value and total < sup.min_order_value and not pl.get("min_order_ack"):
+        raise ExecutionError(f"Đơn {vnd(total)} dưới giá trị tối thiểu {vnd(sup.min_order_value)} của {sup.name}. "
+                             "Hãy bù đơn, hoãn, hoặc đánh dấu đã thỏa thuận với NCC rồi duyệt lại.")
     code = _po_code(db)
     po = PurchaseOrder(code=code, supplier_id=sup.id, proposal_id=p.id, status="SENT", order_date=t,
                        expected_date=expected, total_value=total)

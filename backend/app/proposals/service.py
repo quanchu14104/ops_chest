@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.clock import now
+from app.clock import now, today
 from app.models import Product, Proposal, User
 from app.proposals import executor
 from app.proposals.views import acceptance_stats, to_dict  # noqa: F401 (re-export)
@@ -68,8 +68,11 @@ def apply_edits(db: Session, p: Proposal, edits: dict, user: User) -> list[dict]
                 prod = db.get(Product, pid)
                 if not prod or prod.supplier_id != payload["supplier_id"]:
                     raise ProposalError(422, f"Sản phẩm {pid} không thuộc nhà cung cấp của đơn này")
+                # Dong SM tu them cung huong chiet khau cua thoa thuan nhu dong do engine tao
+                agr = prod.supplier.agreement_on(today())
+                unit_cost = int(round(prod.unit_cost * (1 - (agr.discount_pct if agr else 0.0))))
                 line = {"product_id": pid, "sku": prod.sku, "name": prod.name, "qty": qty, "suggested_qty": 0,
-                        "pack_size": prod.pack_size, "unit_cost": prod.unit_cost, "line_value": qty * prod.unit_cost,
+                        "pack_size": prod.pack_size, "unit_cost": unit_cost, "line_value": qty * unit_cost,
                         "added_by_sm": True}
                 payload["lines"].append(line)
                 diffs.append({"field": f"lines[{prod.sku}]", "from": None, "to": qty})
@@ -77,6 +80,10 @@ def apply_edits(db: Session, p: Proposal, edits: dict, user: User) -> list[dict]
         if "note" in edits and edits["note"] != payload.get("note"):
             diffs.append({"field": "note", "from": payload.get("note"), "to": edits["note"]})
             payload["note"] = edits["note"]
+        if "min_order_ack" in edits and bool(edits["min_order_ack"]) != bool(payload.get("min_order_ack")):
+            diffs.append({"field": "min_order_ack", "from": bool(payload.get("min_order_ack")),
+                          "to": bool(edits["min_order_ack"])})
+            payload["min_order_ack"] = bool(edits["min_order_ack"])
     elif p.type in ("MARKDOWN", "RETURN", "DISPOSE"):
         by_lot = {i["lot_id"]: i for i in payload["items"]}
         for e in edits.get("items", []):

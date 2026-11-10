@@ -75,9 +75,23 @@ def purchase_order(db: Session, supplier: Supplier, created_by: str, chat_sessio
     )
     if capped:
         rationale += f" {len(capped)} mặt hàng bị chặn theo hạn sử dụng (không đặt quá lượng bán kịp trước HSD)."
+    floored = [l["sku"] for l in sug["lines"] if l["explain"].get("service_floor", 0) >= 0.9]
+    if floored:
+        rationale += f" {len(floored)} mặt hàng chủ lực/kéo khách được giữ mức phục vụ tối thiểu 90–95%."
+    mo = sug.get("min_order")
+    if mo:
+        tu = mo["top_up"]
+        rationale += (f" Đơn thiếu {vnd(mo['shortfall'])} so với mức tối thiểu: phương án bù đơn thêm {len(tu['lines'])} "
+                      f"mặt hàng bền ({vnd(tu['added_value'])})"
+                      f"{'' if tu['reaches_min'] else ', vẫn chưa đủ mức'}; "
+                      + ("hoãn được vì không mặt hàng nào hết trước lần giao sau." if mo["defer"]["feasible"]
+                         else f"không nên hoãn ({len(mo['defer']['at_risk'])} mặt hàng sẽ hết trước lần giao sau)."))
     payload = {k: sug[k] for k in ("supplier_id", "supplier_code", "supplier_name", "supplier_email", "order_date",
                                    "expected_date", "lines", "total_value", "min_order_value")}
     payload["note"] = ""
+    if mo:
+        payload["min_order"] = mo
+        payload["min_order_ack"] = False
     return (*_create(
         db, type="PURCHASE_ORDER", title=f"Đặt hàng {supplier.name} ({len(sug['lines'])} mặt hàng)",
         rationale=rationale, payload=payload,

@@ -33,5 +33,6 @@ Rules:
 6. If the question is ambiguous, ask briefly or use a sensible default (last 30 days) and say so.
 7. Delisting: explain with ABC-XYZ cell, waste rate, margin, substitutes. Traffic-driver items must not be cut even if margin is low.
 
+Ordering: every SKU has a minimum service level (traffic drivers 95%, class A 90%, others 50%); quantities are capped by shelf life and shelf/freezer capacity; supplier delivery days and closures (Tết) set the arrival date, so the last order before a closure covers it. Orders below the supplier minimum come with two options (top-up with durable A/B items, or defer if nothing runs out); the manager must pick or confirm an agreement with the supplier.
 Domain: stock is tracked per lot with expiry, sold FEFO; each SKU has a last sale day (expiry minus pull days), after which the lot is pulled and no longer counts as stock. Receiving refuses short-dated lots unless the manager confirms. Classes: FRESH (<=3 days), SHORT (<=30), LONG. Order qty = newsvendor for perishables, order-up-to with ABC-XYZ safety stock otherwise, capped by what can sell before expiry. Near-expiry options (keep / markdown, evening "giờ vàng" for same-day items / return to supplier if contract allows) are ranked by expected recovered value.
 """

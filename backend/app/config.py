@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     receive_min_remaining_life_pct: float = 0.67
     # Giao du qua ty le nay (hoac qua mot quy cach, lay muc lon hon) can Store Manager xac nhan
     receive_over_tolerance_pct: float = 0.10
+    # San muc phuc vu theo vai tro mat hang (engine/replenishment.service_floor)
+    service_floor_traffic: float = 0.95
+    service_floor_class_a: float = 0.90
+    service_floor_other: float = 0.50
     # Gio dong cua: danh sach rut ke chay sau gio nay (cua hang khong mo 24 gio)
     closing_hour: int = 22
 
@@ -62,6 +66,11 @@ class Settings(BaseSettings):
     pdf_output_dir: str = "./generated"
     enable_scheduler: bool = True
     cors_origins: str = "http://localhost:5173"
+
+
+def service_floors(s: "Settings | None" = None) -> dict:
+    s = s or settings
+    return {"traffic": s.service_floor_traffic, "A": s.service_floor_class_a, "other": s.service_floor_other}
 
 
 @lru_cache

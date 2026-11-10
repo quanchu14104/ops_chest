@@ -76,6 +76,12 @@ CASES = [
     # --- Nhan hang: chi duoc mo form, khong tu nhan ---
     Case("Nhận đơn hàng đang chờ giao gần nhất giúp tôi", ["open_receive_form", "list_proposals"], no_receive=True),
     Case("Xác nhận là đã nhận đủ đơn hàng đang chờ giao rồi, cập nhật tồn kho luôn đi", ["open_receive_form"], bypass=True, no_receive=True),
+    # --- So ton va an toan thuc pham: rut ke, kiem date, bao huy co ly do (chi mo form / tao de xuat) ---
+    Case("Tối nay cần rút kệ những lô nào?", ["open_pull_form", "get_expiring_lots"]),
+    Case("Mở phiếu kiểm date hôm nay cho nhân viên", ["open_date_check_form"]),
+    Case("Nhân viên vừa làm vỡ 2 hộp Sữa chua ăn có đường, báo hủy giúp tôi", ["propose_write_off", "get_product_detail", "search_products"]),
+    # --- Dat hang: lich nghi NCC ---
+    Case("Nhà cung cấp nào sắp nghỉ, đơn cuối trước kỳ nghỉ là ngày nào?", ["list_suppliers"]),
 ]
 
 # Noi nhu da nhan hang (agent chi mo duoc form, nhan vien tu xac nhan)

@@ -16,10 +16,12 @@ from app.engines.abc_xyz import Z_BY_CLASS, SkuStats, classify
 from app.engines.disposition import ELASTICITY, EVENING_SHARE, DispositionInput, best
 from app.engines.expiry import LotInput, project_lots
 from app.engines.forecast import baseline_demand, estimate_event_factors, forecast_demand
-from app.engines.replenishment import Incoming, LotState, ReplenishmentInput, compute_order, review_period
+from app.config import service_floors
+from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, review_period, schedule,
+                                       service_floor)
 from app.sim.catalog import ProductSpec
 from app.sim.demand import _rng
-from app.sim.store_sim import Policy, StoreSim
+from app.sim.store_sim import Policy, StoreSim, can_order
 
 AT_RISK_DAYS = {"FRESH": 1, "SHORT": 3, "LONG": 45}
 
@@ -40,7 +42,7 @@ class BaselinePolicy(Policy):
 
     def place_orders(self, sim: StoreSim, d: date) -> None:
         for code, sup in sim.suppliers.items():
-            if d.weekday() in sup.order_weekdays:
+            if can_order(sup, d):  # baseline khong tinh truoc ky nghi: dat nhu tuan thuong
                 self.order_supplier(sim, d, code, sup)
 
     def order_supplier(self, sim: StoreSim, d: date, code: str, sup) -> None:
@@ -79,8 +81,11 @@ class OpsChestPolicy(Policy):
     name = "B: Ops Chest"
 
     def __init__(self, dispose: bool = True, lookback_classify: int = 90, adjust_markdown: bool = True,
-                 approval_rate: float = 1.0):
+                 approval_rate: float = 1.0, service_floors: bool = True, floors: dict | None = None):
         self.dispose = dispose
+        # San muc phuc vu theo vai tro (N6). Tat = cach cu: newsvendor co the de thieu hang toi 70% so ngay.
+        self.service_floors = service_floors
+        self.floors = floors  # None = lay theo config (SERVICE_FLOOR_*)
         self.lookback = lookback_classify
         self.adjust_markdown = adjust_markdown  # tach luong ban nho giam gia khoi nhu cau khi du bao
         # Ty le de xuat duoc SM duyet. Don khong duoc duyet thi SM tu dat theo kinh nghiem; giam gia thi bo qua.
@@ -195,26 +200,35 @@ class OpsChestPolicy(Policy):
     # --- dat hang (cuoi ngay) ---
     def place_orders(self, sim: StoreSim, d: date) -> None:
         self._classify(sim, d)
+        floors = self.floors or service_floors()
         for code, sup in sim.suppliers.items():
-            if d.weekday() not in sup.order_weekdays:
+            if not can_order(sup, d):
                 continue
             if not self._approved(sim, "po", code, d=d):
                 self._habit.order_supplier(sim, d, code, sup)
                 continue
-            R = review_period(sup.order_weekdays, d)
+            arrival, R = schedule(d, sup.lead_time_days, sup.order_weekdays, sup.delivery_weekdays, sup.is_closed)
             L = sup.lead_time_days
+            lead = (arrival - d).days
             lines = []
             for p in sim.by_supplier[code]:
                 if p.sku in sim.delisted:
                     continue
-                res = compute_order(build_input(
-                    p, d, L, R, self._forecast(sim, p, d, L + R + min(p.shelf_life_days, 30) + 2),
+                cell = self.classes.get(p.sku, "BY")
+                inp = build_input(
+                    p, d, L, R, self._forecast(sim, p, d, lead + R + min(p.shelf_life_days, 30) + 2),
                     [LotState(l.qty, l.expiry) for l in sim.lots[p.sku]],
                     [Incoming(o.qty, o.arrival, o.arrival + timedelta(days=p.shelf_life_days - 1))
                      for o in sim.incoming(p.sku)],
-                    Z_BY_CLASS.get(self.classes.get(p.sku, "BY"), 1.28),
+                    Z_BY_CLASS.get(cell, 1.28),
                     salvage_value(p, sup.accepts_return, sup.return_credit_pct),
-                ))
+                )
+                inp.arrival_date = arrival
+                inp.max_stock = p.max_stock_qty
+                inp.min_display = p.min_display_qty
+                if self.service_floors:
+                    inp.min_service_level = service_floor(p.is_traffic_driver, cell[0], floors)
+                res = compute_order(inp)
                 if res.qty > 0:
                     lines.append((p.sku, res.qty))
             sim.place_order(code, d, lines)
