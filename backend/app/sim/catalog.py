@@ -19,6 +19,7 @@ class SupplierSpec:
     discount_pct: float = 0.0
     phone: str = ""
     delivery_weekdays: list[int] | None = None  # None = giao moi ngay
+    return_mode: str = "CREDIT"  # CREDIT / EXCHANGE (doi date)
     closures: list[tuple] = field(default_factory=list)  # [(start, end, ly do)]
 
     def is_closed(self, d) -> bool:
@@ -85,6 +86,27 @@ def _tet_closures() -> None:
 
 
 _tet_closures()
+# Khung gio ban ma cua hang khai bao cho tung nhom (seed vao category_policies). Engine dat gio giam gia ngay sau
+# khung dinh: com hop sau trua (14h), banh mi sau sang (11h). Nhom khac giu gio vang 18h.
+ENGINE_DAYPARTS = {
+    "Cơm hộp & cơm nắm": (0.15, 0.5, 0.15, 0.2),
+    "Bánh mì, sandwich & bánh bao": (0.5, 0.2, 0.1, 0.2),
+    "Salad, trái cây & xôi": (0.3, 0.35, 0.15, 0.2),
+}
+
+
+def category_policy(category: str) -> dict:
+    """Cau hinh nhom hang cho demo/backtest: duoc giam gia, tran 50% (can doi chieu quy dinh), gio giam gia."""
+    from app.engines.disposition import DEFAULT_DAYPART_SHARES, peak_end_hour, share_after
+
+    shares = ENGINE_DAYPARTS.get(category, DEFAULT_DAYPART_SHARES)
+    hour = peak_end_hour(shares) if category in ENGINE_DAYPARTS else 18
+    return {"markdown_allowed": True, "max_markdown_pct": 0.5, "daypart_shares": list(shares), "markdown_hour": hour,
+            "remaining_share": share_after(shares, hour)}
+
+
+# Dai ly sua doi date (doi hang moi) thay vi hoan tien
+SUPPLIERS[2].return_mode = "EXCHANGE"
 # Nuoc giai khat va hoa my pham chi giao vao mot so ngay trong tuan
 SUPPLIERS[4].delivery_weekdays = [1, 2, 4, 5]
 SUPPLIERS[8].delivery_weekdays = [0, 1, 2, 3, 4]

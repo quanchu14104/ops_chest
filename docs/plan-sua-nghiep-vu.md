@@ -19,6 +19,14 @@ Mặc định đã dùng cho các câu hỏi ở mục 8 (chờ xác nhận): (1
 | N7 | Xong (đợt 2) | `delivery_weekdays`, bảng `supplier_closures`; demo seed lịch nghỉ Tết cho 8 đại lý. Baseline A trong backtest không tính trước kỳ nghỉ (giống cửa hàng làm tay). |
 | N8 | Xong (đợt 2) | Phương án bù đơn/hoãn trong payload, duyệt đơn dưới mức cần `min_order_ack`. Bộ giả lập vẫn bỏ qua đơn tối thiểu. |
 | N15 | Xong (đợt 2) | Dòng SM tự thêm được áp chiết khấu của thỏa thuận. |
+| N5 | Xong (đợt 3) | Bảng `supplier_returns`, lô `RETURN_PENDING` tách từ lô gốc, `return_mode` CREDIT/EXCHANGE (demo: NCC sữa đổi hàng). Xác nhận/lấy hàng/từ chối/đã nhận tiền là thao tác của SM qua REST, không qua đề xuất. Bộ backtest vẫn ghi tiền hoàn ngay (ghi trong giới hạn). |
+| N13 | Xong (đợt 3) | `inventory_snapshots` (job sáng, tua nhanh, seed), hao hụt trừ vào lợi nhuận gộp, GMROI, điểm NCC, hủy theo lý do. |
+| N12 | Xong (đợt 3) | `listed_date`, nhãn hàng mới, kế hoạch xả tồn trên thẻ ngừng nhập. Luồng SKU tham chiếu để ở P2. |
+| N14 | Xong (đợt 3) | `last_counted_date` (ghi ở endpoint đếm, không ở builder), lịch A/B/C 7/14/30 ngày, phát hiện tồn ảo. |
+| N11 | Xong (đợt 3) | Bảng `category_policies` (`markdown_allowed`, `max_markdown_pct`); chặn ở engine, sửa tay, sửa qua chat và lúc thực thi. Không ghi khẳng định pháp lý; docs ghi cần đối chiếu Nghị định 81/2018/NĐ-CP. |
+| N10 | Xong (đợt 3) | Tỷ trọng theo khung giờ trong `category_policies`, giờ giảm sau khung đỉnh (cơm 14h, bánh mì 11h, nhóm khác 18h). Bộ giả lập có bảng khung giờ "thật" lệch nhẹ; thêm dòng độ nhạy "giờ giảm giá cố định 18h". |
+
+Các mục P2 ở mục 5 được ghi vào "Ngoài phạm vi" của `docs/nghiep-vu.md`, không làm.
 
 
 ## 1. Kết luận ngắn

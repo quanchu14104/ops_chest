@@ -63,10 +63,11 @@ Engine mô phỏng bán FEFO theo dự báo để ra **số lượng dự kiến
 
 - **Giữ nguyên:** phần dư bị hủy, tốn thêm chi phí xử lý khoảng 500đ/đơn vị.
 - **Giảm giá 20/30/50%.** Hệ số co giãn giả định: FRESH 3,0, SHORT 2,0, LONG 1,2. Đây là giả định cần hiệu chỉnh bằng dữ liệu thật.
-  - Lô hết hạn trong ngày: chỉ **giảm giá giờ vàng sau 18h cho phần còn dư** (khoảng 30% lượt khách), nên không ăn mất doanh thu giá gốc ban ngày. Khách buổi tối vốn sẽ trả giá gốc cũng được hưởng giá giảm; engine và bộ giả lập đều trừ phần này.
+  - Lô hết hạn trong ngày: chỉ **giảm giá giờ vàng cho phần còn dư, bắt đầu sau khung bán đỉnh của nhóm hàng**. Mỗi nhóm có bảng tỷ trọng bán theo khung giờ (sáng 6–11h, trưa 11–14h, chiều 14–17h, tối 17–22h) trong `category_policies`: cơm hộp đỉnh trưa nên giảm từ 14h, bánh mì đỉnh sáng nên giảm từ 11h, các nhóm khác giữ 18h (khoảng 30% lượt khách). Engine dùng "tỷ trọng nhu cầu còn lại sau giờ giảm" thay cho hằng số 30% cũ. Khách sau giờ giảm vốn sẽ trả giá gốc cũng được hưởng giá giảm; engine và bộ giả lập đều trừ phần này. Demo dùng bảng khai báo; khi có POS thật thì học từ giờ bán. Bộ giả lập dùng bảng khung giờ "thật" lệch nhẹ so với bảng cửa hàng khai báo, để kết quả không tự chứng minh.
+  - **Ràng buộc giảm giá theo nhóm hàng** (`category_policies`): được giảm giá hay không (`markdown_allowed`) và trần mức giảm (`max_markdown_pct`, demo 50% cho mọi nhóm). Engine không đề xuất mức vượt trần; Store Manager sửa hoặc agent sửa vượt trần bị chặn; lúc thực thi kiểm tra lại. Đây là **cấu hình của cửa hàng**: trần mức giảm và danh mục hàng không được khuyến mại phải đối chiếu Nghị định 81/2018/NĐ-CP (và văn bản sửa đổi, hướng dẫn) trước khi dùng thật. Danh mục demo chưa có nhóm hàng nào cần cấm.
   - Lô còn vài ngày: giảm giá cả lô; engine tính cả phần doanh thu giá gốc bị mất.
   - Lô đang giảm giá: chỉ xét mức sâu hơn, so với phương án giữ mức hiện tại. Hệ thống không tăng giá trở lại, vì tem đã dán.
-- **Trả nhà cung cấp:** chỉ khi thỏa thuận **còn hiệu lực** cho phép và lô còn ≥ N ngày trước HSD; hoàn x% giá vốn. Thỏa thuận hết hiệu lực thì đơn hàng không được chiết khấu và có cảnh báo.
+- **Trả nhà cung cấp:** chỉ khi thỏa thuận **còn hiệu lực** cho phép và lô còn ≥ N ngày trước HSD; hoàn x% giá vốn hoặc đổi hàng mới (`SupplierAgreement.return_mode`: `CREDIT` mặc định, `EXCHANGE` đổi date). Thỏa thuận hết hiệu lực thì đơn hàng không được chiết khấu và có cảnh báo.
 - Một lô đang nằm trong đề xuất trả hoặc ghi hủy còn mở thì không được đề xuất lại cho đến khi đề xuất đó đóng.
 
 ### Giả thuyết của Store Manager (`services/hypotheses.py`)
@@ -82,9 +83,19 @@ Dự báo từ lịch sử không biết tuần này có trận bóng. Cách là
 
 Chỉ gợi ý khi có ít nhất 5 lần sửa trên 3 đơn đã duyệt, trung vị lệch từ 15% và 70% số lần cùng chiều. Hệ số do code tính (làm tròn 0,05, trong khoảng 0,5–1,5), agent không chọn được. Áp dụng phải qua duyệt, tắt được bất cứ lúc nào. Hệ số tăng vẫn không vượt trần HSD.
 
+### Ngừng nhập và hàng mới
+
+- `Product.listed_date`: mặt hàng bán chưa đủ 8 tuần là **hàng mới**, hiện nhãn "hàng mới" thay cho ô ABC-XYZ và không bị xét ngừng nhập (ít lịch sử nên dễ rơi vào C-Z).
+- Thẻ đề xuất ngừng nhập kèm **kế hoạch xả tồn**: tồn còn lại, đơn đang về, số ngày dự kiến bán hết, số đơn vị không bán kịp trước HSD. Có phần không kịp thì gợi ý xả hàng (giảm giá) và cân nhắc huỷ đơn đang về. Ngừng nhập vẫn chỉ đổi trạng thái; đơn đang mở không tự huỷ.
+- Chưa có luồng thêm mặt hàng mới với "SKU tham chiếu" để mượn dự báo (xem mục 7).
+
 ### Kiểm kê theo SKU (`services/stockcount.py`)
 
 Đếm **mù**: phiếu không hiện số trên sổ, vì người đếm thấy số sẽ có xu hướng đếm cho khớp. Nhân viên gửi số đếm; chênh lệch thành đề xuất cho Store Manager duyệt. Thiếu thì trừ lô gần hết hạn trước (không biết mất ở lô nào), dư thì cộng vào lô mới nhất. Nếu tồn đã thay đổi giữa lúc đếm và lúc duyệt, đề xuất thất bại và phải đếm lại, thay vì ghi đè bằng số cũ. Cách đếm này chỉ còn dùng cho hàng dài ngày còn xa hạn.
+
+- **Lịch đếm theo ABC**: nhóm A mỗi tuần, B hai tuần, C mỗi tháng, tính từ lần đếm gần nhất (kiểm kê hoặc kiểm date, kể cả khi khớp sổ). Bản tin nhắc số mặt hàng đến lịch; phiếu "Đến lịch đếm" chỉ gồm các mặt hàng này.
+- **Tồn ảo**: mặt hàng bán đều (trung bình ≥ 1/ngày, có bán ≥ 60% số ngày trong 4 tuần) mà 3 ngày liền không bán trong khi sổ còn hàng được đưa vào phiếu đếm, kèm lý do. Đây thường là kệ đã trống mà sổ chưa biết; để lâu thì dự báo giảm dần và mặt hàng không được đặt lại.
+- Lưu ý: cờ "hết hàng" trong `DailySales` của dữ liệu demo lấy từ nhu cầu hụt mà chỉ bộ giả lập biết. Cửa hàng thật chỉ suy được cờ này từ sổ tồn bằng 0, nên khi sổ sai (tồn ảo) thì bước hiệu chỉnh nhu cầu bị chặn cũng không chạy. Phát hiện tồn ảo và kiểm date là cách giữ sổ đúng.
 
 ### Kiểm date theo lô (`services/datecheck.py`)
 
@@ -100,6 +111,16 @@ POS chỉ biết SKU, và khách hay với tay lấy lô mới ở phía trong k
 - Mỗi mặt hàng có `pull_days_before_expiry` (demo: tươi 0, ngắn ngày 1, dài ngày 7). **Ngày bán cuối** = HSD − số ngày này. Báo cáo cận date, đề xuất giảm giá, số lượng đặt (tồn còn bán được, trần HSD) đều tính theo ngày bán cuối; điều khoản trả NCC vẫn tính theo HSD in trên bao bì.
 - Bán hàng quá hạn là vi phạm an toàn thực phẩm, nên **gỡ kệ là việc bắt buộc của ca làm, không chờ duyệt**. Cửa hàng có giờ đóng cửa (`CLOSING_HOUR`, mặc định 22h): sau giờ này có **danh sách rút kệ** cho các lô hết ngày bán. Nhân viên ghi **số thực gỡ** (phiếu không hiện số trên sổ). Xác nhận xong lô chuyển `PULLED`: không còn là tồn bán được, không tính vào đơn đặt hàng, có ghi nhật ký.
 - Store Manager duyệt **bút toán ghi hủy** (`DISPOSE`) theo số thực gỡ. Phần chênh với sổ ghi `ADJUST` lý do hao hụt, lô đóng hẳn. Lô quá ngày bán cuối mà chưa ai xác nhận gỡ vẫn được đề xuất ghi hủy (theo số sổ, có cảnh báo); SM sửa số nhỏ hơn thì phần còn lại cũng ghi hao hụt, không còn nằm trên sổ để bị đề xuất lại mãi.
+
+### Trả nhà cung cấp: vòng đời phiếu trả (`services/returns.py`)
+
+Tiền chỉ có khi đối tác xác nhận. Phiếu trả đi qua `REQUESTED → CONFIRMED → PICKED_UP → CREDITED`, hoặc `REFUSED`.
+
+- **Duyệt đề xuất trả hàng**: phần hàng trả được tách thành lô `RETURN_PENDING` (không bán, không tính tồn), email gửi NCC. **Chưa ghi tiền**: lợi nhuận gộp không đổi tại thời điểm duyệt.
+- **NCC đã lấy hàng**: Store Manager nhập số NCC thực nhận. Lúc này mới ghi `RETURN`. Với `CREDIT` là tiền hoàn theo tỷ lệ thỏa thuận (chờ NCC trả hoặc trừ vào đơn sau, SM đánh dấu "đã nhận tiền" để đóng phiếu). Với `EXCHANGE` là lô hàng đổi giá vốn 0, HSD mới; phiếu đóng ngay. Phần NCC không nhận quay lại bán.
+- **NCC từ chối**: lô quay lại bán và hệ thống xét lại phương án giảm giá (tạo đề xuất nếu có lợi).
+- Bản tin nhắc phiếu đã gửi từ 5 ngày mà NCC chưa lấy hàng: trong lúc đó hàng vẫn nằm ở cửa hàng.
+- Đây là thao tác của Store Manager (có nhật ký), không phải của agent; agent chỉ xem được trạng thái phiếu.
 
 ### Hủy có lý do
 
@@ -125,10 +146,12 @@ Model chỉ đọc chữ in trên bao bì; việc hiểu ngày (ngày trước t
 |---|---|
 | Tỷ lệ hủy | giá vốn hàng hủy / (giá vốn hàng bán + giá vốn hàng hủy) |
 | Tỷ lệ hết hàng | nhu cầu hụt / (đã bán + nhu cầu hụt) |
-| Lợi nhuận gộp sau hủy | doanh thu − giá vốn bán − giá vốn hủy − giá vốn hàng trả + tiền NCC hoàn |
-| Số ngày tồn | tồn kho trung bình (giá vốn) / giá vốn bán trung bình mỗi ngày |
+| Lợi nhuận gộp sau hủy | doanh thu − giá vốn bán − giá vốn hủy − giá vốn hàng trả + tiền NCC hoàn − hao hụt. Hàng trả và tiền hoàn chỉ tính khi NCC đã lấy hàng |
+| Số ngày tồn | tồn kho trung bình (giá vốn) / giá vốn bán trung bình mỗi ngày. Tồn trung bình lấy từ **ảnh chụp tồn cuối ngày** (`inventory_snapshots`) trong đúng kỳ, nên kỳ trước không còn dùng tồn hôm nay |
+| GMROI | lợi nhuận gộp / tồn kho trung bình theo giá vốn, trong kỳ: mỗi đồng vốn nằm trong hàng sinh ra bao nhiêu lãi gộp |
+| Điểm NCC | trên các đơn đến hạn giao trong kỳ: tỷ lệ giao đủ, tỷ lệ đúng hẹn, số lần giao date ngắn, số đơn vị bị từ chối tại cửa |
 | Mức tin cậy của agent | tỷ lệ đề xuất được duyệt, tỷ lệ bị sửa, mức sửa số lượng trung bình |
-| Hao hụt | điều chỉnh âm ròng theo từng (mặt hàng, phiếu), gồm kiểm kê, kiểm date và chênh lệch khi rút kệ; chuyển số giữa các lô cùng phiếu không tính |
+| Hao hụt | điều chỉnh âm ròng theo từng (mặt hàng, phiếu), gồm kiểm kê, kiểm date và chênh lệch khi rút kệ; chuyển số giữa các lô cùng phiếu không tính. Hiện thành dòng riêng và trừ vào lợi nhuận gộp |
 | Hủy theo lý do | giá vốn hủy tách theo `EXPIRED` / `DAMAGED` / `SPOILED` / `SUPPLIER_DEFECT` / `OTHER` |
 
 Lưu ý: dữ liệu giả lập biết chính xác "nhu cầu hụt". Cửa hàng thật không biết số này, nên phải ước tính từ dự báo trong những ngày hết hàng.
@@ -146,37 +169,46 @@ Bảng dưới (08/09–06/11/2026, 60 ngày). Mỗi dòng chỉ đổi một đ
 
 | Kịch bản | Lợi nhuận B so với A | Tỷ lệ hủy A / B | Hết hàng A / B | Hàng kéo khách A / B | Nhóm A: A / B |
 |---|---|---|---|---|---|
-| **Tham chiếu** | **+5,0%** | 11,0% / 10,1% | 5,9% / 4,6% | 3,5% / 2,3% | 4,6% / 2,6% |
-| B không có sàn mức phục vụ (cách đặt cũ) | +13,9% | 11,0% / 6,5% | 5,9% / 7,4% | 3,5% / 5,0% | 4,6% / 6,3% |
-| Sàn nhóm A 80% thay vì 90% | +7,6% | 11,0% / 9,2% | 5,9% / 5,3% | 3,5% / 2,3% | 4,6% / 3,6% |
-| Nhu cầu khác (seed 11) | +2,6% | 11,3% / 10,8% | 5,7% / 4,8% | 3,5% / 1,9% | 4,4% / 2,4% |
-| Nhu cầu khác (seed 23) | +4,6% | 10,7% / 9,9% | 6,0% / 4,5% | 2,1% / 1,1% | 4,2% / 2,0% |
-| Khách phản ứng đúng 100% giả định | +7,4% | 10,5% / 8,9% | 5,4% / 4,3% | 2,9% / 2,3% | 4,3% / 2,4% |
-| Khách chỉ phản ứng 25% giả định | +2,1% | 11,1% / 10,9% | 6,1% / 4,7% | 4,1% / 2,4% | 4,8% / 2,7% |
-| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +1,7% | 11,0% / 12,2% | 5,9% / 4,7% | 3,5% / 2,4% | 4,6% / 2,7% |
-| B không tách doanh số giảm giá khỏi nhu cầu | +2,2% | 11,0% / 10,9% | 5,9% / 4,3% | 3,5% / 2,0% | 4,6% / 2,4% |
-| Store Manager chỉ duyệt 80% đề xuất | +4,4% | 11,0% / 10,5% | 5,9% / 4,8% | 3,5% / 2,8% | 4,6% / 3,0% |
-| Store Manager chỉ duyệt 60% đề xuất | +2,6% | 11,0% / 11,1% | 5,9% / 5,0% | 3,5% / 3,5% | 4,6% / 3,5% |
-| 20% lượt mua lấy lô mới (không theo FEFO) | +4,2% | 11,1% / 10,4% | 5,9% / 4,6% | 3,5% / 2,3% | 4,6% / 2,6% |
-| 50% lượt mua lấy lô mới (không theo FEFO) | +3,0% | 11,2% / 10,8% | 5,9% / 4,7% | 3,5% / 2,3% | 4,6% / 2,7% |
-| Cách so sánh cũ (A không giảm giá, khách phản ứng đúng giả định) | +9,5% | 11,8% / 8,9% | 6,2% / 4,3% | 4,5% / 2,3% | 5,0% / 2,4% |
+| **Tham chiếu** | **+4,2%** | 11,1% / 9,8% | 6,1% / 4,6% | 4,1% / 2,3% | 4,8% / 2,6% |
+| B không có sàn mức phục vụ (cách đặt cũ) | +12,8% | 11,1% / 6,3% | 6,1% / 7,4% | 4,1% / 5,0% | 4,8% / 6,3% |
+| Giờ giảm giá cố định 18h cho mọi nhóm (cách cũ) | +1,9% | 11,1% / 11,1% | 6,1% / 4,7% | 4,1% / 2,4% | 4,8% / 2,7% |
+| Sàn nhóm A 80% thay vì 90% | +6,7% | 11,1% / 9,0% | 6,1% / 5,3% | 4,1% / 2,3% | 4,8% / 3,6% |
+| Nhu cầu khác (seed 11) | +2,7% | 11,7% / 10,6% | 5,9% / 4,8% | 3,8% / 1,9% | 4,5% / 2,4% |
+| Nhu cầu khác (seed 23) | +4,9% | 11,2% / 9,7% | 6,1% / 4,5% | 2,5% / 1,1% | 4,4% / 2,0% |
+| Khách phản ứng đúng 100% giả định | +8,7% | 11,0% / 8,6% | 5,9% / 4,3% | 3,6% / 2,3% | 4,6% / 2,4% |
+| Khách chỉ phản ứng 25% giả định | +1,8% | 11,5% / 10,8% | 6,2% / 4,7% | 4,4% / 2,4% | 4,9% / 2,7% |
+| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +0,2% | 11,1% / 12,2% | 6,1% / 4,7% | 4,1% / 2,4% | 4,8% / 2,7% |
+| B không tách doanh số giảm giá khỏi nhu cầu | +1,0% | 11,1% / 10,8% | 6,1% / 4,2% | 4,1% / 1,9% | 4,8% / 2,4% |
+| Store Manager chỉ duyệt 80% đề xuất | +3,3% | 11,1% / 10,4% | 6,1% / 4,8% | 4,1% / 2,7% | 4,8% / 3,0% |
+| Store Manager chỉ duyệt 60% đề xuất | +1,2% | 11,1% / 11,1% | 6,1% / 5,0% | 4,1% / 3,4% | 4,8% / 3,5% |
+| 20% lượt mua lấy lô mới (không theo FEFO) | +3,4% | 11,2% / 10,1% | 6,1% / 4,6% | 4,1% / 2,3% | 4,8% / 2,6% |
+| 50% lượt mua lấy lô mới (không theo FEFO) | +2,3% | 11,4% / 10,5% | 6,1% / 4,7% | 4,1% / 2,3% | 4,9% / 2,7% |
+| Cách so sánh cũ (A không giảm giá, khách phản ứng đúng giả định) | +10,5% | 11,8% / 8,6% | 6,2% / 4,3% | 4,5% / 2,3% | 5,0% / 2,4% |
 
-**Đổi so với bản trước (từ đợt sửa đặt hàng N6).** B giờ có sàn mức phục vụ: hàng kéo khách 95%, nhóm A 90%, còn lại 50%. Mục tiêu là tỷ lệ hết hàng của B không cao hơn A. Ở kịch bản tham chiếu B hết hàng 4,6% so với 5,9% của A (hàng kéo khách 2,3% so với 3,5%, nhóm A 2,6% so với 4,6%), và B không hết hàng nhiều hơn A ở mọi dòng trừ dòng cố ý tắt sàn. Cái giá là phần lợi nhuận tăng thêm: tham chiếu còn **+5,0%** (bản trước +13,6%), tỷ lệ hủy của B là 10,1% so với 11,0% của A (bản trước 6,5%). Dòng "B không có sàn mức phục vụ" tái hiện cách đặt cũ: +13,9% lợi nhuận nhưng hết hàng 7,4% so với 5,9%.
+**Đổi so với bản trước.** Bản trước (commit `db6628d`) ghi tham chiếu +13,6% lợi nhuận, hủy 11,0% / 6,5%, hết hàng 5,6% / 7,3%: B lãi hơn nhờ để thiếu hàng nhiều hơn người làm tay. Ba thay đổi làm số đổi:
 
-Số của A cũng nhích nhẹ (hết hàng 5,6% → 5,9%) vì giai đoạn khởi động 200 ngày nay đi qua Tết 2026 với lịch nghỉ của đại lý (N7), nên trạng thái kho lúc bắt đầu so sánh khác trước.
+1. **Sàn mức phục vụ (N6):** hàng kéo khách 95%, nhóm A 90%, còn lại 50%. Ở tham chiếu B hết hàng 4,6% so với 6,1% của A (hàng kéo khách 2,3% so với 4,1%, nhóm A 2,6% so với 4,8%); B không hết hàng nhiều hơn A ở mọi dòng trừ dòng cố ý tắt sàn. Dòng "B không có sàn mức phục vụ" tái hiện cách đặt cũ: +12,8% lợi nhuận nhưng hết hàng 7,4% so với 6,1%.
+2. **Giờ giảm giá theo khung bán (N10):** thế giới giả lập giờ có khung giờ bán theo nhóm hàng (cơm hộp bán chủ yếu buổi trưa, bánh mì buổi sáng). Giờ vàng cố định 18h vì thế kém tác dụng với hàng tươi, cho cả A (luôn giảm lúc 18h) và B. Dòng "giờ giảm giá cố định 18h" cho thấy riêng việc đặt giờ giảm theo nhóm đóng góp khoảng 2 điểm lợi nhuận (+4,2% so với +1,9%) và hạ tỷ lệ hủy của B từ 11,1% xuống 9,8%.
+3. **Lịch nghỉ Tết của đại lý (N7):** giai đoạn khởi động 200 ngày nay đi qua Tết 2026 với lịch nghỉ, nên trạng thái kho lúc bắt đầu so sánh khác trước; số của A cũng đổi nhẹ.
 
-Con số nên trích dẫn là **lợi nhuận gộp khoảng +2–7% (tham chiếu +5%), hết hàng thấp hơn baseline, tỷ lệ hủy thấp hơn khoảng 1 điểm**. Dòng "sàn nhóm A 80%" cho thấy đây là một nút chỉnh, không phải hằng số: hạ sàn thì lợi nhuận +7,6% và hết hàng 5,3%, vẫn dưới A. Mức sàn là chính sách của cửa hàng, nên chúng tôi giữ mức trong plan thay vì chọn mức cho số đẹp nhất trên bảng này.
+Con số nên trích dẫn là **lợi nhuận gộp khoảng +3–5% (tham chiếu +4,2%; hai chuỗi nhu cầu khác +2,7% và +4,9%), hết hàng thấp hơn baseline (4,6% so với 6,1%), tỷ lệ hủy thấp hơn khoảng 1,3 điểm**. Lợi ích nhỏ hơn hẳn bản trước, đúng như rủi ro đã nêu trong plan; đây là kết quả trung thực hơn vì B không còn "mua" lợi nhuận bằng cách để kệ trống.
 
-**Điểm cần nói thẳng:** ở dòng "B chỉ đặt hàng", B hủy **nhiều hơn** A (12,2% so với 11,0%): với sàn mức phục vụ, phần đặt hàng một mình đổi hủy lấy có hàng; chính giảm giá cận date và trả NCC mới kéo tỷ lệ hủy xuống dưới A. Hết hàng "cả nhóm hàng tươi trống" (ngày mà mọi món trong nhóm đều hết) được đo nhưng không xảy ra trong mô phỏng ở cả A và B, vì mỗi nhóm có 6–20 món.
+Dòng "sàn nhóm A 80%" cho thấy sàn là một nút chỉnh chứ không phải hằng số: hạ sàn thì lợi nhuận +6,7% và hết hàng 5,3%, vẫn dưới A. Mức sàn là chính sách của cửa hàng, nên giữ mức trong plan thay vì chọn mức cho số đẹp nhất trên bảng này.
+
+**Điểm cần nói thẳng:**
+
+- Ở dòng "B chỉ đặt hàng", B hủy **nhiều hơn** A (12,2% so với 11,1%) và lợi nhuận gần như hòa (+0,2%): với sàn mức phục vụ, phần đặt hàng một mình đổi hủy lấy có hàng; giảm giá cận date và trả NCC mới kéo tỷ lệ hủy xuống dưới A.
+- Khi Store Manager chỉ duyệt 60% đề xuất, lợi ích gần như hết (+1,2%). Khi khách phản ứng với giảm giá chỉ bằng 25% giả định, còn +1,8%.
+- Hết hàng "cả nhóm hàng tươi trống" (ngày mà mọi món trong nhóm đều hết) được đo nhưng không xảy ra trong mô phỏng ở cả A và B, vì mỗi nhóm có 6–20 món.
 
 **Giới hạn cần nói rõ khi bảo vệ:**
 
 1. Mô hình nhu cầu và hệ số co giãn đều là giả định; bảng độ nhạy chỉ cho biết kết luận chịu được sai lệch tới đâu.
 2. Baseline A là một heuristic hợp lý, không phải hành vi đo được của một Store Manager thật.
-3. Kịch bản tham chiếu coi như Store Manager duyệt 100% đề xuất. Nếu chỉ duyệt 60%, phần lợi nhuận tăng thêm còn khoảng một nửa: lợi ích phụ thuộc vào việc người dùng thực sự làm theo.
+3. Kịch bản tham chiếu coi như Store Manager duyệt 100% đề xuất. Nếu chỉ duyệt 60%, phần lợi nhuận tăng thêm gần như mất hết: lợi ích phụ thuộc vào việc người dùng thực sự làm theo.
 4. Chỉ có 3 chuỗi nhu cầu trên một giai đoạn 60 ngày, không đủ để nói về độ tin cậy thống kê.
 5. Khi khách không mua theo FEFO, cả A và B đều hủy nhiều hơn một chút nên chênh lệch gần như không đổi. Bộ giả lập chưa mô phỏng hao hụt (mất mát không ghi sổ).
-6. Bộ giả lập bán đến HSD (chưa dùng ngày bán cuối), bỏ qua giá trị đơn tối thiểu và ghi tiền NCC hoàn ngay khi trả; engine trong ứng dụng thì có các quy tắc này.
+6. Bộ giả lập bán đến HSD (chưa dùng ngày bán cuối), bỏ qua giá trị đơn tối thiểu và ghi tiền NCC hoàn ngay khi trả; engine trong ứng dụng thì có các quy tắc này. Bảng khung giờ bán của "thế giới" do chúng tôi đặt, không đo từ POS thật.
 
 ## 6. Tham khảo cách làm của các chuỗi
 
@@ -187,6 +219,16 @@ Con số nên trích dẫn là **lợi nhuận gộp khoảng +2–7% (tham chi�
 ## 7. Ngoài phạm vi (hướng phát triển)
 
 - Mô phỏng hao hụt trong backtest.
+- **Kênh đặt hàng.** Cửa hàng độc lập phần lớn đặt qua Zalo, điện thoại, hoặc nhân viên bán hàng của nhà phân phối ghé theo tuyến. Gửi đơn qua email kèm PDF là giả định của demo.
+- **Công nợ và ngân sách nhập hàng.** Cửa hàng nhỏ bị giới hạn bởi tiền mặt nhiều hơn bởi dự báo; engine chưa có ràng buộc ngân sách.
+- **Nhiều NCC cho một SKU**, giá vốn thay đổi theo thời gian, VAT.
+- **Hàng ký gửi**: NCC chịu rủi ro hủy, cách đặt hàng khác hẳn.
+- **Khuyến mãi của NCC** (mua 10 tặng 1) và tác động lên nhu cầu.
+- **Lịch lễ ngoài Tết** (30/4, 2/9, Trung thu): hiện dựa vào giả thuyết Store Manager nhập tay.
+- **Đặt hàng theo nhóm có thay thế** cho hàng tươi (hết cơm gà thì khách lấy cơm sườn). Hiện chỉ đo hết hàng cấp nhóm, chưa đổi cách đặt.
+- **Ước tính hết hàng cho cửa hàng thật** từ dự báo (xem lưu ý ở mục 4).
+- **Luồng thêm mặt hàng mới** với "SKU tham chiếu" để mượn dự báo bốn tuần đầu; SKU chưa có lịch sử hiện có dự báo bằng 0 nên không được đề xuất đặt.
+- **Nhận hàng ngoài đơn** và đọc hóa đơn giao hàng.
 - Đọc hóa đơn giao hàng bằng ảnh (hiện chỉ đọc tem HSD từng dòng).
 - Điều chuyển hàng giữa nhiều cửa hàng.
 - Tích hợp POS/ERP thật.

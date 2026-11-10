@@ -138,6 +138,8 @@ def run_sensitivity(start: date = SENSITIVITY_START, days: int = SENSITIVITY_DAY
              compare(base, start, days)),
         _row("no_floor", "B không có sàn mức phục vụ", "Cách đặt cũ: newsvendor được để thiếu hàng tới 70% số ngày",
              compare(base, start, days, ops=OpsChestPolicy(service_floors=False))),
+        _row("daypart_flat", "Giờ giảm giá cố định 18h cho mọi nhóm", "Cách cũ: giờ vàng 18h, giả định 30% khách cho mọi nhóm",
+             compare(base, start, days, ops=OpsChestPolicy(dayparts=False))),
         _row("floor_a80", "Sàn nhóm A 80% (thay vì 90%)", "Đánh đổi: hết hàng nhích lên, hủy giảm",
              compare(base, start, days, ops=OpsChestPolicy(floors={"traffic": 0.95, "A": 0.80, "other": 0.50}))),
     ]

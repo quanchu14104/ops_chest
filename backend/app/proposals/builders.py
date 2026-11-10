@@ -136,6 +136,7 @@ def markdown(db: Session, created_by: str, lot_ids: list[int] | None = None, day
         "lot_id": i["lot_id"], "sku": i["sku"], "name": i["name"], "qty": i["qty"],
         "expiry_date": i["expiry_date"], "days_left": i["days_left"], "unit_price": i["unit_price"],
         "markdown_pct": i["option"]["markdown_pct"], "timing": i["option"]["timing"],
+        "category": i["category"], "max_markdown_pct": i["max_markdown_pct"], "markdown_hour": i["markdown_hour"],
         "expected_waste_if_keep": i["expected_waste"], "est_gain": i["option"]["delta_vs_keep"],
     } for i in items]
     gain = sum(i["est_gain"] for i in payload_items)
@@ -175,10 +176,13 @@ def supplier_return(db: Session, created_by: str, lot_ids: list[int] | None = No
         out.append(_create(
             db, type="RETURN", title=f"Trả hàng cận date cho {sup.name} ({len(its)} lô)",
             rationale=(f"Thỏa thuận với {sup.name} cho phép trả hàng còn ≥ {agr.return_min_days_before_expiry} ngày "
-                       f"trước HSD, hoàn {agr.return_credit_pct:.0%} giá vốn. Trả phần dự kiến không bán kịp, "
-                       f"thu về khoảng {vnd(credit)} thay vì hủy."),
+                       f"trước HSD, " + (f"hoàn {agr.return_credit_pct:.0%} giá vốn. " if agr.return_mode == "CREDIT"
+                                         else "đổi hàng mới (đổi date). ")
+                       + f"Trả phần dự kiến không bán kịp, giá trị khoảng {vnd(credit)} thay vì hủy. Duyệt thì hàng được "
+                       "tách khỏi kệ chờ NCC lấy; tiền hoặc hàng đổi chỉ ghi nhận khi NCC thực lấy hàng."),
             payload={"supplier_id": sup.id, "supplier_name": sup.name, "supplier_email": sup.email,
-                     "credit_pct": agr.return_credit_pct, "items": payload_items, "est_credit": credit},
+                     "credit_pct": agr.return_credit_pct, "return_mode": agr.return_mode, "items": payload_items,
+                     "est_credit": credit},
             evidence={"agreement": {"return_min_days_before_expiry": agr.return_min_days_before_expiry,
                                     "return_credit_pct": agr.return_credit_pct}},
             est_value=credit, created_by=created_by, dedupe_key=key, expires_at=_end_of(max(t, last_day)),
@@ -279,13 +283,43 @@ def delist(db: Session, sku: str, created_by: str, chat_session_id: int | None =
     if c is None:
         return None, False, (f"{p.sku} không nằm trong danh sách ứng viên ngừng nhập theo tiêu chí ABC-XYZ "
                              "(nhóm C-Y/C-Z, hủy nhiều hoặc lỗ, không phải hàng kéo khách).")
+    plan = sell_down_plan(db, p)
+    rationale = " ".join(c["reasons"]) + " Hàng còn tồn vẫn bán tiếp đến hết, chỉ dừng đặt mới."
+    rationale += (f" Còn {plan['on_hand']} đơn vị, dự kiến bán hết sau khoảng {plan['days_to_sell_out']} ngày"
+                  if plan["days_to_sell_out"] is not None else f" Còn {plan['on_hand']} đơn vị, gần như không bán được")
+    rationale += f"; {len(plan['open_pos'])} đơn đang về ({plan['open_po_qty']} đơn vị)." if plan["open_pos"] else "."
+    if plan["units_at_risk"] >= 1:
+        rationale += (f" Khoảng {plan['units_at_risk']:g} đơn vị không bán kịp trước HSD: nên xả hàng (đề xuất giảm giá "
+                      "các lô này) và cân nhắc huỷ đơn đang về.")
     prop, created = _create(
         db, type="DELIST", title=f"Ngừng nhập {p.name} ({p.sku})",
-        rationale=" ".join(c["reasons"]) + " Hàng còn tồn vẫn bán tiếp đến hết, chỉ dừng đặt mới.",
-        payload={"product_id": p.id, "sku": p.sku, "name": p.name}, evidence=c,
+        rationale=rationale,
+        payload={"product_id": p.id, "sku": p.sku, "name": p.name}, evidence={**c, "sell_down": plan},
         est_value=int(c["margin_90d"]), created_by=created_by, dedupe_key=f"DL:{p.sku}",
         chat_session_id=chat_session_id)
     return prop, created, ""
+
+
+def sell_down_plan(db: Session, p: Product) -> dict:
+    """Ke hoach ban het khi ngung nhap: ton con lai, don dang ve, so ngay du kien ban het, phan khong ban kip HSD."""
+    from app.engines.expiry import LotInput, project_lots
+    from app.services.history import forecast_for
+
+    t = today()
+    lots = inventory.active_lots(db, [p.id]).get(p.id, [])
+    incoming = inventory.on_order(db).get(p.id, [])
+    on_hand = sum(l.qty_remaining for l in lots)
+    open_qty = sum(q for q, _ in incoming)
+    fc = forecast_for(db, p, horizon=120, start=t)
+    daily = sum(fc.daily[:28]) / 28 if fc.daily else 0.0
+    total = on_hand + open_qty
+    days = int(round(total / daily)) if daily > 0.05 else None
+    risks = project_lots([LotInput(l.id, l.qty_remaining, l.sell_by) for l in lots if l.sell_by >= t], fc.daily, t)
+    at_risk = [r for r in risks if r.expected_waste >= 1]
+    return {"on_hand": on_hand, "open_po_qty": open_qty, "days_to_sell_out": days, "avg_daily_forecast": round(daily, 2),
+            "open_pos": [{"code": po.code, "qty": q, "expected_date": po.expected_date.isoformat()} for q, po in incoming],
+            "units_at_risk": round(sum(r.expected_waste for r in at_risk), 1),
+            "clearance_lot_ids": [r.lot_id for r in at_risk]}
 
 
 def demand_hypothesis(db: Session, created_by: str, factor: float, start: date, end: date, reason: str,
@@ -441,6 +475,10 @@ def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, in
             raise ReviseError("Cần nêu mức giảm giá mới (vd 0.3 = 30%).")
         if not 0 < float(markdown_pct) < 0.95:
             raise ReviseError("Mức giảm giá phải trong khoảng 0–95%")
+        for it in payload["items"]:
+            cap = it.get("max_markdown_pct")
+            if cap is not None and float(markdown_pct) > cap + 1e-9:
+                raise ReviseError(f"Mức giảm {float(markdown_pct):.0%} vượt trần {cap:.0%} của nhóm {it.get('category', '')}.")
         for it in payload["items"]:
             if it.get("markdown_pct") != float(markdown_pct):
                 changes.append(f"{it['sku']}#{it['lot_id']}: {it['markdown_pct']:.0%} → {float(markdown_pct):.0%}")

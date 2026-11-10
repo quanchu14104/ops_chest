@@ -11,6 +11,7 @@ from app.engines.abc_xyz import POLICY_BY_CLASS
 from app.engines.disposition import ELASTICITY, DispositionInput, evaluate
 from app.engines.expiry import LotInput, bucket, project_lots
 from app.models import Lot, POLine, Product, Proposal, PurchaseOrder, Supplier
+from app.services import policies
 from app.services.history import abc_xyz_classes, forecast_for, load_history
 
 
@@ -96,6 +97,7 @@ def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_
     near = [l for l in db.scalars(q).unique().all() if l.sell_by <= t + timedelta(days=days)]
     pids = sorted({l.product_id for l in near})
     all_lots = active_lots(db, pids)
+    pol_all = policies.by_category(db)
     items = []
     for pid in pids:
         p = all_lots[pid][0].product if all_lots[pid] else next(l.product for l in near if l.product_id == pid)
@@ -106,6 +108,7 @@ def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_
         risks = {r.lot_id: r for r in project_lots(
             [LotInput(l.id, l.qty_remaining, l.sell_by) for l in lots if l.sell_by >= t], fc.daily, t)}
         agr = p.supplier.agreement_on(t)
+        pol = policies.for_category(pol_all, p.category)
         for l in lots:
             if l.sell_by > t + timedelta(days=days):
                 continue
@@ -126,12 +129,16 @@ def expiring_lots(db: Session, days: int = 7, category: str | None = None, with_
                         return_min_days_before_expiry=agr.return_min_days_before_expiry if agr else 0,
                         return_credit_pct=agr.return_credit_pct if agr else 0.0, daily_demand=fc.daily[0],
                         current_markdown=l.markdown_pct, days_to_expiry=(l.expiry_date - t).days,
+                        remaining_share=pol["remaining_share"], markdown_hour=pol["markdown_hour"],
+                        markdown_allowed=pol["markdown_allowed"], max_markdown=pol["max_markdown_pct"],
                     ))][:3]
             items.append({
                 "lot_id": l.id, "product_id": p.id, "sku": p.sku, "name": p.name, "category": p.category,
                 "freshness_class": p.freshness_class, "qty": l.qty_remaining, "expiry_date": l.expiry_date.isoformat(),
                 "sell_by": l.sell_by.isoformat(), "days_left": dl, "bucket": "Quá ngày bán cuối" if dl < 0 else bucket(dl), "unit_cost": l.unit_cost,
                 "unit_price": p.unit_price, "markdown_pct": l.markdown_pct,
+                "max_markdown_pct": pol["max_markdown_pct"] if pol["markdown_allowed"] else 0.0,
+                "markdown_hour": pol["markdown_hour"],
                 "value_at_risk": int(round(item["expected_waste"] * l.unit_cost)),
                 "supplier": p.supplier.name, **item, "options": options,
             })

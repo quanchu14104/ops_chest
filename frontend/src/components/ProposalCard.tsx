@@ -243,7 +243,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                       <td>
                         {editable ? (
                           <select value={md[id] ?? it.markdown_pct} onChange={(e) => setMd({ ...md, [id]: Number(e.target.value) })}>
-                            {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7].map((v) => (
+                            {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7].filter((v) => v <= (it.max_markdown_pct ?? 0.7) + 1e-9).map((v) => (
                               <option key={v} value={v}>
                                 {pct(v, 0)}
                               </option>
@@ -252,7 +252,8 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                         ) : (
                           pct(it.markdown_pct, 0)
                         )}{" "}
-                        {it.timing === "EVENING" && <span className="badge">giờ vàng sau 18h</span>}
+                        {it.timing === "EVENING" && <span className="badge">giờ vàng từ {it.markdown_hour ?? 18}h</span>}
+                        {it.max_markdown_pct != null && <span className="muted small"> · trần {pct(it.max_markdown_pct, 0)}</span>}
                       </td>
                     )}
                     {p.type === "MARKDOWN" && <td className="num">{money(it.est_gain)}</td>}
@@ -261,7 +262,12 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
               })}
             </tbody>
           </table>
-          {p.type === "RETURN" && <p className="small secondary">Hoàn {pct(pl.credit_pct, 0)} giá vốn · ước tính {money(pl.est_credit)} · email gửi {pl.supplier_email}</p>}
+          {p.type === "RETURN" && (
+            <p className="small secondary">
+              {pl.return_mode === "EXCHANGE" ? "Đổi hàng mới (đổi date)" : `Hoàn ${pct(pl.credit_pct, 0)} giá vốn · ước tính ${money(pl.est_credit)}`} · email gửi {pl.supplier_email}.
+              Duyệt chỉ tách hàng chờ NCC lấy; tiền/hàng đổi ghi nhận khi NCC thực lấy hàng (trang Đặt &amp; nhận hàng).
+            </p>
+          )}
           {p.type === "DISPOSE" && p.subtype === "EXPIRED" && (
             <p className="small secondary">Duyệt thì lô được đóng hẳn: hủy theo số thực gỡ, phần chênh với sổ ghi là hao hụt{pl.shrink_cost ? ` (${money(pl.shrink_cost)})` : ""}.</p>
           )}
@@ -269,11 +275,14 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
       )}
 
       {open && p.type === "DELIST" && (
-        <ul className="small secondary">
-          {((p.evidence?.reasons as string[]) ?? []).map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
+        <>
+          <ul className="small secondary">
+            {((p.evidence?.reasons as string[]) ?? []).map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+          {p.evidence?.sell_down != null && <SellDown plan={p.evidence.sell_down as SellDownPlan} />}
+        </>
       )}
 
       {open && p.type === "DEMAND_HYPOTHESIS" && (
@@ -355,6 +364,19 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
   );
 }
 
+type SellDownPlan = { on_hand: number; open_po_qty: number; days_to_sell_out: number | null; units_at_risk: number; open_pos: { code: string; qty: number; expected_date: string }[] };
+
+// Ngừng nhập: tồn còn lại bán tới khi hết; nếu không kịp trước HSD thì gợi ý xả hàng.
+function SellDown({ plan }: { plan: SellDownPlan }) {
+  return (
+    <div className={`alert ${plan.units_at_risk >= 1 ? "warn" : ""}`} style={{ marginTop: 6 }}>
+      Còn {num(plan.on_hand)} đơn vị trên kệ{plan.open_pos.length > 0 ? `, ${plan.open_pos.length} đơn đang về (${num(plan.open_po_qty)} đơn vị: ${plan.open_pos.map((o) => o.code).join(", ")})` : ""}.
+      {" "}{plan.days_to_sell_out != null ? `Dự kiến bán hết sau khoảng ${plan.days_to_sell_out} ngày.` : "Gần như không còn bán được."}
+      {plan.units_at_risk >= 1 && ` Khoảng ${num(plan.units_at_risk, 1)} đơn vị không bán kịp trước HSD: nên xả hàng (đề xuất giảm giá) và cân nhắc huỷ đơn đang về.`}
+    </div>
+  );
+}
+
 // Đơn dưới giá trị tối thiểu: engine tính sẵn hai phương án, Store Manager chọn.
 function MinOrderPanel({ mo, lines, editable, ack, setAck, applyTopUp }: {
   mo: MinOrder; lines: { product_id: number }[]; editable: boolean; ack: boolean; setAck: (v: boolean) => void; applyTopUp: () => void;
@@ -389,7 +411,7 @@ function ExecResult({ p }: { p: Proposal }) {
     const kept = (r.kept_higher as unknown[] | undefined)?.length ?? 0;
     text = `Đã áp giá giảm cho ${(r.lots_marked_down as unknown[]).length} lô.${kept ? ` Giữ nguyên ${kept} lô đang giảm sâu hơn.` : ""} ${r.instruction}`;
   }
-  else if (p.type === "RETURN") text = `Đã gửi phiếu trả ${r.code} tới ${r.email_to}, hoàn dự kiến ${money(Number(r.credit))}.`;
+  else if (p.type === "RETURN") text = `Đã gửi phiếu trả ${r.code} tới ${r.email_to} và tách hàng chờ NCC lấy. ${r.mode === "EXCHANGE" ? "Hàng đổi" : `Tiền hoàn (dự kiến ${money(Number(r.est_credit))})`} chỉ ghi nhận khi NCC lấy hàng.`;
   else if (p.type === "DISPOSE") text = `Đã ghi hủy ${r.lots_disposed} lô, giá vốn ${money(Number(r.waste_cost))}.${Number(r.shrink_value) ? ` Hao hụt so với sổ ${money(Number(r.shrink_value))}.` : ""}`;
   else if (p.type === "DELIST" || p.type === "DEMAND_HYPOTHESIS" || p.type === "ORDER_ADJUST") text = String(r.note);
   else if (p.type === "STOCK_ADJUST") text = `Đã điều chỉnh tồn ${r.items} mặt hàng theo số đếm, giá trị lệch ròng ${money(Number(r.net_value))}.`;

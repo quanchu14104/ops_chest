@@ -19,7 +19,7 @@ from app.engines.forecast import baseline_demand, estimate_event_factors, foreca
 from app.config import service_floors
 from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, review_period, schedule,
                                        service_floor)
-from app.sim.catalog import ProductSpec
+from app.sim.catalog import ProductSpec, category_policy
 from app.sim.demand import _rng
 from app.sim.store_sim import Policy, StoreSim, can_order
 
@@ -81,11 +81,14 @@ class OpsChestPolicy(Policy):
     name = "B: Ops Chest"
 
     def __init__(self, dispose: bool = True, lookback_classify: int = 90, adjust_markdown: bool = True,
-                 approval_rate: float = 1.0, service_floors: bool = True, floors: dict | None = None):
+                 approval_rate: float = 1.0, service_floors: bool = True, floors: dict | None = None,
+                 dayparts: bool = True):
         self.dispose = dispose
         # San muc phuc vu theo vai tro (N6). Tat = cach cu: newsvendor co the de thieu hang toi 70% so ngay.
         self.service_floors = service_floors
         self.floors = floors  # None = lay theo config (SERVICE_FLOOR_*)
+        # Gio giam gia theo khung ban cua nhom hang (N10). Tat = gio vang co dinh 18h, 30% khach cho moi nhom.
+        self.dayparts = dayparts
         self.lookback = lookback_classify
         self.adjust_markdown = adjust_markdown  # tach luong ban nho giam gia khoi nhu cau khi du bao
         # Ty le de xuat duoc SM duyet. Don khong duoc duyet thi SM tu dat theo kinh nghiem; giam gia thi bo qua.
@@ -182,6 +185,8 @@ class OpsChestPolicy(Policy):
             if not left:
                 continue
             fc_today = self._forecast(sim, p, d - timedelta(days=1), 1, start=d).daily[0]
+            pol = category_policy(p.category)
+            share, hour = (pol["remaining_share"], pol["markdown_hour"]) if self.dayparts else (EVENING_SHARE, 18)
             for lot in left:
                 if not self._approved(sim, "evening", lot.lot_no, d=d):
                     continue
@@ -189,13 +194,14 @@ class OpsChestPolicy(Policy):
                     qty=lot.qty, unit_cost=lot.unit_cost, unit_price=p.unit_price, days_left=0,
                     expected_sold_full_price=0, elasticity=ELASTICITY[p.freshness_class],
                     daily_demand=fc_today, current_markdown=lot.markdown,
-                    evening_full_price_units=fc_today * EVENING_SHARE,
+                    evening_full_price_units=fc_today * share, remaining_share=share, markdown_hour=hour,
+                    max_markdown=pol["max_markdown_pct"], markdown_allowed=pol["markdown_allowed"],
                 ))
                 if opt.action == "MARKDOWN":
-                    sim.apply_markdown(lot, opt.markdown_pct, d, evening=True)
+                    sim.apply_markdown(lot, opt.markdown_pct, d, evening=True, hour=hour)
                     self.actions["markdown"] += 1
-                elif lot.markdown > 0:  # lo da dan tem giam tu truoc: buoi toi van ban o muc do
-                    sim.apply_markdown(lot, lot.markdown, d, evening=True)
+                elif lot.markdown > 0:  # lo da dan tem giam tu truoc: cuoi ngay van ban o muc do
+                    sim.apply_markdown(lot, lot.markdown, d, evening=True, hour=hour)
 
     # --- dat hang (cuoi ngay) ---
     def place_orders(self, sim: StoreSim, d: date) -> None:

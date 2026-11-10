@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getUser, openPdf, type Proposal } from "../api";
 import ExpiryPhoto from "../components/ExpiryPhoto";
+import SupplierReturns from "../components/SupplierReturns";
 import { dateVi, money, num } from "../format";
 
 type PO = { id: number; code: string; supplier: string; status: string; order_date: string; expected_date: string; total_value: number; proposal_id: number | null; has_pdf: boolean; overdue_days: number };
@@ -226,6 +227,7 @@ export default function Orders() {
       </div>
       {cancelling && <CancelPO key={cancelling.id} po={cancelling} onDone={() => { setCancelling(null); qc.invalidateQueries(); }} />}
       {receiving && <Receive key={receiving} id={receiving} onDone={() => { setReceiving(null); qc.invalidateQueries(); }} />}
+      <SupplierReturns />
     </>
   );
 }

@@ -71,7 +71,7 @@ export default function Dashboard() {
 
       <div className="grid kpis" style={{ marginBottom: 16 }}>
         <Tile label="Doanh thu 30 ngày" value={money(c.revenue)} cur={c.revenue} prev={p.revenue} />
-        <Tile label="Lợi nhuận gộp (sau hủy)" value={money(c.gross_profit)} cur={c.gross_profit} prev={p.gross_profit} />
+        <Tile label="Lợi nhuận gộp (sau hủy, hao hụt)" value={money(c.gross_profit)} cur={c.gross_profit} prev={p.gross_profit} />
         <Tile label="Tỷ lệ hủy (giá vốn)" value={pct(c.waste_rate)} cur={c.waste_rate} prev={p.waste_rate} lowerIsBetter fmt={(v) => pct(v)} />
         <Tile label="Tỷ lệ hết hàng" value={pct(c.oos_rate)} cur={c.oos_rate} prev={p.oos_rate} lowerIsBetter fmt={(v) => pct(v)} />
         <Tile label="Giá trị tồn kho" value={money(d.inventory.total_value)} />

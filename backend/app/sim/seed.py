@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import argparse
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import time as dtime
 
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
@@ -16,10 +17,10 @@ from app.clock import today
 from app.db import SessionLocal
 from app.db_init import migrate
 from app.db_init import reset as reset_db
-from app.models import (AppMeta, DailySales, Lot, POLine, Product, PurchaseOrder, StockMovement, Supplier,
+from app.models import (AppMeta, CategoryPolicy, DailySales, InventorySnapshot, Lot, POLine, Product, PurchaseOrder, StockMovement, Supplier,
                         SupplierAgreement, SupplierClosure, User)
 from app.sim.backtest import initial_stock
-from app.sim.catalog import PULL_DAYS, build_catalog
+from app.sim.catalog import PULL_DAYS, build_catalog, category_policy
 from app.sim.policies import BaselinePolicy
 from app.sim.store_sim import StoreSim
 
@@ -62,32 +63,43 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
             for a, b, why in s.closures:
                 db.add(SupplierClosure(supplier_id=row.id, start_date=a, end_date=b, reason=why))
             sup_ids[s.code] = row.id
-            notes = ("Nhận trả hàng cận hạn nếu báo trước; hoàn tiền trừ vào đơn kế tiếp." if s.accepts_return
-                     else "Không nhận trả hàng cận hạn.")
+            notes = ("Không nhận trả hàng cận hạn." if not s.accepts_return else
+                     "Nhận trả hàng cận hạn nếu báo trước; đổi hàng mới (đổi date) khi thu hồi." if s.return_mode == "EXCHANGE"
+                     else "Nhận trả hàng cận hạn nếu báo trước; hoàn tiền trừ vào đơn kế tiếp.")
             db.add(SupplierAgreement(supplier_id=row.id, discount_pct=s.discount_pct,
                                      accepts_near_expiry_return=s.accepts_return,
                                      return_min_days_before_expiry=s.return_min_days,
-                                     return_credit_pct=s.return_credit_pct, valid_from=start,
+                                     return_credit_pct=s.return_credit_pct, return_mode=s.return_mode,
+                                     valid_from=start,
                                      valid_to=end + timedelta(days=365), notes=notes))
         pid = {}
-        for p in products:
+        # Cua hang van dem theo lich: rai ngay dem gan nhat trong 7 ngay qua de demo khong bao "moi SKU den lich"
+        for i, p in enumerate(products):
             row = Product(sku=p.sku, name=p.name, category=p.category, freshness_class=p.freshness_class,
                           shelf_life_days=p.shelf_life_days, unit_cost=p.unit_cost, unit_price=p.unit_price,
                           pack_size=p.pack_size, supplier_id=sup_ids[p.supplier_code],
                           is_traffic_driver=p.is_traffic_driver, substitute_skus=p.substitutes,
                           pull_days_before_expiry=PULL_DAYS[p.freshness_class],
-                          max_stock_qty=p.max_stock_qty, min_display_qty=p.min_display_qty)
+                          max_stock_qty=p.max_stock_qty, min_display_qty=p.min_display_qty, listed_date=start,
+                          last_counted_date=end - timedelta(days=i % 7))
             db.add(row)
             db.flush()
             pid[p.sku] = row.id
 
+        for cat in sorted({p.category for p in products}):
+            pol = category_policy(cat)
+            db.add(CategoryPolicy(category=cat, markdown_allowed=pol["markdown_allowed"],
+                                  max_markdown_pct=pol["max_markdown_pct"], daypart_shares=pol["daypart_shares"],
+                                  markdown_hour=pol["markdown_hour"],
+                                  note="Trần giảm giá là cấu hình demo, cần đối chiếu Nghị định 81/2018/NĐ-CP."))
         line_ids = {}
         pending_codes = {o.po_code for o in sim.pipeline}
         for code, rec in sim.pos.items():
             pending = code in pending_codes
             po = PurchaseOrder(code=code, supplier_id=sup_ids[rec.supplier], status="SENT" if pending else "RECEIVED",
                                order_date=rec.order_date, expected_date=rec.arrival,
-                               total_value=sum(q * c for _, q, c in rec.lines))
+                               total_value=sum(q * c for _, q, c in rec.lines),
+                               received_at=None if pending else datetime.combine(rec.arrival, dtime(8, 0)))
             for sku, q, c in rec.lines:
                 po.lines.append(POLine(product_id=pid[sku], qty=q, unit_cost=c, received_qty=None if pending else q))
             db.add(po)
@@ -107,6 +119,8 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
         for chunk in _chunks([{**{k: v for k, v in r.items() if k != "sku"}, "product_id": pid[r["sku"]]}
                               for r in sim.movements]):
             db.execute(insert(StockMovement), chunk)
+        db.execute(insert(InventorySnapshot), [{"date": x["date"], "value": int(round(x["inv_value"])),
+                                                "units": 0} for x in sim.daily_kpi])
 
         if not db.scalar(select(User.id).limit(1)):
             for u, name, role, pw in DEMO_USERS:

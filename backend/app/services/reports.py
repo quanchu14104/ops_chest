@@ -12,6 +12,7 @@ from app.engines.abc_xyz import POLICY_BY_CLASS, delist_candidates
 from app.engines.kpi import KpiTotals, summarize
 from app.models import DailySales, Lot, Product, StockMovement
 from app.models.inventory import WASTE_REASONS
+from app.services import snapshots
 from app.services.history import abc_xyz_classes, daily_totals, sku_stats
 
 
@@ -113,8 +114,11 @@ def cost_report(db: Session, start: date, end: date) -> dict:
         .join(Product, Product.id == DailySales.product_id).where(DailySales.date.between(start, end))
     ).scalar()
     totals.lost_margin = float(lost_margin or 0)
-    inv_value = db.scalar(select(func.sum(Lot.qty_remaining * Lot.unit_cost)).where(Lot.status == "ACTIVE")) or 0
-    totals.avg_inventory_value = float(inv_value)  # xap xi bang ton hien tai
+    avg, n_snap = snapshots.average(db, start, end)
+    if avg is None:  # chua co anh chup (du lieu cu): xap xi bang ton hien tai
+        avg = float(db.scalar(select(func.sum(Lot.qty_remaining * Lot.unit_cost)).where(Lot.status == "ACTIVE")) or 0)
+    totals.avg_inventory_value = avg
+    totals.shrink_cost = float(shrink_value(db, start, end))
     by_cat = []
     for cat, waste in db.execute(
         select(Product.category, func.sum(StockMovement.value)).join(Product, Product.id == StockMovement.product_id)
@@ -132,7 +136,8 @@ def cost_report(db: Session, start: date, end: date) -> dict:
         )
     ]
     k = summarize(totals)
-    k["note_inventory"] = "Tồn kho dùng giá trị hiện tại (giá vốn) làm xấp xỉ tồn trung bình."
+    k["note_inventory"] = (f"Tồn trung bình lấy từ {n_snap}/{days} ảnh chụp tồn cuối ngày (giá vốn)." if n_snap
+                           else "Chưa có ảnh chụp tồn cuối ngày trong kỳ: tạm dùng tồn hiện tại làm xấp xỉ.")
     by_reason = [{"reason": r or "EXPIRED", "label": WASTE_REASONS.get(r or "EXPIRED", r), "waste_qty": int(q or 0),
                   "waste_value": int(v or 0)}
                  for r, q, v in db.execute(
@@ -140,7 +145,41 @@ def cost_report(db: Session, start: date, end: date) -> dict:
                      .where(StockMovement.type == "WASTE", StockMovement.date.between(start, end))
                      .group_by(StockMovement.reason).order_by(func.sum(StockMovement.value).desc()))]
     return {"start": start.isoformat(), "end": end.isoformat(), "kpi": k, "waste_by_category": by_cat,
-            "waste_by_reason": by_reason, "top_waste_skus": top_waste, "shrink_value": shrink_value(db, start, end)}
+            "waste_by_reason": by_reason, "top_waste_skus": top_waste, "shrink_value": int(totals.shrink_cost),
+            "supplier_scorecard": supplier_scorecard(db, start, end)}
+
+
+def supplier_scorecard(db: Session, start: date, end: date) -> list[dict]:
+    """Diem NCC tren cac don da nhan trong ky: ty le giao du, ty le dung hen, so lan giao date ngan, hang bi tu choi."""
+    from app.models import AuditLog, POLine, PurchaseOrder, Supplier
+
+    out: dict[int, dict] = {}
+    pos = db.scalars(select(PurchaseOrder).where(PurchaseOrder.status == "RECEIVED",
+                                                 PurchaseOrder.expected_date.between(start, end)))
+    line_sup: dict[int, int] = {}
+    for po in pos:
+        s = out.setdefault(po.supplier_id, {"supplier_id": po.supplier_id, "orders": 0, "on_time": 0, "ordered": 0,
+                                            "received": 0, "short": 0, "rejected": 0, "short_dated": 0})
+        s["orders"] += 1
+        s["on_time"] += bool(po.received_at and po.received_at.date() <= po.expected_date)
+        for l in po.lines:
+            line_sup[l.id] = po.supplier_id
+            s["ordered"] += l.qty
+            s["received"] += l.received_qty or 0
+            s["short"] += l.short_qty or 0
+            s["rejected"] += l.rejected_qty or 0
+            s["short_dated"] += 1 if l.reject_reason == "SHORT_DATED" else 0
+    for a in db.scalars(select(AuditLog).where(AuditLog.action == "RECEIVE_SHORT_DATED")):
+        sid = line_sup.get(int(a.entity_id)) if a.entity_id and a.entity_id.isdigit() else None
+        if sid in out:
+            out[sid]["short_dated"] += 1
+    names = dict(db.execute(select(Supplier.id, Supplier.name)).all())
+    rows = []
+    for s in out.values():
+        rows.append({**s, "supplier": names.get(s["supplier_id"]),
+                     "fill_rate": round(min(s["received"], s["ordered"]) / s["ordered"], 4) if s["ordered"] else None,
+                     "on_time_rate": round(s["on_time"] / s["orders"], 4) if s["orders"] else None})
+    return sorted(rows, key=lambda r: (r["fill_rate"] or 0, r["on_time_rate"] or 0))
 
 
 def shrink_value(db: Session, start: date, end: date) -> int:
@@ -176,16 +215,25 @@ def abc_xyz_report(db: Session) -> dict:
             m["margin_90d"] = int(round(m["margin_90d"]))
             cells.append(m)
     items = sorted(
-        ({"sku": c.sku, "name": products[c.sku].name, "category": products[c.sku].category, "cell": c.cell,
+        ({"sku": c.sku, "name": products[c.sku].name, "category": products[c.sku].category,
+          "cell": "Hàng mới" if is_new(products[c.sku]) else c.cell, "is_new": is_new(products[c.sku]),
           "cv": c.cv, "margin_90d": int(round(c.margin)), "traffic_driver": products[c.sku].is_traffic_driver}
          for c in classes.values()), key=lambda x: -x["margin_90d"])
     return {"window_days": 90, "matrix": cells, "items": items}
 
 
+NEW_ITEM_DAYS = 56  # 8 tuan: chua du lich su de xep ABC-XYZ hay xet ngung nhap
+
+
+def is_new(p: Product, d: date | None = None) -> bool:
+    return bool(p.listed_date and (d or today()) - p.listed_date < timedelta(days=NEW_ITEM_DAYS))
+
+
 def delist_report(db: Session, limit: int = 15) -> list[dict]:
     stats, by_sku = sku_stats(db)
     classes = abc_xyz_classes(db)
-    stats = [s for s in stats if by_sku[s.sku].status == "ACTIVE"]
+    # Hang moi duoi 8 tuan it lich su, de roi vao C-Z: khong xet ngung nhap
+    stats = [s for s in stats if by_sku[s.sku].status == "ACTIVE" and not is_new(by_sku[s.sku])]
     cands = delist_candidates(stats, classes)
     for c in cands:
         c["product_id"] = by_sku[c["sku"]].id

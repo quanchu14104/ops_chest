@@ -682,3 +682,255 @@ def test_line_added_by_manager_gets_agreement_discount(db):
     disc = sup.agreement_on(T).discount_pct
     assert disc > 0 and line["unit_cost"] == int(round(extra.unit_cost * (1 - disc)))
     db.rollback()
+
+
+# ======================= Dot 3: tien va bao cao =======================
+from app.engines.disposition import peak_end_hour, share_after  # noqa: E402
+from app.models import CategoryPolicy, DailySales, InventorySnapshot, SupplierReturn  # noqa: E402
+from app.services import history as history_mod  # noqa: E402
+from app.services import returns as returns_svc  # noqa: E402
+from app.services import stockcount  # noqa: E402
+
+
+def _approved_return(db, code="NCC07", expiry_days=None):
+    _clear_open(db, "RETURN")
+    supplier = db.scalar(select(Supplier).where(Supplier.code == code))
+    agr = supplier.agreement_on(T)
+    product = _first_product(db, supplier_id=supplier.id)
+    expiry = T + timedelta(days=expiry_days or agr.return_min_days_before_expiry + 5)
+    sellable = sum(forecast_for(db, product, horizon=(expiry - T).days + 1, start=T).daily)
+    lot = _only_lot(db, product, int(sellable * 1.5) + 10, expiry)
+    (p, _), = builders.supplier_return(db, "job", lot_ids=[lot.id])
+    db.commit()
+    return p, lot
+
+
+# ---- N5: tra NCC chi ghi tien khi NCC lay hang
+def test_return_books_money_only_when_supplier_picks_up(db, outbox):
+    p, lot = _approved_return(db)
+    gp_before = reports.cost_report(db, T, T)["kpi"]["gross_profit"]
+    done = service.approve(db, p.id, _mgr(db))
+    assert done.status == "EXECUTED" and len(outbox) == 1
+    r = db.get(SupplierReturn, done.execution_result["return_id"])
+    assert r.status == "REQUESTED" and r.mode == "CREDIT"
+    assert reports.cost_report(db, T, T)["kpi"]["gross_profit"] == gp_before  # chua co tien khi moi duyet
+    assert not db.scalars(select(StockMovement).where(StockMovement.ref == r.code)).all()
+    part = db.get(Lot, r.items[0]["lot_id"])
+    assert part.status == "RETURN_PENDING"
+    assert part.id not in {l.id for ls in active_lots(db).values() for l in ls}  # khong ban, khong tinh ton
+    returns_svc.confirm(db, r.id, _mgr(db))
+    q = r.items[0]["qty"]
+    returns_svc.pick_up(db, r.id, {part.id: q - 1}, _mgr(db))  # NCC chi nhan mot phan
+    db.commit()
+    (mv,) = db.scalars(select(StockMovement).where(StockMovement.ref == r.code, StockMovement.type == "RETURN")).all()
+    assert mv.qty == q - 1 and mv.value == int(round((q - 1) * part.unit_cost * r.credit_pct))
+    assert r.status == "PICKED_UP" and part.status == "ACTIVE" and part.qty_remaining == 1  # phan con lai quay lai ban
+    gp_after = reports.cost_report(db, T, T)["kpi"]["gross_profit"]
+    assert gp_after == gp_before - (q - 1) * part.unit_cost + mv.value
+    returns_svc.mark_credited(db, r.id, _mgr(db))
+    db.commit()
+    assert r.status == "CREDITED"
+
+
+def test_refused_return_goes_back_on_sale(client, manager, db, outbox):
+    p, lot = _approved_return(db)
+    done = service.approve(db, p.id, _mgr(db))
+    rid = done.execution_result["return_id"]
+    part_id = db.get(SupplierReturn, rid).items[0]["lot_id"]
+    r = client.post(f"/api/supplier-returns/{rid}/refuse", json={"reason": "NCC không nhận hàng này"}, headers=manager)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "REFUSED"
+    db.expire_all()
+    assert db.get(Lot, part_id).status == "ACTIVE"
+    assert client.post(f"/api/supplier-returns/{rid}/pickup", json={"lines": []}, headers=manager).status_code == 422
+
+
+def test_staff_cannot_close_a_return(client, staff, db, outbox):
+    p, _ = _approved_return(db)
+    rid = service.approve(db, p.id, _mgr(db)).execution_result["return_id"]
+    assert client.post(f"/api/supplier-returns/{rid}/pickup", json={"lines": []}, headers=staff).status_code == 403
+
+
+def test_exchange_mode_brings_zero_cost_goods_instead_of_money(db, outbox):
+    agr = _agreement(db, "NCC03")
+    assert agr.return_mode == "EXCHANGE"
+    p, lot = _approved_return(db, "NCC03", expiry_days=agr.return_min_days_before_expiry + 4)
+    assert p.payload["return_mode"] == "EXCHANGE"
+    done = service.approve(db, p.id, _mgr(db))
+    r = db.get(SupplierReturn, done.execution_result["return_id"])
+    q = r.items[0]["qty"]
+    returns_svc.pick_up(db, r.id, {}, _mgr(db))
+    db.commit()
+    moves = db.scalars(select(StockMovement).where(StockMovement.ref == r.code)).all()
+    ret = next(m for m in moves if m.type == "RETURN")
+    new_in = next(m for m in moves if m.type == "IN")
+    assert ret.value == 0 and new_in.qty == q and new_in.unit_cost == 0 and r.status == "CREDITED"
+    assert db.get(Lot, new_in.lot_id).status == "ACTIVE"
+
+
+def test_unpicked_return_is_flagged_in_briefing(client, manager, db, outbox):
+    p, _ = _approved_return(db)
+    r = db.get(SupplierReturn, service.approve(db, p.id, _mgr(db)).execution_result["return_id"])
+    r.requested_date = T - timedelta(days=6)
+    db.commit()
+    items = client.get("/api/briefing", headers=manager).json()["items"]
+    assert any(i["id"] == f"return-{r.code}" for i in items)
+
+
+# ---- N13: KPI
+def test_average_inventory_comes_from_daily_snapshots(db):
+    start, end = date(2026, 9, 1), date(2026, 9, 30)
+    snaps = db.scalars(select(InventorySnapshot).where(InventorySnapshot.date.between(start, end))).all()
+    assert len(snaps) == 30
+    k = reports.cost_report(db, start, end)["kpi"]
+    assert k["avg_inventory_value"] == round(sum(s.value for s in snaps) / len(snaps))
+    prev = reports.cost_report(db, date(2026, 8, 2), date(2026, 8, 31))["kpi"]
+    assert prev["avg_inventory_value"] != k["avg_inventory_value"]  # ky truoc khong con dung ton hom nay
+    assert k["gmroi"] == pytest.approx(k["gross_profit"] / k["avg_inventory_value"], abs=1e-3)
+
+
+def test_shrink_is_deducted_from_gross_profit(db):
+    start, end = date(2026, 10, 1), date(2026, 10, 31)
+    before = reports.cost_report(db, start, end)
+    product = _first_product(db)
+    row = StockMovement(product_id=product.id, date=date(2026, 10, 15), type="ADJUST", qty=-10, unit_cost=1000,
+                        value=-10000, ref="test:shrink", reason="COUNT")
+    db.add(row)
+    db.commit()
+    try:
+        after = reports.cost_report(db, start, end)
+        assert after["shrink_value"] - before["shrink_value"] == 10000
+        assert before["kpi"]["gross_profit"] - after["kpi"]["gross_profit"] == 10000
+    finally:
+        db.delete(row)
+        db.commit()
+
+
+def test_supplier_scorecard_reflects_short_and_short_dated_deliveries(db):
+    product = _first_product(db, freshness_class="SHORT")
+    po = _new_po(db, product, 20)
+    receive_po(db, po.id, [{"line_id": po.lines[0].id, "lots": [{"qty": 14, "expiry_date": (T + timedelta(days=6)).isoformat()}],
+                            "rejected_qty": 2, "reject_reason": "SHORT_DATED"}], _staff(db))
+    row = next(r for r in reports.supplier_scorecard(db, T, T) if r["supplier_id"] == product.supplier_id)
+    assert row["fill_rate"] < 1 and row["short"] >= 4 and row["short_dated"] >= 1 and row["on_time_rate"] is not None
+
+
+# ---- N12: hang moi va ke hoach xa ton khi ngung nhap
+def test_new_item_is_not_a_delist_candidate(db):
+    cands = reports.delist_report(db, limit=500)
+    assert cands
+    product = db.scalar(select(Product).where(Product.sku == cands[0]["sku"]))
+    original = product.listed_date
+    product.listed_date = T - timedelta(days=20)
+    db.commit()
+    try:
+        assert product.sku not in {c["sku"] for c in reports.delist_report(db, limit=500)}
+        item = next(i for i in reports.abc_xyz_report(db)["items"] if i["sku"] == product.sku)
+        assert item["is_new"] and item["cell"] == "Hàng mới"
+        _, _, err = builders.delist(db, product.sku, "agent")
+        assert "không nằm trong danh sách" in err
+    finally:
+        product.listed_date = original
+        db.commit()
+
+
+def test_delist_card_shows_sell_down_plan(db):
+    for p in db.scalars(select(Proposal).where(Proposal.type == "DELIST")):
+        p.dedupe_key = None
+    db.commit()
+    cand = reports.delist_report(db, limit=500)[0]
+    p, _, err = builders.delist(db, cand["sku"], "agent")
+    db.commit()
+    plan = p.evidence["sell_down"]
+    assert {"on_hand", "open_po_qty", "days_to_sell_out", "units_at_risk", "open_pos"} <= set(plan)
+    assert "đơn vị" in p.rationale
+
+
+# ---- N14: lich kiem ke va ton ao
+def test_count_schedule_follows_abc(db):
+    classes = history_mod.abc_xyz_classes(db)
+    product = next(p for p in db.scalars(select(Product).where(Product.status == "ACTIVE"))
+                   if p.sku in classes and classes[p.sku].abc == "A")
+    product.last_counted_date = T - timedelta(days=8)
+    db.commit()
+    assert product.sku in {r["sku"] for r in stockcount.count_due(db)}
+    stockcount.mark_counted(db, [product.sku])
+    db.commit()
+    due = {r["sku"]: r for r in stockcount.count_due(db)}
+    assert product.sku not in due or due[product.sku]["reason"].startswith("Bán đều")
+    assert all(set(r) == {"sku", "name", "category", "reason"} for r in due.values())  # van dem mu
+
+
+def test_steady_seller_with_no_sales_but_book_stock_is_flagged_phantom(db):
+    product = db.scalar(select(Product).where(Product.sku == "NSU001"))
+    _only_lot(db, product, 50, T + timedelta(days=200))
+    rows = db.scalars(select(DailySales).where(DailySales.product_id == product.id,
+                                               DailySales.date.between(T - timedelta(days=3), T - timedelta(days=1)))).all()
+    saved = [(r, r.qty_sold) for r in rows]
+    for r in rows:
+        r.qty_sold = 0
+    db.commit()
+    history_mod._cache.clear()
+    try:
+        assert product.sku in {x["sku"] for x in stockcount.phantom_stock(db)}
+    finally:
+        for r, q in saved:
+            r.qty_sold = q
+        db.commit()
+        history_mod._cache.clear()
+
+
+# ---- N11: rang buoc giam gia theo nhom hang
+def test_markdown_steps_respect_category_cap():
+    base = dict(qty=30, unit_cost=5000, unit_price=10000, days_left=2, expected_sold_full_price=5, elasticity=3.0)
+    capped = {o.markdown_pct for o in evaluate(DispositionInput(**base, max_markdown=0.3)) if o.action == "MARKDOWN"}
+    assert capped and max(capped) <= 0.3
+    banned = evaluate(DispositionInput(**base, markdown_allowed=False))
+    assert not any(o.action == "MARKDOWN" for o in banned)
+
+
+def test_markdown_above_category_cap_is_blocked_at_execution(db, outbox):
+    product = _first_product(db, freshness_class="SHORT")
+    pol = db.get(CategoryPolicy, product.category)
+    original = pol.max_markdown_pct
+    lot = _only_lot(db, product, 9, T + timedelta(days=3))
+    payload = {"items": [{"lot_id": lot.id, "sku": product.sku, "markdown_pct": 0.4, "max_markdown_pct": 0.5}]}
+    p = Proposal(type="MARKDOWN", status="PENDING", title="t", rationale="r", evidence={}, payload=payload,
+                 original_payload=payload, created_by="job", created_at=datetime(2026, 11, 7))
+    db.add(p)
+    pol.max_markdown_pct = 0.3
+    db.commit()
+    try:
+        done = service.approve(db, p.id, _mgr(db))
+        assert done.status == "FAILED" and "trần" in done.execution_result["error"]
+        with pytest.raises(service.ProposalError):
+            service.apply_edits(db, p, {"items": [{"lot_id": lot.id, "markdown_pct": 0.6}]}, _mgr(db))
+    finally:
+        pol.max_markdown_pct = original
+        db.commit()
+
+
+# ---- N10: gio giam gia theo khung ban cua nhom hang
+def test_markdown_hour_follows_category_peak():
+    rice = (0.15, 0.5, 0.15, 0.2)
+    assert peak_end_hour(rice) == 14 and share_after(rice, 14) == pytest.approx(0.35)
+    assert peak_end_hour((0.2, 0.2, 0.225, 0.375)) == 18 and share_after((0.2, 0.2, 0.225, 0.375), 18) == pytest.approx(0.3)
+
+
+def test_last_day_rice_markdown_starts_after_lunch(db):
+    product = db.scalar(select(Product).where(Product.category == "Cơm hộp & cơm nắm", Product.status == "ACTIVE",
+                                              Product.shelf_life_days == 1).order_by(Product.sku))
+    sellable = forecast_for(db, product, horizon=1, start=T).daily[0]
+    lot = _only_lot(db, product, int(sellable * 3) + 8, T)
+    it = next(x for x in expiring_lots(db, days=0)["lots"] if x["lot_id"] == lot.id)
+    assert it["markdown_hour"] == 14
+    md = [o for o in it["options"] if o["action"] == "MARKDOWN"]
+    assert md and all("từ 14h" in o["label"] for o in md)
+
+
+def test_world_daypart_differs_from_store_assumption():
+    from app.sim.catalog import category_policy
+    from app.sim.world import REFERENCE_WORLD
+    cat = "Cơm hộp & cơm nắm"
+    assert REFERENCE_WORLD.share_after(cat, 14) != pytest.approx(category_policy(cat)["remaining_share"])
+    assert REFERENCE_WORLD.share_after("Bia", 18) == pytest.approx(0.3)

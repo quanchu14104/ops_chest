@@ -96,6 +96,9 @@ def apply_edits(db: Session, p: Proposal, edits: dict, user: User) -> list[dict]
                         raise ProposalError(422, "Số lượng không được âm")
                     if field == "markdown_pct" and not 0 < float(e[field]) < 0.95:
                         raise ProposalError(422, "Mức giảm giá phải trong khoảng 0–95%")
+                    if field == "markdown_pct" and it.get("max_markdown_pct") is not None \
+                            and float(e[field]) > it["max_markdown_pct"] + 1e-9:
+                        raise ProposalError(422, f"Mức giảm vượt trần {it['max_markdown_pct']:.0%} của nhóm hàng.")
                     diffs.append({"field": f"items[{it['sku']}#{it['lot_id']}].{field}", "from": it.get(field),
                                   "to": e[field]})
                     it[field] = e[field]

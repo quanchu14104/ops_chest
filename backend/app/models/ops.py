@@ -124,6 +124,34 @@ class POLine(Base):
     product: Mapped[Product] = relationship()
 
 
+RETURN_STATUSES = ("REQUESTED", "CONFIRMED", "PICKED_UP", "CREDITED", "REFUSED")
+
+
+class SupplierReturn(Base):
+    """Phieu tra NCC. Tien hoan (hoac hang doi) chi ghi khi NCC THUC lay hang, khong ghi luc duyet."""
+
+    __tablename__ = "supplier_returns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(30), unique=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    proposal_id: Mapped[int | None] = mapped_column(ForeignKey("proposals.id"))
+    status: Mapped[str] = mapped_column(String(20), default="REQUESTED", index=True)
+    mode: Mapped[str] = mapped_column(String(10), default="CREDIT")  # CREDIT / EXCHANGE
+    credit_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    # [{lot_id, sku, name, qty, unit_cost, expiry_date, picked_qty?}]; lot_id la lo da tach ra RETURN_PENDING
+    items: Mapped[list] = mapped_column(JSON)
+    est_credit: Mapped[int] = mapped_column(Integer, default=0)
+    credit_value: Mapped[int | None] = mapped_column(Integer)
+    requested_date: Mapped[date] = mapped_column(Date)
+    confirmed_date: Mapped[date | None] = mapped_column(Date)
+    picked_up_date: Mapped[date | None] = mapped_column(Date)
+    credited_date: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(Text)
+
+    supplier: Mapped[Supplier] = relationship()
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
