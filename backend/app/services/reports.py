@@ -11,6 +11,7 @@ from app.clock import today
 from app.engines.abc_xyz import POLICY_BY_CLASS, delist_candidates
 from app.engines.kpi import KpiTotals, summarize
 from app.models import DailySales, Lot, Product, StockMovement
+from app.models.inventory import WASTE_REASONS
 from app.services.history import abc_xyz_classes, daily_totals, sku_stats
 
 
@@ -132,10 +133,24 @@ def cost_report(db: Session, start: date, end: date) -> dict:
     ]
     k = summarize(totals)
     k["note_inventory"] = "Tồn kho dùng giá trị hiện tại (giá vốn) làm xấp xỉ tồn trung bình."
-    shrink = db.scalar(select(func.coalesce(func.sum(StockMovement.value), 0)).where(
-        StockMovement.type == "ADJUST", StockMovement.value < 0, StockMovement.date.between(start, end)))
+    by_reason = [{"reason": r or "EXPIRED", "label": WASTE_REASONS.get(r or "EXPIRED", r), "waste_qty": int(q or 0),
+                  "waste_value": int(v or 0)}
+                 for r, q, v in db.execute(
+                     select(StockMovement.reason, func.sum(StockMovement.qty), func.sum(StockMovement.value))
+                     .where(StockMovement.type == "WASTE", StockMovement.date.between(start, end))
+                     .group_by(StockMovement.reason).order_by(func.sum(StockMovement.value).desc()))]
     return {"start": start.isoformat(), "end": end.isoformat(), "kpi": k, "waste_by_category": by_cat,
-            "top_waste_skus": top_waste, "shrink_value": int(-(shrink or 0))}
+            "waste_by_reason": by_reason, "top_waste_skus": top_waste, "shrink_value": shrink_value(db, start, end)}
+
+
+def shrink_value(db: Session, start: date, end: date) -> int:
+    """Hao hut = phan ADJUST am RONG theo tung (mat hang, phieu). Kiem date chuyen so giua cac lo cung mat hang
+    trong cung phieu nen khong bi tinh la hao hut."""
+    rows = db.execute(
+        select(StockMovement.product_id, StockMovement.ref, func.sum(StockMovement.value))
+        .where(StockMovement.type == "ADJUST", StockMovement.date.between(start, end))
+        .group_by(StockMovement.product_id, StockMovement.ref)).all()
+    return int(-sum(v for _, _, v in rows if v and v < 0))
 
 
 def kpi_compare(db: Session, days: int = 30) -> dict:

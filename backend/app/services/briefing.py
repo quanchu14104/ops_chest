@@ -9,9 +9,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.clock import today
+from app.config import settings
 from app.fmt import dmy, vnd
 from app.models import Proposal, PurchaseOrder
-from app.services import hypotheses, inventory, replenish
+from app.services import datecheck, hypotheses, inventory, receiving, replenish, shelf
 
 
 def build(db: Session) -> dict:
@@ -31,8 +32,30 @@ def build(db: Session) -> dict:
                       "prompt": "Liệt kê các đề xuất đang chờ duyệt và cho biết cái nào nên xử lý trước", "quick": "pending"})
     if expired:
         items.append({"id": "expired", "level": "action", "count": len(expired),
-                      "text": f"{len(expired)} lô đã quá hạn còn trên kệ, giá vốn {vnd(summ['value_already_expired_on_shelf'])}",
-                      "prompt": "Có lô nào đã quá hạn còn trên kệ không? Nên xử lý thế nào?", "quick": "expired"})
+                      "text": (f"{len(expired)} lô đã quá ngày bán cuối còn trên kệ, giá vốn "
+                               f"{vnd(summ['value_already_expired_on_shelf'])}: gỡ khỏi kệ ngay và xác nhận số thực gỡ"),
+                      "prompt": "Có lô nào đã quá hạn còn trên kệ không? Nên xử lý thế nào?", "quick": "pull"})
+    pull_today = [x for x in shelf.pull_list(db) if x["overdue_days"] == 0]
+    if pull_today:
+        items.append({"id": "pull", "level": "info", "count": len(pull_today),
+                      "text": f"{len(pull_today)} lô hết ngày bán hôm nay: rút kệ sau giờ đóng cửa ({settings.closing_hour}h)",
+                      "prompt": "Tối nay cần rút kệ những lô nào?", "quick": "pull"})
+    if summ.get("value_pulled_awaiting_writeoff"):
+        n_pulled = len(shelf.pulled_awaiting(db))
+        items.append({"id": "pulled", "level": "info", "count": n_pulled,
+                      "text": f"{n_pulled} lô đã rút kệ chờ duyệt ghi hủy, giá vốn trên sổ {vnd(summ['value_pulled_awaiting_writeoff'])}",
+                      "prompt": "Liệt kê các đề xuất đang chờ duyệt và cho biết cái nào nên xử lý trước"})
+    classes = datecheck.due_classes()
+    n_check = len([x for c in classes for x in datecheck.sheet(db, c)])
+    if n_check:
+        labels = ", ".join(datecheck.CLASS_LABEL[c] for c in classes)
+        items.append({"id": "date_check", "level": "info", "count": n_check,
+                      "text": f"Hôm nay kiểm date {labels}: {n_check} mặt hàng có lô sắp tới ngày bán cuối",
+                      "prompt": "Mở phiếu kiểm date hôm nay", "quick": "date_check"})
+    for s in receiving.recent_shortages(db, days=3):
+        items.append({"id": f"short-{s['code']}", "level": "warn", "count": s["lines"],
+                      "text": f"Đơn {s['code']} ({s['supplier']}) giao thiếu {s['lines']} mặt hàng, {s['units']} đơn vị",
+                      "prompt": "Nhà cung cấp nào hay giao thiếu?"})
     near = [l for l in risky if l["status"] != "EXPIRED"]
     if near:
         items.append({"id": "expiring", "level": "warn", "count": len(near),

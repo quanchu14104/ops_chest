@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.db import SessionLocal
-from app.jobs.daily import run_evening, run_morning
+from app.jobs.daily import run_closing, run_evening, run_morning
 
 log = logging.getLogger(__name__)
 _scheduler: BackgroundScheduler | None = None
@@ -32,8 +32,9 @@ def start() -> None:
     _scheduler = BackgroundScheduler(timezone=settings.timezone)
     _scheduler.add_job(_wrap(run_morning), "cron", hour=6, minute=30, id="morning")
     _scheduler.add_job(_wrap(run_evening), "cron", hour=17, minute=0, id="evening")
+    _scheduler.add_job(_wrap(run_closing), "cron", hour=settings.closing_hour, minute=0, id="closing")
     _scheduler.start()
-    log.info("Scheduler started: 06:30 quét sáng, 17:00 giờ vàng")
+    log.info("Scheduler started: 06:30 quét sáng, 17:00 giờ vàng, %sh rút kệ", settings.closing_hour)
 
 
 def stop() -> None:

@@ -67,5 +67,7 @@ class Product(Base):
     is_traffic_driver: Mapped[bool] = mapped_column(Boolean, default=False)
     substitute_skus: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")  # ACTIVE / DELISTED
+    # Rut khoi ke truoc HSD bao nhieu ngay (goi y FRESH 0, SHORT 1, LONG 7). Ngay ban cuoi = HSD - so nay.
+    pull_days_before_expiry: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     supplier: Mapped[Supplier] = relationship(back_populates="products")

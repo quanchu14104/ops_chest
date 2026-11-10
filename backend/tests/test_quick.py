@@ -16,7 +16,8 @@ def test_every_quick_key_returns_widgets(client, manager, key):
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["key"] == key and d["title"] and d["ui"]
-    assert all(u["type"] == "widget" and u["kind"] in ("table", "kpis") for u in d["ui"])
+    # rut ke / kiem date hien form de nhan vien tu xac nhan (form chi hien thi, khong ghi gi)
+    assert all(u["type"] == "widget" and u["kind"] in ("table", "kpis", "form") for u in d["ui"])
 
 
 def test_reorder_quick_and_unknown(client, manager):

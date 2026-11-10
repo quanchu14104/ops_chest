@@ -19,7 +19,8 @@ from app.clock import today
 from app.models import Proposal, PurchaseOrder, Supplier, User
 from app.proposals import builders
 from app.proposals.views import acceptance_stats, to_dict
-from app.services import charts, hypotheses, inventory, learning, replenish, reports, stockcount
+from app.models.inventory import WASTE_REASONS
+from app.services import charts, datecheck, hypotheses, inventory, learning, replenish, reports, shelf, stockcount
 from app.services.receiving import default_expiry  # chi lay HSD goi y; viec nhan hang that di qua REST
 
 
@@ -160,7 +161,7 @@ def _sales(ctx: ToolContext, start=None, end=None, group_by="week", category=Non
                        "note": "use group_by=week for long ranges" if len(rows) > 31 else None})
 
 
-@tool("get_cost_report", "read", "Cost & KPI report: waste cost/rate, stockout rate, lost margin, markdowns, supplier credits, inventory days, waste by category, top wasted SKUs. Default 30 days.",
+@tool("get_cost_report", "read", "Cost & KPI report: waste cost/rate, stockout rate, lost margin, markdowns, supplier credits, inventory days, waste by category and by reason (expired, damaged, spoiled, supplier defect), shrink, top wasted SKUs. Default 30 days.",
       {"start": DATE, "end": DATE})
 def _cost(ctx: ToolContext, start=None, end=None) -> ToolOutput:
     s, e = reports.default_range(_d(start), _d(end))
@@ -290,6 +291,38 @@ def _open_count_form(ctx: ToolContext, category: str) -> ToolOutput:
                       ui=[form])
 
 
+@tool("open_date_check_form", "read", "Show the DATE-CHECK form in the chat: staff count units per expiry date seen on the shelf (blind, no book quantities) for SKUs with lots close to their last sale day. Differences become a lot-level stock-adjust proposal for the manager. This only displays the form. freshness: FRESH (daily), SHORT (Mondays), LONG (1st of month); default = classes due today.",
+      {"freshness": {"type": "string", "enum": ["FRESH", "SHORT", "LONG"]}, "category": CATEGORY})
+def _open_date_check(ctx: ToolContext, freshness: str | None = None, category: str | None = None) -> ToolOutput:
+    classes = [freshness.upper()] if freshness else datecheck.due_classes()
+    lines = [x for c in classes for x in datecheck.sheet(ctx.db, c, category)]
+    if not lines:
+        return ToolOutput({"message": "Không có mặt hàng nào có lô sắp tới ngày bán cuối cần kiểm date."},
+                          ui=[W.table("Kiểm date", [W.col("sku", "SKU")], [],
+                                      empty="Không có mặt hàng nào cần kiểm date.")])
+    labels = ", ".join(datecheck.CLASS_LABEL[c] for c in classes)
+    form = W.form("date_check", f"Kiểm date: {labels}", lines, {"method": "POST", "path": "/date-checks"},
+                  note="Đếm số lượng theo từng HSD in trên bao bì. HSD trên kệ mà phiếu chưa có thì bấm \"Thêm HSD\". "
+                       "Mặt hàng đã nhập số thì HSD để trống được tính là 0.", meta={"classes": classes})
+    return ToolOutput({"form_shown": True, "classes": classes, "lines": len(lines),
+                       "message": "Đã hiện phiếu kiểm date trong chat. Nhân viên đếm theo từng HSD rồi bấm xác nhận; "
+                                  "sổ chưa thay đổi cho tới khi Store Manager duyệt."}, ui=[form])
+
+
+@tool("open_pull_form", "read", "Show the end-of-day PULL LIST form in the chat: lots past their last sale day that must be removed from the shelf. Staff enter the quantity actually removed and confirm in the UI (mandatory food-safety task, no approval needed); the manager then approves the write-off proposal. This only displays the form.")
+def _open_pull_form(ctx: ToolContext) -> ToolOutput:
+    lines = shelf.pull_list(ctx.db)
+    if not lines:
+        return ToolOutput({"message": "Không có lô nào cần rút kệ."},
+                          ui=[W.table("Rút kệ cuối ngày", [W.col("name", "Hàng")], [], empty="Không có lô nào cần rút kệ.")])
+    form = W.form("pull_list", "Rút kệ cuối ngày", lines, {"method": "POST", "path": "/shelf/pull"},
+                  note="Gỡ hết hàng của các lô dưới đây khỏi kệ và ghi số thực gỡ được. Số này dùng để ghi hủy.",
+                  meta={})
+    return ToolOutput({"form_shown": True, "lots": len(lines),
+                       "message": "Đã hiện danh sách rút kệ. Nhân viên ghi số thực gỡ rồi bấm xác nhận; "
+                                  "bút toán ghi hủy vẫn chờ Store Manager duyệt."}, ui=[form])
+
+
 # ---------------- CHART ----------------
 @tool("build_chart", "read", "Render a chart in the UI (stock_flow/_value: in vs out; sales: revenue & profit; sales_qty: sold vs lost; waste_by_category; waste_trend; inventory_by_category; expiry_risk; abc_xyz). Default last 30 days.",
       {"metric": {"type": "string", "enum": list(charts.METRICS)}, "start": DATE, "end": DATE, "group_by": GROUP,
@@ -352,13 +385,28 @@ def _propose_return(ctx: ToolContext, lot_ids: list[int] | None = None) -> ToolO
     return ToolOutput([o.data for o in outs], ui=[u for o in outs for u in o.ui])
 
 
-@tool("propose_dispose_expired", "propose", "Create a PROPOSAL to write off expired lots still in stock.")
+@tool("propose_dispose_expired", "propose", "Create a PROPOSAL to write off lots past their last sale day (pulled from the shelf, or overdue). Uses the quantity staff actually pulled; the rest of the book quantity is booked as shrink.")
 def _propose_dispose(ctx: ToolContext) -> ToolOutput:
     p, created = builders.dispose_expired(ctx.db, "agent", ctx.chat_session_id)
     ctx.db.commit()
     if not p:
         return ToolOutput({"message": "Không có lô nào đã quá hạn còn trong kho."})
     return _prop_out(p, created)
+
+
+@tool("propose_write_off", "propose", "Create a write-off PROPOSAL for goods damaged/spoiled/defective (NOT expiry: expired lots go through the pull list). Use the lot_id from get_product_detail and the quantity and reason the user stated; ask if missing.",
+      {"lot_id": {"type": "integer"}, "qty": {"type": "integer"},
+       "reason": {"type": "string", "enum": [r for r in WASTE_REASONS if r != "EXPIRED"]},
+       "note": {"type": "string", "description": "short note in Vietnamese"}}, ["lot_id", "qty", "reason"])
+def _propose_write_off(ctx: ToolContext, lot_id: int, qty: int, reason: str, note: str | None = None) -> ToolOutput:
+    try:
+        p = builders.write_off(ctx.db, [{"lot_id": lot_id, "qty": qty, "reason": reason}], "agent", note,
+                               ctx.chat_session_id)
+    except (ValueError, TypeError, KeyError) as e:
+        ctx.db.rollback()
+        return ToolOutput({"error": str(e)})
+    ctx.db.commit()
+    return _prop_out(p, True)
 
 
 @tool("propose_delist", "propose", "Create a delisting PROPOSAL for one SKU (only if it is a delisting candidate).",

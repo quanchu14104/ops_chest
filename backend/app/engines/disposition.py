@@ -30,6 +30,8 @@ class DispositionInput:
     current_markdown: float = 0.0  # muc giam dang ap cho lo: chi xet muc sau hon, khong tang gia tro lai
     # So don vi khach toi von mua gia goc neu khong co gio vang. None = suy tu nhu cau ca ngay.
     evening_full_price_units: float | None = None
+    # So ngay toi HSD in tren bao bi (dieu khoan tra NCC tinh theo HSD). None = bang days_left.
+    days_to_expiry: int | None = None
 
 
 @dataclass
@@ -100,7 +102,8 @@ def evaluate(inp: DispositionInput) -> list[Option]:
                 "MARKDOWN", f"Giảm giá {int(p * 100)}%", p, sold, 0.0, q - sold, value, value - keep_value, True,
                 "Giảm giá cả phần lẽ ra bán được giá gốc (mất doanh thu) để đẩy phần dư.",
             ))
-    can_return = inp.accepts_return and inp.days_left >= inp.return_min_days_before_expiry
+    to_expiry = inp.days_left if inp.days_to_expiry is None else inp.days_to_expiry
+    can_return = inp.accepts_return and to_expiry >= inp.return_min_days_before_expiry
     ret_units = waste_keep
     ret_value = keep_value + ret_units * (disposal + inp.unit_cost * inp.return_credit_pct)  # khong con ton phi huy
     if can_return:

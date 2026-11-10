@@ -7,9 +7,20 @@ from sqlalchemy.orm import Session
 from app.models import Proposal
 
 
+def subtype(p: Proposal) -> str | None:
+    """Phan loai chi tiet de giao dien/agent hien dung: ghi huy het han vs bao huy co ly do, kiem ke SKU vs kiem date."""
+    pl = p.payload or {}
+    if p.type == "DISPOSE":
+        return "EXPIRED" if all(i.get("reason", "EXPIRED") == "EXPIRED" for i in pl.get("items", [])) else "WRITE_OFF"
+    if p.type == "STOCK_ADJUST":
+        return pl.get("mode", "SKU")
+    return None
+
+
 def to_dict(p: Proposal) -> dict:
     return {
-        "id": p.id, "type": p.type, "status": p.status, "title": p.title, "rationale": p.rationale,
+        "id": p.id, "type": p.type, "subtype": subtype(p), "status": p.status, "title": p.title,
+        "rationale": p.rationale,
         "evidence": p.evidence, "payload": p.payload, "original_payload": p.original_payload,
         "sm_edits": p.sm_edits or [], "est_value": p.est_value, "created_by": p.created_by,
         "chat_session_id": p.chat_session_id,

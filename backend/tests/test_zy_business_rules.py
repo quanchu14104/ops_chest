@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import clock
 from app.agent import tools as toolmod
@@ -323,3 +323,229 @@ def test_return_refused_once_agreement_lapsed(db, outbox):
     finally:
         agr.valid_to = original
         db.commit()
+
+
+# ======================= Dot 1: so ton va an toan thuc pham =======================
+from app.services import datecheck, shelf  # noqa: E402
+from app.services.inventory import active_lots, expiring_lots  # noqa: E402
+from app.services.receiving import ReceiveError, receive_po  # noqa: E402
+from app.models import POLine  # noqa: E402
+
+
+def _moves(db, proposal_id, typ=None):
+    q = select(StockMovement).where(StockMovement.ref == f"proposal:{proposal_id}")
+    if typ:
+        q = q.where(StockMovement.type == typ)
+    return db.scalars(q).all()
+
+
+# ---- N3: bao huy kem ly do
+def test_write_off_needs_approval_and_keeps_reason(db, outbox):
+    lot = _only_lot(db, _first_product(db, freshness_class="SHORT"), 10, T + timedelta(days=5))
+    p = builders.write_off(db, [{"lot_id": lot.id, "qty": 3, "reason": "DAMAGED"}], "user:nhanvien", "Rơi vỡ khi xếp kệ")
+    db.commit()
+    db.refresh(lot)
+    assert p.status == "PENDING" and p.type == "DISPOSE" and lot.qty_remaining == 10
+    assert service.approve(db, p.id, _mgr(db)).status == "EXECUTED"
+    db.refresh(lot)
+    (w,) = _moves(db, p.id, "WASTE")
+    assert lot.qty_remaining == 7 and lot.status == "ACTIVE" and w.reason == "DAMAGED" and w.qty == 3
+    rep = reports.cost_report(db, T, T)
+    assert any(r["reason"] == "DAMAGED" and r["waste_qty"] >= 3 for r in rep["waste_by_reason"])
+
+
+def test_write_off_rejects_expiry_reason_and_too_many_units(db):
+    lot = _only_lot(db, _first_product(db, freshness_class="SHORT"), 4, T + timedelta(days=5))
+    with pytest.raises(ValueError):
+        builders.write_off(db, [{"lot_id": lot.id, "qty": 1, "reason": "EXPIRED"}], "user:nhanvien")
+    with pytest.raises(ValueError):
+        builders.write_off(db, [{"lot_id": lot.id, "qty": 5, "reason": "SPOILED"}], "user:nhanvien")
+
+
+# ---- N2: rut ke ngay, duyet sau
+def test_pulled_lot_leaves_stock_before_manager_approves(db, outbox):
+    _clear_open(db, "DISPOSE")
+    product = _first_product(db, freshness_class="FRESH")
+    lot = _only_lot(db, product, 5, T)  # het ngay ban hom nay
+    assert any(x["lot_id"] == lot.id for x in shelf.pull_list(db))
+    assert "qty" not in shelf.pull_list(db)[0]  # dem mu
+    shelf.confirm_pull(db, [{"lot_id": lot.id, "pulled_qty": 3}], "nhanvien")
+    db.commit()
+    db.refresh(lot)
+    assert lot.status == "PULLED" and lot.qty_remaining == 5
+    # Chua ai duyet ma lo da khong con la ton ban duoc / khong tinh vao don
+    assert lot.id not in {l.id for ls in active_lots(db).values() for l in ls}
+    sup = replenish.get_supplier(db, product.supplier.code)
+    line = next((l for l in replenish.suggest_po(db, sup)["lines"] if l["sku"] == product.sku), None)
+    assert line is None or line["on_hand"] == 0
+    assert all(x["lot_id"] != lot.id for x in expiring_lots(db, days=3)["lots"])
+    p, _ = builders.dispose_expired(db, "job")
+    db.commit()
+    it = next(i for i in p.payload["items"] if i["lot_id"] == lot.id)
+    assert it["qty"] == 3 and it["book_qty"] == 5
+    assert service.approve(db, p.id, _mgr(db)).status == "EXECUTED"
+    db.refresh(lot)
+    assert lot.status == "WASTED" and lot.qty_remaining == 0
+    waste = [m for m in _moves(db, p.id, "WASTE") if m.lot_id == lot.id]
+    adj = [m for m in _moves(db, p.id, "ADJUST") if m.lot_id == lot.id]
+    assert [m.qty for m in waste] == [3] and [m.qty for m in adj] == [-2] and adj[0].reason == "SHRINK"
+
+
+def test_cannot_pull_a_lot_still_on_sale(db):
+    lot = _only_lot(db, _first_product(db, freshness_class="FRESH"), 5, T + timedelta(days=2))
+    with pytest.raises(shelf.PullError):
+        shelf.confirm_pull(db, [{"lot_id": lot.id, "pulled_qty": 5}], "nhanvien")
+    db.rollback()
+
+
+def test_last_sale_day_uses_pull_days(db):
+    product = _first_product(db, freshness_class="LONG")
+    assert product.pull_days_before_expiry == 7
+    lot = _only_lot(db, product, 6, T + timedelta(days=3))  # con 3 ngay HSD nhung qua ngay ban cuoi
+    assert lot.id in {x["lot_id"] for x in shelf.pull_list(db)}
+
+
+def test_overdue_lot_edited_down_closes_instead_of_lingering(db, outbox):
+    _clear_open(db, "DISPOSE")
+    for l in db.scalars(select(Lot).where(Lot.status.in_(["ACTIVE", "PULLED"]), Lot.expiry_date < T + timedelta(days=10))):
+        l.status = "SOLD"
+    db.commit()
+    lot = _only_lot(db, _first_product(db, freshness_class="FRESH"), 6, T - timedelta(days=1))
+    p, _ = builders.dispose_expired(db, "job")
+    db.commit()
+    assert p.evidence["warnings"]  # chua ai xac nhan go ke
+    done = service.approve(db, p.id, _mgr(db), edits={"items": [{"lot_id": lot.id, "qty": 4}]})
+    assert done.status == "EXECUTED"
+    db.refresh(lot)
+    assert lot.status == "WASTED" and lot.qty_remaining == 0
+    again, _ = builders.dispose_expired(db, "job")
+    assert again is None or all(i["lot_id"] != lot.id for i in again.payload["items"])
+
+
+# ---- N1: kiem date theo lo
+def test_date_check_fixes_lots_and_surfaces_hidden_near_expiry(db, outbox):
+    product = _first_product(db, freshness_class="SHORT")
+    b = _only_lot(db, product, 10, T + timedelta(days=5))
+    a = Lot(product_id=product.id, qty_received=10, qty_remaining=0, received_date=T - timedelta(days=5),
+            expiry_date=T + timedelta(days=1), unit_cost=product.unit_cost, status="SOLD")
+    db.add(a)
+    db.commit()
+    row = next(r for r in datecheck.sheet(db, "SHORT") if r["sku"] == product.sku)
+    assert set(row) == {"sku", "name", "category", "freshness_class", "dates"}  # khong co so luong
+    lines = [{"sku": product.sku, "expiry_date": a.expiry_date.isoformat(), "counted_qty": 3},
+             {"sku": product.sku, "expiry_date": b.expiry_date.isoformat(), "counted_qty": 7}]
+    shrink_before = reports.shrink_value(db, T, T)
+    p, n = builders.date_check(db, lines, "user:nhanvien")
+    db.commit()
+    assert n == 1 and p.payload["mode"] == "LOT" and p.est_value == 0
+    db.refresh(a), db.refresh(b)
+    assert a.qty_remaining == 0 and b.qty_remaining == 10  # chua duyet thi so chua doi
+    assert service.approve(db, p.id, _mgr(db)).status == "EXECUTED"
+    db.refresh(a), db.refresh(b)
+    assert (a.qty_remaining, a.status, b.qty_remaining) == (3, "ACTIVE", 7)
+    assert sum(l.qty_remaining for l in active_lots(db, [product.id])[product.id]) == 10
+    assert any(x["lot_id"] == a.id for x in expiring_lots(db, days=3)["lots"])
+    assert reports.shrink_value(db, T, T) == shrink_before  # chuyen giua cac lo khong phai hao hut
+
+
+def test_date_check_unlisted_book_date_counts_as_zero_and_new_date_creates_lot(db, outbox):
+    product = _first_product(db, freshness_class="SHORT")
+    old = _only_lot(db, product, 4, T + timedelta(days=2))
+    new_exp = T + timedelta(days=6)
+    p, _ = builders.date_check(db, [{"sku": product.sku, "expiry_date": new_exp.isoformat(), "counted_qty": 2}],
+                               "user:nhanvien")
+    db.commit()
+    assert {(i["expiry_date"], i["diff"]) for i in p.payload["items"]} == {
+        (old.expiry_date.isoformat(), -4), (new_exp.isoformat(), 2)}
+    assert service.approve(db, p.id, _mgr(db)).status == "EXECUTED"
+    lots = active_lots(db, [product.id])[product.id]
+    assert [(l.expiry_date, l.qty_remaining) for l in lots] == [(new_exp, 2)]
+
+
+def test_date_check_fails_if_lot_changed_after_count(db, outbox):
+    product = _first_product(db, freshness_class="SHORT")
+    lot = _only_lot(db, product, 9, T + timedelta(days=4))
+    p, _ = builders.date_check(db, [{"sku": product.sku, "expiry_date": lot.expiry_date.isoformat(), "counted_qty": 5}],
+                               "user:nhanvien")
+    db.commit()
+    lot.qty_remaining = 8
+    db.commit()
+    done = service.approve(db, p.id, _mgr(db))
+    assert done.status == "FAILED" and "đếm lại" in done.execution_result["error"]
+
+
+# ---- N4: nhan hang
+def _new_po(db, product, qty, unit_cost=None):
+    n = db.scalar(select(func.count()).select_from(PurchaseOrder)) + 1
+    po = PurchaseOrder(code=f"PT{T:%y%m%d}-{n}", supplier_id=product.supplier_id, status="SENT",
+                       order_date=T - timedelta(days=1), expected_date=T, total_value=qty * product.unit_cost)
+    po.lines.append(POLine(product_id=product.id, qty=qty, unit_cost=unit_cost or product.unit_cost))
+    db.add(po)
+    db.commit()
+    return po
+
+
+def test_one_line_received_as_two_lots_with_two_expiries(db):
+    product = _first_product(db, freshness_class="SHORT")
+    po = _new_po(db, product, 24)
+    e1, e2 = T + timedelta(days=6), T + timedelta(days=7)
+    out = receive_po(db, po.id, [{"line_id": po.lines[0].id, "lots": [{"qty": 12, "expiry_date": e1.isoformat()},
+                                                                      {"qty": 12, "expiry_date": e2.isoformat()}]}],
+                     _staff(db))
+    assert sorted((x["qty"], x["expiry_date"]) for x in out["lots"]) == [(12, e1.isoformat()), (12, e2.isoformat())]
+    assert db.get(POLine, po.lines[0].id).received_qty == 24
+
+
+def test_short_delivery_is_recorded_and_briefed(client, manager, db):
+    product = _first_product(db, freshness_class="SHORT")
+    po = _new_po(db, product, 24)
+    out = receive_po(db, po.id, [{"line_id": po.lines[0].id, "received_qty": 18,
+                                  "expiry_date": (T + timedelta(days=6)).isoformat()}], _staff(db))
+    assert out["shortages"] == [{"sku": product.sku, "name": product.name, "ordered": 24, "short": 6}]
+    db.expire_all()
+    assert db.get(POLine, po.lines[0].id).short_qty == 6
+    items = client.get("/api/briefing", headers=manager).json()["items"]
+    assert any(i["id"] == f"short-{po.code}" for i in items)
+
+
+def test_short_dated_lot_blocked_for_staff_allowed_with_manager(db):
+    product = _first_product(db, freshness_class="SHORT")  # 7 ngay -> chuan nhan 5 ngay
+    exp = (T + timedelta(days=2)).isoformat()
+    po = _new_po(db, product, 8)
+    line = {"line_id": po.lines[0].id, "received_qty": 8, "expiry_date": exp, "accept_short_dated": True}
+    with pytest.raises(ReceiveError, match="chuẩn nhận hàng"):
+        receive_po(db, po.id, [line], _staff(db))  # nhan vien tick cung khong duoc
+    db.rollback()
+    out = receive_po(db, po.id, [line], _mgr(db))
+    assert out["lots"] and any("date ngắn" in w for w in out["warnings"])
+
+
+def test_short_dated_units_can_be_refused_at_the_door(db):
+    product = _first_product(db, freshness_class="SHORT")
+    po = _new_po(db, product, 8)
+    out = receive_po(db, po.id, [{"line_id": po.lines[0].id,
+                                  "lots": [{"qty": 5, "expiry_date": (T + timedelta(days=6)).isoformat()}],
+                                  "rejected_qty": 3, "reject_reason": "SHORT_DATED"}], _staff(db))
+    pl = db.get(POLine, po.lines[0].id)
+    assert out["lots"][0]["qty"] == 5 and pl.rejected_qty == 3 and pl.short_qty is None
+
+
+def test_over_delivery_needs_manager(db):
+    product = _first_product(db, freshness_class="SHORT")
+    po = _new_po(db, product, 10)
+    line = {"line_id": po.lines[0].id, "received_qty": 10 + max(1, product.pack_size) + 1,
+            "expiry_date": (T + timedelta(days=6)).isoformat(), "accept_over": True}
+    with pytest.raises(ReceiveError, match="dư"):
+        receive_po(db, po.id, [line], _staff(db))
+    db.rollback()
+    assert receive_po(db, po.id, [line], _mgr(db))["lots"]
+
+
+def test_invoice_cost_used_for_lot_and_flagged(db):
+    product = _first_product(db, freshness_class="SHORT")
+    po = _new_po(db, product, 4)
+    out = receive_po(db, po.id, [{"line_id": po.lines[0].id, "received_qty": 4,
+                                  "actual_unit_cost": product.unit_cost + 500,
+                                  "expiry_date": (T + timedelta(days=6)).isoformat()}], _staff(db))
+    lot = db.get(Lot, out["lots"][0]["lot_id"])
+    assert lot.unit_cost == product.unit_cost + 500 and any("hóa đơn" in w for w in out["warnings"])

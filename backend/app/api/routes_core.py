@@ -150,9 +150,14 @@ def purchase_order(po_id: int, db: Session = Depends(get_db), user: User = Depen
     return {"id": po.id, "code": po.code, "status": po.status, "supplier": po.supplier.name,
             "order_date": po.order_date.isoformat(), "expected_date": po.expected_date.isoformat(),
             "total_value": po.total_value, "proposal_id": po.proposal_id, "has_pdf": bool(po.pdf_path),
+            "reject_reasons": receiving.REJECT_REASONS,
             "lines": [{"line_id": l.id, "sku": l.product.sku, "name": l.product.name, "qty": l.qty,
-                       "unit_cost": l.unit_cost, "received_qty": l.received_qty,
+                       "unit_cost": l.unit_cost, "received_qty": l.received_qty, "rejected_qty": l.rejected_qty,
+                       "reject_reason": l.reject_reason, "short_qty": l.short_qty,
+                       "actual_unit_cost": l.actual_unit_cost, "pack_size": l.product.pack_size,
                        "shelf_life_days": l.product.shelf_life_days,
+                       "min_remaining_days": receiving.min_remaining_days(l.product.shelf_life_days),
+                       "over_tolerance": receiving.over_tolerance(l.qty, l.product.pack_size),
                        "default_expiry": receiving.default_expiry(l.product.shelf_life_days).isoformat()}
                       for l in po.lines]}
 
@@ -165,10 +170,23 @@ def purchase_order_pdf(po_id: int, db: Session = Depends(get_db), user: User = D
     return FileResponse(po.pdf_path, media_type="application/pdf", filename=f"{po.code}.pdf")
 
 
+class ReceiveLot(BaseModel):
+    qty: int
+    expiry_date: date | None = None
+
+
 class ReceiveLine(BaseModel):
     line_id: int
-    received_qty: int
+    received_qty: int | None = None
     expiry_date: date | None = None
+    # Mot dong giao nhieu HSD: moi cap (so luong, HSD) thanh mot lo. Co `lots` thi bo qua received_qty/expiry_date.
+    lots: list[ReceiveLot] | None = None
+    rejected_qty: int | None = None
+    reject_reason: str | None = None
+    actual_unit_cost: int | None = None
+    # Chi co tac dung khi nguoi nhan la Store Manager
+    accept_short_dated: bool = False
+    accept_over: bool = False
 
 
 class ReceiveIn(BaseModel):
@@ -178,7 +196,7 @@ class ReceiveIn(BaseModel):
 @router.post("/purchase-orders/{po_id}/receive")
 def receive(po_id: int, body: ReceiveIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
     try:
-        return receiving.receive_po(db, po_id, [l.model_dump() for l in body.lines], user)
+        return receiving.receive_po(db, po_id, [l.model_dump(exclude_none=True) for l in body.lines], user)
     except ReceiveError as e:
         db.rollback()
         raise HTTPException(422, str(e)) from e

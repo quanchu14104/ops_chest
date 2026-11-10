@@ -114,6 +114,11 @@ class POLine(Base):
     qty: Mapped[int] = mapped_column(Integer)
     unit_cost: Mapped[int] = mapped_column(Integer)
     received_qty: Mapped[int | None] = mapped_column(Integer)
+    # Nhan hang: tu choi tai cua (mop, date ngan, sai hang), giao thieu, gia tren hoa don khac PO
+    rejected_qty: Mapped[int | None] = mapped_column(Integer)
+    reject_reason: Mapped[str | None] = mapped_column(String(30))
+    short_qty: Mapped[int | None] = mapped_column(Integer)
+    actual_unit_cost: Mapped[int | None] = mapped_column(Integer)
 
     po: Mapped[PurchaseOrder] = relationship(back_populates="lines")
     product: Mapped[Product] = relationship()

@@ -39,6 +39,8 @@ class ProductSpec:
 
 
 ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
+# So ngay rut khoi ke truoc HSD (ngay ban cuoi = HSD - so nay). Bo backtest van ban den HSD (xem docs).
+PULL_DAYS = {"FRESH": 0, "SHORT": 1, "LONG": 7}
 
 SUPPLIERS = [
     SupplierSpec("NCC01", "Bếp Trung Tâm Hạnh Phúc", "dathang@bephanhphuc.test", 1, ALL_DAYS, 300_000),

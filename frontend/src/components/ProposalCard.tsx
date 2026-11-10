@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, getUser, type Proposal } from "../api";
-import { STATUS_LABEL, TYPE_LABEL, dateTimeVi, dateVi, money, num, pct } from "../format";
+import { STATUS_LABEL, TYPE_LABEL, WASTE_REASON_LABEL, dateTimeVi, dateVi, money, num, pct } from "../format";
 
 // "Hỏi lại": đưa ngữ cảnh đề xuất vào ô chat. Chat đang mở (trang Trợ lý) nghe sự kiện này và điền sẵn;
 // nếu không ai nhận (vd đang ở Hộp duyệt) thì chuyển sang /chat kèm bản nháp qua router state.
@@ -180,7 +180,9 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                 <th>Lô</th>
                 <th>Tên hàng</th>
                 <th>HSD</th>
-                <th className="num">{p.type === "MARKDOWN" ? "Tồn lô" : "Số lượng"}</th>
+                {p.type === "DISPOSE" && p.subtype === "EXPIRED" && <th className="num">Trên sổ</th>}
+                <th className="num">{p.type === "MARKDOWN" ? "Tồn lô" : p.type === "DISPOSE" && p.subtype === "EXPIRED" ? "Thực gỡ / hủy" : "Số lượng"}</th>
+                {p.type === "DISPOSE" && <th>Lý do</th>}
                 {p.type === "MARKDOWN" && <th>Mức giảm</th>}
                 {p.type === "MARKDOWN" && <th className="num">Thu thêm (ước tính)</th>}
               </tr>
@@ -202,6 +204,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                       {it.name} <span className="muted small">{it.sku}</span>
                     </td>
                     <td>{dateVi(it.expiry_date)}</td>
+                    {p.type === "DISPOSE" && p.subtype === "EXPIRED" && <td className="num muted">{num(it.book_qty ?? it.qty)}</td>}
                     <td className="num">
                       {editable && p.type !== "MARKDOWN" ? (
                         <input className="qty" type="number" min={0} max={it.lot_qty ?? it.qty} value={qty[id] ?? it.qty}
@@ -210,6 +213,12 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                         num(it.qty)
                       )}
                     </td>
+                    {p.type === "DISPOSE" && (
+                      <td className="small">
+                        {WASTE_REASON_LABEL[it.reason ?? "EXPIRED"] ?? it.reason}
+                        {it.close_lot && !it.pulled && <span className="badge st-FAILED" style={{ marginLeft: 6 }}>chưa xác nhận gỡ kệ</span>}
+                      </td>
+                    )}
                     {p.type === "MARKDOWN" && (
                       <td>
                         {editable ? (
@@ -233,6 +242,9 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
             </tbody>
           </table>
           {p.type === "RETURN" && <p className="small secondary">Hoàn {pct(pl.credit_pct, 0)} giá vốn · ước tính {money(pl.est_credit)} · email gửi {pl.supplier_email}</p>}
+          {p.type === "DISPOSE" && p.subtype === "EXPIRED" && (
+            <p className="small secondary">Duyệt thì lô được đóng hẳn: hủy theo số thực gỡ, phần chênh với sổ ghi là hao hụt{pl.shrink_cost ? ` (${money(pl.shrink_cost)})` : ""}.</p>
+          )}
         </div>
       )}
 
@@ -261,10 +273,14 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
       {open && p.type === "STOCK_ADJUST" && (
         <div className="table-wrap" style={{ marginTop: 8 }}>
           <table>
-            <thead><tr><th>Tên hàng</th><th className="num">Trên sổ</th><th className="num">Đếm được</th><th className="num">Lệch</th><th className="num">Giá trị</th></tr></thead>
+            <thead><tr><th>Tên hàng</th>{p.subtype === "LOT" && <th>HSD</th>}<th className="num">Trên sổ</th><th className="num">Đếm được</th><th className="num">Lệch</th><th className="num">Giá trị</th></tr></thead>
             <tbody>
-              {(pl.items as { sku: string; name: string; system_qty: number; counted_qty: number; diff: number; value: number }[]).map((it) => (
-                <tr key={it.sku}><td>{it.name} <span className="muted small">{it.sku}</span></td><td className="num">{num(it.system_qty)}</td><td className="num">{num(it.counted_qty)}</td><td className="num">{it.diff > 0 ? "+" : ""}{num(it.diff)}</td><td className="num">{money(it.value)}</td></tr>
+              {(pl.items as { sku: string; name: string; expiry_date?: string; new_date?: boolean; system_qty: number; counted_qty: number; diff: number; value: number }[]).map((it) => (
+                <tr key={`${it.sku}-${it.expiry_date ?? ""}`}>
+                  <td>{it.name} <span className="muted small">{it.sku}</span></td>
+                  {p.subtype === "LOT" && <td>{dateVi(it.expiry_date)}{it.new_date && <span className="badge accent" style={{ marginLeft: 6 }}>sổ chưa có</span>}</td>}
+                  <td className="num">{num(it.system_qty)}</td><td className="num">{num(it.counted_qty)}</td><td className="num">{it.diff > 0 ? "+" : ""}{num(it.diff)}</td><td className="num">{money(it.value)}</td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -328,7 +344,7 @@ function ExecResult({ p }: { p: Proposal }) {
     text = `Đã áp giá giảm cho ${(r.lots_marked_down as unknown[]).length} lô.${kept ? ` Giữ nguyên ${kept} lô đang giảm sâu hơn.` : ""} ${r.instruction}`;
   }
   else if (p.type === "RETURN") text = `Đã gửi phiếu trả ${r.code} tới ${r.email_to}, hoàn dự kiến ${money(Number(r.credit))}.`;
-  else if (p.type === "DISPOSE") text = `Đã ghi hủy ${r.lots_disposed} lô, giá vốn ${money(Number(r.waste_cost))}.`;
+  else if (p.type === "DISPOSE") text = `Đã ghi hủy ${r.lots_disposed} lô, giá vốn ${money(Number(r.waste_cost))}.${Number(r.shrink_value) ? ` Hao hụt so với sổ ${money(Number(r.shrink_value))}.` : ""}`;
   else if (p.type === "DELIST" || p.type === "DEMAND_HYPOTHESIS" || p.type === "ORDER_ADJUST") text = String(r.note);
   else if (p.type === "STOCK_ADJUST") text = `Đã điều chỉnh tồn ${r.items} mặt hàng theo số đếm, giá trị lệch ròng ${money(Number(r.net_value))}.`;
   return <div className="alert ok" style={{ marginTop: 8 }}>✓ {text}</div>;

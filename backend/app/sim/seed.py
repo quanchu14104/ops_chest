@@ -19,7 +19,7 @@ from app.db_init import reset as reset_db
 from app.models import (AppMeta, DailySales, Lot, POLine, Product, PurchaseOrder, StockMovement, Supplier,
                         SupplierAgreement, User)
 from app.sim.backtest import initial_stock
-from app.sim.catalog import build_catalog
+from app.sim.catalog import PULL_DAYS, build_catalog
 from app.sim.policies import BaselinePolicy
 from app.sim.store_sim import StoreSim
 
@@ -71,7 +71,8 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
             row = Product(sku=p.sku, name=p.name, category=p.category, freshness_class=p.freshness_class,
                           shelf_life_days=p.shelf_life_days, unit_cost=p.unit_cost, unit_price=p.unit_price,
                           pack_size=p.pack_size, supplier_id=sup_ids[p.supplier_code],
-                          is_traffic_driver=p.is_traffic_driver, substitute_skus=p.substitutes)
+                          is_traffic_driver=p.is_traffic_driver, substitute_skus=p.substitutes,
+                          pull_days_before_expiry=PULL_DAYS[p.freshness_class])
             db.add(row)
             db.flush()
             pid[p.sku] = row.id

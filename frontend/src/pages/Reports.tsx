@@ -4,7 +4,11 @@ import { api, type ChartSpec, type Proposal } from "../api";
 import ChartView from "../components/ChartView";
 import { dateVi, money, pct } from "../format";
 
-type Cost = { start: string; end: string; kpi: Record<string, number>; shrink_value: number; top_waste_skus: { sku: string; name: string; waste_qty: number; waste_value: number }[] };
+type Cost = {
+  start: string; end: string; kpi: Record<string, number>; shrink_value: number;
+  top_waste_skus: { sku: string; name: string; waste_qty: number; waste_value: number }[];
+  waste_by_reason: { reason: string; label: string; waste_qty: number; waste_value: number }[];
+};
 type Cand = { sku: string; name: string; category: string; cell: string; margin_90d: number; waste_rate: number; reasons: string[] };
 type BT = { start: string; days: number; results: Record<string, Record<string, number>>; delta: Record<string, number> };
 type SensRow = { key: string; label: string; note: string; gain: number; gain_pct: number; waste_a: number; waste_b: number; oos_a: number; oos_b: number };
@@ -72,7 +76,7 @@ export default function Reports() {
         <div className="grid kpis" style={{ marginBottom: 16 }}>
           {[["Giá vốn hàng hủy", money(k.waste_cost)], ["Tỷ lệ hủy", pct(k.waste_rate)], ["Tỷ lệ hết hàng", pct(k.oos_rate)],
             ["Lãi mất do hết hàng", money(k.lost_margin)], ["Đã giảm giá", money(k.markdown_loss)], ["NCC hoàn tiền", money(k.return_credit)],
-            ["Số ngày tồn kho", `${k.inventory_days.toLocaleString("vi-VN")} ngày`], ["Hao hụt kiểm kê", money(cost.data?.shrink_value ?? 0)]].map(([l, v]) => (
+            ["Số ngày tồn kho", `${k.inventory_days.toLocaleString("vi-VN")} ngày`], ["Hao hụt (kiểm kê, rút kệ)", money(cost.data?.shrink_value ?? 0)]].map(([l, v]) => (
             <div className="card kpi" key={l}><div className="label">{l}</div><div className="value" style={{ fontSize: 20 }}>{v}</div></div>
           ))}
         </div>
@@ -115,6 +119,12 @@ export default function Reports() {
           <table>
             <thead><tr><th>SKU</th><th>Tên hàng</th><th className="num">SL hủy</th><th className="num">Giá vốn hủy</th></tr></thead>
             <tbody>{cost.data.top_waste_skus.map((s) => <tr key={s.sku}><td>{s.sku}</td><td>{s.name}</td><td className="num">{s.waste_qty}</td><td className="num">{money(s.waste_value)}</td></tr>)}</tbody>
+          </table>
+          <h2 style={{ marginTop: 16 }}>Hủy theo lý do</h2>
+          <p className="small secondary">Hết hạn thường là đặt dư; vỡ, hỏng do bảo quản hay lỗi nhà cung cấp là vấn đề khác và cần cách xử lý khác.</p>
+          <table>
+            <thead><tr><th>Lý do</th><th className="num">SL hủy</th><th className="num">Giá vốn hủy</th></tr></thead>
+            <tbody>{cost.data.waste_by_reason.map((r) => <tr key={r.reason}><td>{r.label}</td><td className="num">{r.waste_qty}</td><td className="num">{money(r.waste_value)}</td></tr>)}</tbody>
           </table>
         </div>
       )}
