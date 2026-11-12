@@ -1,0 +1,4 @@
+# LightGBM model files must keep LF endings (CRLF crashes the loader on Windows).
+backend/app/ml/artifacts/*.txt -text
+backend/app/ml/artifacts/*.json text eol=lf
+*.gz binary

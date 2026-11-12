@@ -32,7 +32,12 @@ class MlForecaster:
         if list(self.meta["features"]) != list(FEATURES):
             raise RuntimeError("Mô hình được huấn luyện với bộ đặc trưng khác ml_features.py hiện tại.")
         self.k = float(self.meta["k_scale"])
-        self.models = {q: lgb.Booster(model_file=str(art_dir / f"{prefix}q{q}.txt")) for q in (10, 50, 90)}
+        # Đọc qua chuỗi và chuẩn hóa xuống dòng: checkout trên Windows có thể đổi LF→CRLF,
+        # và LightGBM sập cả tiến trình (không bắt được) khi đọc file mô hình có CRLF.
+        self.models = {
+            q: lgb.Booster(model_str=(art_dir / f"{prefix}q{q}.txt").read_bytes().decode("ascii").replace("\r\n", "\n"))
+            for q in (10, 50, 90)
+        }
         self.prefix = prefix
         cuts = self.meta.get("segment_cuts_oc_units") or [math.inf, math.inf]
         self.cuts = (float(cuts[0]), float(cuts[1]))

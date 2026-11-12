@@ -200,6 +200,19 @@ def test_real_model_returns_forecast():
     assert fc.daily[7:14] == pytest.approx([fc.daily[i] for i in range(7)])  # tuan 2 lap lai theo thu
 
 
+def test_real_model_loads_from_crlf_files(tmp_path):
+    """Checkout tren Windows (core.autocrlf) doi file mo hinh sang CRLF; LightGBM doc truc tiep thi sap ca tien trinh."""
+    from app.ml.forecaster import ARTIFACTS, MlForecaster
+    _real_model()
+    (tmp_path / "meta.json").write_bytes((ARTIFACTS / "meta.json").read_bytes())
+    for q in (10, 50, 90):
+        raw = (ARTIFACTS / f"bt_q{q}.txt").read_bytes().replace(b"\r\n", b"\n")
+        (tmp_path / f"bt_q{q}.txt").write_bytes(raw.replace(b"\n", b"\r\n"))
+    m = MlForecaster(tmp_path, "bt_")
+    fc = m.forecast([8.0] * 60, [False] * 60, date(2024, 5, 31), 14, (1, 10, 100))
+    assert fc.method == "lightgbm_frn" and all(x >= 0 for x in fc.daily)
+
+
 def test_real_model_forecast_still_capped_by_capacity_and_shelf_life():
     m = _real_model()
     end = date(2024, 5, 31)
