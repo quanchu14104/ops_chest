@@ -164,6 +164,9 @@ def test_router_respects_config_and_eligibility(monkeypatch):
         def asymmetric(self, gate=None):
             return False
 
+        def sigma_mode(self, gate=None):
+            return "sym"
+
         def forecast(self, history, stockout, end, horizon, statics, start=None, holiday_of=None, asymmetric=None):
             calls.append(statics)
             return Forecast(start=end + timedelta(days=1), daily=[1.0] * horizon, sigma_daily=1.0, level=1.0,
@@ -309,7 +312,7 @@ def _sku_rows():
     for sid, size, d in ((1, 20, -50.0), (2, 25, -40.0), (3, 120, 30.0), (4, 150, 20.0)):
         for seg in ("ban_vua|deu", "ban_it|deu"):
             rows.append({"store_id": sid, "size": size, "sku": f"{sid}{seg}", "segment": seg,
-                         "gp": {"b_ewma": 100.0, "sym": 100.0 + d, "split": 100.0 + d / 2}})
+                         "gp": {"b_ewma": 100.0, "sym": 100.0 + d, "split": 100.0 + d / 2, "ewma_sigma": 100.0 + d / 4}})
     return rows, {1: 1000.0, 2: 1000.0, 3: 1000.0, 4: 1000.0}
 
 
@@ -336,3 +339,24 @@ def test_crossfit_never_uses_test_stores():
                     else r for r in rows]
         again = crossfit_gates(poisoned, gp, fold, cuts=(None, 50))
         assert again[f]["use_ml"] == gates[f]["use_ml"] and again[f]["variant"] == gates[f]["variant"]
+
+
+def test_gate_ewma_sigma_variant_keeps_ml_point_forecast_with_ewma_sigma(tmp_path, monkeypatch):
+    """Bien the "ewma_sigma": du bao diem cua LightGBM, do lech chuan cua EWMA cho cung chuoi."""
+    import json
+    from app.engines.forecast import forecast_demand
+    monkeypatch.setattr("app.config.settings.forecast_engine", "auto")
+    (tmp_path / "decision_gate.json").write_text(json.dumps(
+        {"variant": "ewma_sigma", "size_cut": 30, "use_ml": ["ban_vua|deu|lon"]}), encoding="utf-8")
+    m = _stub_forecaster(tmp_path)
+    monkeypatch.setattr("app.ml.forecaster.load", lambda prefix="", art_dir=None: m)
+    hist = [7.0, 9.0, 6.0, 8.0, 7.0, 5.0, 10.0] * 9
+    fc = forecast_router.forecast(hist, END, 7, frn_statics=(1, 2, 3), store_size=164)
+    ewma = forecast_demand(hist, END, 7)
+    assert fc.method == "lightgbm_frn" and fc.daily == [1.0] * 7  # du bao diem tu LightGBM (stub)
+    assert fc.sigma_daily == pytest.approx(ewma.sigma_daily) and fc.sigma_daily != 1.0
+    assert fc.sigma_lo is None and fc.sigma_hi is None
+    # Bo chon tam "sym" thi giu sigma cua LightGBM
+    sym = forecast_router.forecast(hist, END, 7, frn_statics=(1, 2, 3), store_size=164,
+                                   gate={"variant": "sym", "size_cut": None, "use_ml": "all"})
+    assert sym.sigma_daily == 1.0

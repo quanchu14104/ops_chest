@@ -27,9 +27,11 @@ TIERS = ("nho", "lon")
 
 
 # ---- bo chon theo lai (decision_gate.json, tao boi `python -m app.sim.backtest --frn`)
-# Dang: {"variant": "sym"|"split", "size_cut": int|None, "use_ml": [nhom, ...] | "all"}.
+# Dang: {"variant": "sym"|"split"|"ewma_sigma", "size_cut": int|None, "use_ml": [nhom, ...] | "all"}.
 # Nhom = segment (vd "ban_vua|deu"); co size_cut thi them bac quy mo diem ban: "ban_vua|deu|nho" (<= size_cut
-# mat hang) hoac "...|lon". variant "split": dat hang dung phan phoi lech q10/q50/q90 (sigma_lo/sigma_hi).
+# mat hang) hoac "...|lon". variant: "sym" = sigma doi xung tu q10/q90 (cach cu); "split" = phan phoi lech
+# q10/q50/q90 (sigma_lo/sigma_hi); "ewma_sigma" = du bao diem cua LightGBM + do lech chuan cua EWMA cho cung
+# mat hang (router ghep, vi khoang rong cua LightGBM qua san muc phuc vu cao lam dat du).
 def store_tier(store_size: int, size_cut: int) -> str:
     return "nho" if store_size <= size_cut else "lon"
 
@@ -98,9 +100,12 @@ class MlForecaster:
             return self.segment(history) in self.use_ml
         return gate_allows(g, self.segment(history), store_size)
 
-    def asymmetric(self, gate: dict | None = None) -> bool:
+    def sigma_mode(self, gate: dict | None = None) -> str:
         g = gate if gate is not None else self.gate
-        return bool(g) and g.get("variant") == "split"
+        return (g or {}).get("variant") or "sym"
+
+    def asymmetric(self, gate: dict | None = None) -> bool:
+        return self.sigma_mode(gate) == "split"
 
     # ---- du bao 7 ngay tiep theo cua nhieu chuoi mot luc
     def _predict_block(self, Y: np.ndarray, S: np.ndarray, end: date, statics: np.ndarray, holiday_of) -> tuple:

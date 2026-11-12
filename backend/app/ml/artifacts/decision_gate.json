@@ -1,11 +1,13 @@
 {
   "version": 1,
-  "variant": "sym",
+  "variant": "ewma_sigma",
   "size_cut": 30,
   "use_ml": [
+    "ban_chay|deu|lon",
     "ban_it|deu|lon",
     "ban_it|lat_nhat|lon",
-    "ban_vua|deu|lon"
+    "ban_vua|deu|lon",
+    "ban_vua|deu|nho"
   ],
   "tiers": {
     "nho": "<= 30 mặt hàng FRN",
@@ -15,56 +17,56 @@
   "selected_by": "Lãi trong backtest FRN (python -m app.sim.backtest --frn), không theo sai số dự báo",
   "data": "50 điểm FRN giữ lại, so sánh từ ngày sau T0 = 2024-05-26",
   "note": "Bộ chọn học bằng mô hình backtest bt_q* (chỉ thấy dữ liệu đến T0) rồi áp cho mô hình chạy thật q* (học thêm đến ngày 89). Học trên cả các điểm; kết quả ngoài mẫu của cách chọn này nằm trong backtest.json (b_gate, kiểm chéo 2 lần theo điểm bán).",
-  "objective": 0.1694,
+  "objective": 0.40247,
   "groups": {
     "ban_chay|deu|lon": {
-      "value": -0.25865,
-      "delta_vnd": -70266920,
+      "value": 0.23971,
+      "delta_vnd": 79888835,
       "n_sku": 889,
       "n_stores": 37,
-      "use_ml": false
+      "use_ml": true
     },
     "ban_chay|deu|nho": {
-      "value": -0.5651,
-      "delta_vnd": -34152111,
+      "value": -0.08452,
+      "delta_vnd": 875951,
       "n_sku": 103,
       "n_stores": 13,
       "use_ml": false
     },
     "ban_it|deu|lon": {
-      "value": 0.04259,
-      "delta_vnd": 7916189,
+      "value": 0.00305,
+      "delta_vnd": -2802230,
       "n_sku": 655,
       "n_stores": 37,
       "use_ml": true
     },
     "ban_it|deu|nho": {
-      "value": -0.04928,
-      "delta_vnd": -3494358,
+      "value": -0.01988,
+      "delta_vnd": -1747043,
       "n_sku": 82,
       "n_stores": 13,
       "use_ml": false
     },
     "ban_it|lat_nhat|lon": {
-      "value": 0.001,
-      "delta_vnd": 424262,
+      "value": 0.00053,
+      "delta_vnd": 301743,
       "n_sku": 4,
       "n_stores": 3,
       "use_ml": true
     },
     "ban_vua|deu|lon": {
-      "value": 0.12581,
-      "delta_vnd": 45806591,
+      "value": 0.1136,
+      "delta_vnd": 40522427,
       "n_sku": 832,
       "n_stores": 37,
       "use_ml": true
     },
     "ban_vua|deu|nho": {
-      "value": -0.10541,
-      "delta_vnd": -7195930,
+      "value": 0.04558,
+      "delta_vnd": 3174115,
       "n_sku": 110,
       "n_stores": 13,
-      "use_ml": false
+      "use_ml": true
     }
   },
   "candidates": [
@@ -147,6 +149,55 @@
         "ban_it|lat_nhat|lon",
         "ban_it|lat_nhat|nho",
         "ban_vua|deu|lon"
+      ]
+    },
+    {
+      "variant": "ewma_sigma",
+      "size_cut": null,
+      "objective": 0.3149,
+      "use_ml": [
+        "ban_chay|deu",
+        "ban_it|lat_nhat",
+        "ban_vua|deu"
+      ]
+    },
+    {
+      "variant": "ewma_sigma",
+      "size_cut": 30,
+      "objective": 0.40247,
+      "use_ml": [
+        "ban_chay|deu|lon",
+        "ban_it|deu|lon",
+        "ban_it|lat_nhat|lon",
+        "ban_vua|deu|lon",
+        "ban_vua|deu|nho"
+      ]
+    },
+    {
+      "variant": "ewma_sigma",
+      "size_cut": 50,
+      "objective": 0.3149,
+      "use_ml": [
+        "ban_chay|deu|lon",
+        "ban_chay|deu|nho",
+        "ban_it|lat_nhat|lon",
+        "ban_it|lat_nhat|nho",
+        "ban_vua|deu|lon",
+        "ban_vua|deu|nho"
+      ]
+    },
+    {
+      "variant": "ewma_sigma",
+      "size_cut": 75,
+      "objective": 0.31539,
+      "use_ml": [
+        "ban_chay|deu|lon",
+        "ban_chay|deu|nho",
+        "ban_it|deu|lon",
+        "ban_it|lat_nhat|lon",
+        "ban_it|lat_nhat|nho",
+        "ban_vua|deu|lon",
+        "ban_vua|deu|nho"
       ]
     }
   ]

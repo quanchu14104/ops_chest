@@ -6,6 +6,7 @@ LightGBM chi duoc dung khi DU ca cac dieu kien:
   - co it nhat 28 ngay lich su va 28 ngay gan nhat co ban;
   - mat hang thuoc nhom duoc dung ML. Co `decision_gate.json` thi nhom = segment x quy mo diem ban, chon theo LAI
     ngoai mau trong backtest FRN; khong co thi theo meta.json `use_ml_segments` (chon theo sai so du bao).
+Bo chon cung quyet dinh do lech chuan dung de dat hang: cua LightGBM (doi xung / lech) hay cua EWMA.
 Thieu mot dieu kien thi dung `forecast_demand` (EWMA) nhu cu. Hai bo cung tra ve `Forecast`; truong `method`
 cho biet bo nao da du bao.
 """
@@ -29,7 +30,14 @@ def forecast(history: list[float], history_end: date, horizon: int, stockout: li
 
         ml = load(model)
         if ml is not None and ml.eligible(history, store_size=store_size, gate=gate):
-            return ml.forecast(history, stockout or [False] * len(history), history_end, horizon, frn_statics,
-                               start=start, holiday_of=holiday_of, asymmetric=ml.asymmetric(gate))
+            fc = ml.forecast(history, stockout or [False] * len(history), history_end, horizon, frn_statics,
+                             start=start, holiday_of=holiday_of, asymmetric=ml.asymmetric(gate))
+            if ml.sigma_mode(gate) == "ewma_sigma":
+                # Du bao diem cua LightGBM, do lech chuan cua EWMA (hep hon): khoang rong cua LightGBM qua san
+                # muc phuc vu 90-95% thanh dat du va huy nhieu hon (docs/ml-frn.md, muc 5.7)
+                ewma = forecast_demand(history, history_end, horizon, stockout=stockout, start=start,
+                                       event_factors=event_factors, skip_dates=skip_dates)
+                fc.sigma_daily, fc.sigma_lo, fc.sigma_hi = ewma.sigma_daily, None, None
+            return fc
     return forecast_demand(history, history_end, horizon, stockout=stockout, start=start,
                            event_factors=event_factors, skip_dates=skip_dates)

@@ -176,7 +176,7 @@ function GroupTable({ data, mode, gate }: { data: Board; mode: Mode; gate: Recor
       <p className="small secondary" style={{ marginTop: -4 }}>
         Cột "Theo sai số" là bộ chọn cũ: nhóm nào LightGBM sai ít hơn EWMA trên tuần eval. Số liệu theo đúng giai đoạn và cách chấm đang chọn ở trên.
         App hiện <b>không</b> dùng cột này mà chọn theo lãi trong backtest (decision_gate.json, xem mục Backtest A/B bên dưới): ở điểm bán lớn như
-        cửa hàng demo, LightGBM chỉ dùng cho hàng bán ít và bán vừa; hàng bán chạy giữ EWMA.
+        cửa hàng demo, mọi mặt hàng dùng dự báo LightGBM nhưng tồn an toàn theo σ của EWMA; ở điểm bán nhỏ, hàng bán chạy và bán ít giữ EWMA.
       </p>
       <table>
         <thead><tr>

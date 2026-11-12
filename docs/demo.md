@@ -31,7 +31,10 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
 - Mở một đề xuất **Đặt hàng** (ví dụ Nông sản Tân Phát, khoảng 80 mặt hàng). Các dòng có nhãn **LightGBM**: dự báo do mô hình học trên 848 điểm bán FRN khác tính ra, không phải do engine EWMA cũ.
 - Nhấn mạnh hai điều:
   - **Mô hình chỉ dự báo, không quyết định.** Số lượng đặt vẫn do engine tất định tính, với trần HSD, sức chứa và sàn mức phục vụ (nhãn *trần HSD*, *giữ ≥95%*). Mô hình không thể đề xuất vượt các giới hạn này (có test kiểm).
-  - **Mô hình được chọn theo lãi, không theo độ chính xác.** Bộ chọn (`decision_gate.json`) học từ backtest FRN: nhóm hàng × quy mô điểm bán nào mà LightGBM không làm lãi hơn EWMA thì vẫn dùng EWMA. Ở cửa hàng demo, **91/164 mặt hàng** (bán ít, bán vừa) có nhãn LightGBM. **73 mặt hàng bán chạy dùng EWMA**, vì ở đó LightGBM đặt dư và làm mất lãi.
+  - **Mô hình được chọn theo lãi, không theo độ chính xác.** Bộ chọn (`decision_gate.json`) học từ backtest FRN hai việc:
+    - nhóm hàng × quy mô điểm bán nào dùng LightGBM;
+    - độ bất định nào dùng để đặt hàng.
+  - Ở cửa hàng demo, cả 164 mặt hàng dùng **dự báo điểm của LightGBM**, nhưng tồn an toàn tính theo **σ của engine EWMA**. Lý do: khoảng dự báo của LightGBM rộng hơn, đi qua sàn mức phục vụ 90–95% thì thành đặt dư.
 - Vào **Phân tích → Dự báo nhu cầu bằng LightGBM trên dữ liệu thật**:
   - bảng 5 phương pháp: LightGBM WAPE 30,2% so với EWMA 35,1%, độ phủ khoảng 80% là 81% so với 73%;
   - bảng theo nhóm hàng, có nhãn "Dùng ML" / "Giữ engine cũ" theo sai số dự báo. Đây là bộ chọn cũ; app nay chọn theo lãi (mục 7);
@@ -76,13 +79,16 @@ Vào **Phân tích → Backtest A/B trên các điểm FRN**. Các chính sách 
 - **A:** làm theo kinh nghiệm, có giờ vàng;
 - **B-EWMA:** Ops Chest với engine cũ;
 - **B-ML:** Ops Chest với LightGBM (bộ chọn cũ, theo sai số dự báo);
-- **B-gate:** Ops Chest với bộ chọn theo lãi, chọn ngoài mẫu (kiểm chéo 2 lần theo điểm bán). Kèm hai biến thể để giải thích: phân phối lệch q10/q50/q90, và chẩn đoán "dự báo LightGBM + σ EWMA".
+- **B-gate:** Ops Chest với bộ chọn theo lãi, chọn ngoài mẫu (kiểm chéo 2 lần theo điểm bán). Kèm các biến thể để giải thích: LightGBM với phân phối lệch q10/q50/q90, và LightGBM với σ của EWMA ở mọi mặt hàng.
 
 Đọc trung vị và khoảng tứ phân vị qua 50 điểm, tỷ lệ số điểm B tốt hơn A, và bảng độ nhạy (khách phản ứng yếu hơn, Store Manager chỉ duyệt 60–80%, tắt sàn mức phục vụ…). Nói rõ: nhu cầu là thật, nhưng giá, HSD và phản ứng với giảm giá vẫn là giả định.
 
 Nói thẳng kết quả ([ml-frn.md](ml-frn.md), mục 5.6):
 - Ops Chest lãi hơn cách làm theo kinh nghiệm khoảng **+4%** (trung vị) và giảm hết hàng; với hàng kéo khách, hết hàng giảm từ 8,7% xuống 2,7%.
 - **LightGBM dự báo chính xác hơn nhưng không lãi hơn EWMA**: chỉ thắng ở 34% số điểm, thua ở điểm bán nhỏ. Nó giảm hết hàng nhưng đặt dư hơn nên hủy nhiều hơn.
-- Chọn theo lãi, đo ngoài mẫu ([ml-frn.md](ml-frn.md), mục 5.7): B-gate **chỉ hòa** B-EWMA (+0,1% trung vị, thắng 54% số điểm). Đặt hàng theo phân vị lệch còn tệ hơn (−2,2%).
-- Chẩn đoán chỉ ra nguyên nhân: dự báo điểm của LightGBM tốt hơn (giữ σ của EWMA thì thắng ở 76% số điểm, +0,9%). Phần làm mất lãi là khoảng dự báo rộng, khi đi qua sàn mức phục vụ 90–95% thì thành đặt dư.
+- Đổi cách dùng mô hình thì khác ([ml-frn.md](ml-frn.md), mục 5.7). Lấy dự báo điểm của LightGBM, σ của EWMA, chọn theo lãi và đo ngoài mẫu:
+  - B-gate hơn B-EWMA **+0,8%** (trung vị, khoảng tứ phân vị +0,1% đến +1,4%), thắng ở **78%** số điểm;
+  - hủy giảm từ 5,2% còn 4,8%.
+- Đặt hàng thẳng theo khoảng của LightGBM thì lỗ: phân vị lệch −2,2%. Khoảng rộng đi qua sàn mức phục vụ cao thành đặt dư.
+- Nói rõ giới hạn: biến thể này được thêm vào sau khi đã thấy kết quả chẩn đoán trên chính 50 điểm này, nên +0,8% hơi lạc quan.
 - Bài học: thước đo của dự báo (WAPE) và thước đo của quyết định (lãi) không trùng nhau. Mô hình tốt hơn chưa đủ; cách engine dùng độ bất định mới quyết định lãi.

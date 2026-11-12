@@ -10,7 +10,7 @@ type StoreRow = {
   fold?: number; gain_gate?: number; gate_vs_ewma?: number; waste_b_gate?: number; oos_b_gate?: number;
   ml_split_vs_ewma?: number; ml_mid_ewma_sigma_vs_ewma?: number;
 };
-type Gate = { variant: "sym" | "split"; size_cut: number | null; use_ml: string[]; stores?: number[] };
+type Gate = { variant: "sym" | "split" | "ewma_sigma"; size_cut: number | null; use_ml: string[]; stores?: number[] };
 type Scenario = {
   key: string; label: string; note: string; stores: number | null; gain: number | null;
   waste_a: number | null; waste_b: number | null; oos_a: number | null; oos_b: number | null;
@@ -27,7 +27,7 @@ export type FrnBt = {
   gate_app?: Gate;
 };
 
-const VARIANT: Record<string, string> = { sym: "σ đối xứng", split: "phân phối lệch q10/q50/q90" };
+const VARIANT: Record<string, string> = { sym: "σ đối xứng", split: "phân phối lệch q10/q50/q90", ewma_sigma: "dự báo LightGBM + σ EWMA" };
 const SEG: Record<string, string> = { ban_chay: "bán chạy", ban_vua: "bán vừa", ban_it: "bán ít", deu: "đều", lat_nhat: "lắt nhắt", nho: "điểm nhỏ", lon: "điểm lớn" };
 const groupLabel = (g: string) => g.split("|").map((x) => SEG[x] ?? x).join(" · ");
 function gateText(g: Gate | undefined): string {
@@ -65,7 +65,7 @@ export default function FrnBacktest({ d }: { d: FrnBt }) {
     { ...pol("ewma", "B-EWMA · Ops Chest, engine EWMA"), traffic: stat("oos_traffic_b_ewma")?.median ?? trafficEwma },
     pol("ml", "B-ML · LightGBM, bộ chọn cũ", hasGate ? "Nhóm chọn theo sai số dự báo (meta.json), σ đối xứng" : undefined),
     pol("ml_split", "B-ML phân phối lệch", "LightGBM ở mọi mặt hàng đủ lịch sử, đặt hàng theo q10/q50/q90"),
-    pol("ml_mid_ewma_sigma", "Chẩn đoán: dự báo LightGBM + σ EWMA", "Chỉ trong backtest: tách phần dự báo điểm khỏi độ rộng khoảng"),
+    pol("ml_mid_ewma_sigma", "B-ML dự báo LightGBM + σ EWMA", "LightGBM ở mọi mặt hàng đủ lịch sử; tồn an toàn theo độ lệch chuẩn của EWMA"),
     pol("gate", "B-gate · Bộ chọn theo lãi", "Chọn ngoài mẫu, kiểm chéo 2 lần theo điểm bán"),
   ].filter((p) => p.key === "a" || p.gain != null);
   const main = hasGate ? "gate" : "ml";

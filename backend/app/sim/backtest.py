@@ -235,9 +235,10 @@ def _summary(values: list[float]) -> dict:
 # ---------------------------------------------------------------- bo chon theo LAI (decision gate)
 # Bien the B tren moi diem FRN. "Tat ca" = LightGBM o moi mat hang du lich su (khong loc nhom): dung de do lai
 # theo nhom. b_ml giu nguyen nghia cu (nhom trong meta.json, chon theo sai so du bao) de so voi lan chay truoc.
-GATE_VARIANTS = ("sym", "split")  # bien the ung vien cho bo chon: sigma doi xung (cu) / phan phoi lech q10-q50-q90
+# Bien the ung vien cho bo chon: sigma doi xung (cu) / phan phoi lech q10-q50-q90 / du bao LightGBM + sigma EWMA
+GATE_VARIANTS = ("sym", "split", "ewma_sigma")
 GATE_SIZE_CUTS = (None, 30, 50, 75)  # bac quy mo diem ban (so mat hang FRN): khong chia / <=cut va >cut
-ML_ALL = {"sym": "b_ml_all", "split": "b_ml_split"}
+ML_ALL = {"sym": "b_ml_all", "split": "b_ml_split", "ewma_sigma": "b_ml_mid_ewma_sigma"}
 B_VARIANTS = ("b_ewma", "b_ml", "b_ml_all", "b_ml_split", "b_ml_mid_ewma_sigma", "b_gate")
 
 
@@ -254,8 +255,8 @@ def group_key(segment: str, store_size: int, size_cut: int | None) -> str:
 def choose_gate(skus: list[dict], store_gp: dict[int, float], variants=GATE_VARIANTS, cuts=GATE_SIZE_CUTS) -> dict:
     """Chon bien the va tap nhom dung ML theo LAI tren cac diem trong `skus` (chi cac diem do).
 
-    skus: moi dong {store_id, size, segment, gp: {"b_ewma": lai, "sym": lai, "split": lai}} - lai cua mat hang
-    trong lan chay EWMA va lan chay LightGBM-tat-ca cua bien the. store_gp: lai B-EWMA cua ca diem ban.
+    skus: moi dong {store_id, size, segment, gp: {"b_ewma": lai, "sym": lai, "split": lai, "ewma_sigma": lai}}:
+    lai cua mat hang trong lan chay EWMA va lan chay LightGBM-tat-ca cua bien the. store_gp: lai B-EWMA cua ca diem ban.
     Gia tri mot nhom = tong (lai ML - lai EWMA) / lai B-EWMA cua diem: moi diem duoc tinh theo %, nen diem nho khong
     bi diem lon lan at (chi so bao cao la trung vi % theo diem). Nhom co gia tri > 0 thi dung ML.
     Chon (bien the, nguong quy mo) co tong gia tri cac nhom duoc chon lon nhat; hoa thi giu cach don gian hon
@@ -332,7 +333,7 @@ def _frn_learn_store(sid: int, t0: int) -> dict:
         "b_ml": OpsChestPolicy(ml_model="bt_", gate=meta_gate),
         "b_ml_all": OpsChestPolicy(ml_model="bt_", gate=all_sym),
         "b_ml_split": OpsChestPolicy(ml_model="bt_", gate={**all_sym, "variant": "split"}),
-        "b_ml_mid_ewma_sigma": OpsChestPolicy(ml_model="bt_", gate=all_sym, sigma_from_ewma=True),
+        "b_ml_mid_ewma_sigma": OpsChestPolicy(ml_model="bt_", gate={**all_sym, "variant": "ewma_sigma"}),
     }
     runs = {k: _run(base, start, days, p, class_a) for k, p in policies.items()}
     probe = OpsChestPolicy()
@@ -411,7 +412,7 @@ def run_frn(store_ids: list[int] | None = None, scenarios: list[str] | None = No
     """So A (kinh nghiem + gio vang) voi cac bien the B tren tung diem FRN giu lai, cung nhu cau that:
       - b_ewma: OC voi engine EWMA; b_ml: bo chon cu (nhom trong meta.json, chon theo sai so du bao);
       - b_ml_all / b_ml_split: LightGBM o moi mat hang du lich su, sigma doi xung / phan phoi lech q10-q50-q90;
-      - b_ml_mid_ewma_sigma (chan doan): du bao diem LightGBM + do lech chuan EWMA;
+      - b_ml_mid_ewma_sigma: du bao diem LightGBM + do lech chuan EWMA (bien the "ewma_sigma");
       - b_gate: bo chon theo LAI, kiem cheo 2 lan theo diem ban - bo chon cua moi diem chi hoc tu nua con lai,
         nen ket qua b_gate la NGOAI MAU.
     Mo hinh backtest (bt_) chi thay du lieu den ngay T0. Cac kich ban do nhay chay B-gate tren `scenario_stores`

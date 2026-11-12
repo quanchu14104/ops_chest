@@ -60,7 +60,7 @@ Trước đây mọi kết quả của OC đều đo trên cửa hàng giả l�
 - **Huấn luyện** với tốc độ học 0,03, kiểm tra sớm trên 7 ngày cuối của các điểm huấn luyện: q50 502 vòng, q10 677, q90 310.
 - **Học lại trên toàn bộ dữ liệu**, gồm cả 7 ngày gần ngày dự báo nhất, với số vòng tốt nhất × 1,1. Mô hình OC dùng là bản học lại này.
 - Cả lần chạy hết 2,5 giờ CPU trên Kaggle, trong ngân sách 10,6 giờ. Các mô hình hội tụ sớm, và dò tham số cho thấy không còn nhiều chỗ để cải thiện bằng tham số.
-- OC dùng q50 làm dự báo. Độ lệch σ = (q90 − q10) / 2,563, để các engine đặt hàng, xử lý cận date và tính trần HSD hiện có dùng nguyên được. Có thể bật biến thể dùng hai σ lệch (mục 5.7), nhưng backtest cho thấy biến thể này kém hơn nên app không dùng.
+- OC dùng q50 làm dự báo. Độ lệch σ = (q90 − q10) / 2,563, để các engine đặt hàng, xử lý cận date và tính trần HSD hiện có dùng nguyên được. Bộ chọn theo lãi (mục 5.7) quyết định σ nào được dùng để đặt hàng. Hiện app dùng dự báo q50 của LightGBM với σ của EWMA, vì dùng thẳng khoảng của LightGBM (đối xứng hay lệch) làm đặt dư.
 
 ### Chọn nhóm dùng ML
 
@@ -181,29 +181,34 @@ Tỷ trọng bán theo 4 khung giờ (6–11h, 11–14h, 14–17h, 17–22h), t�
 
 | Kịch bản | Lãi | Hủy A / B | Hết hàng A / B |
 |---|---|---|---|
-| Tham chiếu | +4,5% | 5,3% / 4,5% | 14,9% / 14,3% |
-| Khách phản ứng bằng nửa tham chiếu (25% mức engine tin) | +4,1% | 5,4% / 4,9% | 15,1% / 14,4% |
-| Khách phản ứng bằng 1/4 tham chiếu (12,5%) | +4,0% | 5,5% / 5,0% | 15,1% / 14,4% |
-| Store Manager duyệt 80% | +3,9% | 5,3% / 4,8% | 14,9% / 14,5% |
-| Store Manager duyệt 60% | +3,3% | 5,3% / 5,2% | 14,9% / 14,2% |
-| B không có sàn mức phục vụ | −0,5% | 5,3% / 2,9% | 14,9% / **21,5%** |
-| Giờ giảm giá cố định 18h | +4,5% | 5,3% / 4,5% | 14,9% / 14,3% |
-| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +4,2% | 5,3% / 5,2% | 14,9% / 14,4% |
+| Tham chiếu | +5,5% | 5,3% / 4,5% | 14,9% / 14,5% |
+| Khách phản ứng bằng nửa tham chiếu (25% mức engine tin) | +4,7% | 5,4% / 4,9% | 15,1% / 14,5% |
+| Khách phản ứng bằng 1/4 tham chiếu (12,5%) | +4,5% | 5,5% / 5,1% | 15,1% / 14,5% |
+| Store Manager duyệt 80% | +4,6% | 5,3% / 4,8% | 14,9% / 14,6% |
+| Store Manager duyệt 60% | +3,7% | 5,3% / 5,0% | 14,9% / 14,4% |
+| B không có sàn mức phục vụ | −0,6% | 5,3% / 2,8% | 14,9% / **22,2%** |
+| Giờ giảm giá cố định 18h | +5,5% | 5,3% / 4,5% | 14,9% / 14,5% |
+| B chỉ đặt hàng (tắt giảm giá, trả NCC) | +4,7% | 5,3% / 5,2% | 14,9% / 14,5% |
 
 **Đọc kết quả, nói thẳng:**
 1. **Dự báo chính xác hơn chưa biến thành lãi nhiều hơn.** LightGBM sai ít hơn EWMA ở mọi tập đánh giá, nhưng trong backtest nó giảm hết hàng và tăng hủy, nên lãi trung vị hơi thấp hơn. Lý do hợp lý nhất: khoảng dự báo của LightGBM rộng và đúng hơn (độ phủ 80% so với 72%). Engine đặt hàng chuyển σ thành tồn an toàn, nên LightGBM đặt nhiều hơn. Với hàng tươi biên lãi mỏng (giá vốn giả định 62–75%), phần hủy thêm ăn mất phần lãi do bớt hết hàng. EWMA đặt ít hơn vì khoảng của nó hẹp quá mức, tức "đúng" một cách tình cờ.
-2. **Phần giá trị chắc chắn của OC** nằm ở sàn mức phục vụ và cách đặt hàng có trần HSD. Bỏ sàn thì hết hàng tăng lên 21,5% và lãi không còn.
+2. **Phần giá trị chắc chắn của OC** nằm ở sàn mức phục vụ và cách đặt hàng có trần HSD. Bỏ sàn thì hết hàng tăng lên 22,2% và lãi không còn.
 3. Giờ giảm giá theo khung bán (11h hay 18h) **không tạo khác biệt** trong backtest này: với HSD 1–3 ngày và đơn hằng ngày, gần như không còn hàng dư cuối ngày để giảm giá.
-4. Bộ chọn ở mục này (B-ML) chọn theo sai số dự báo. Mục 5.7 thử hai hướng: dùng thẳng phân vị của mô hình, và chọn theo lãi với kiểm chéo theo điểm bán. **Kết quả: chọn theo lãi chỉ hòa với EWMA (+0,1%), dùng phân vị lệch thì tệ hơn (−2,2%).**
+4. Bộ chọn ở mục này (B-ML) chọn theo sai số dự báo. Mục 5.7 thử hai hướng: dùng thẳng phân vị của mô hình, và chọn theo lãi với kiểm chéo theo điểm bán. **Kết quả: dùng thẳng phân vị lệch thì tệ hơn (−2,2%). Dùng dự báo điểm của LightGBM với σ của EWMA, chọn theo lãi, thì hơn EWMA +0,8% ngoài mẫu và thắng ở 78% số điểm.**
 
 ### 5.7 Chọn theo lãi và dùng phân vị
 
-Mục 5.6 cho thấy dự báo tốt hơn chưa thành lãi nhiều hơn. Có hai giả thuyết được thử, **không huấn luyện lại mô hình** (vẫn dùng `bt_q*`):
-- **(a) Đặt hàng dùng thẳng phân phối lệch của mô hình.** Trước đây q10/q90 bị ép thành một σ đối xứng. Biến thể "split" dùng phân phối split-normal khớp đúng q10/q50/q90: `σ_dưới = TB(q50 − q10)/1,2816`, `σ_trên = TB(q90 − q50)/1,2816`. Engine đặt hàng (`compute_order`) lấy σ_trên khi z ≥ 0 (tồn an toàn ở mức phục vụ trên 50%, trần HSD) và σ_dưới khi z < 0. EWMA không có hai trường này nên vẫn chạy y như cũ.
-- **(b) Chọn LightGBM/EWMA theo lãi, không theo sai số dự báo.**
-  - Nhóm = nhóm hàng của mục 3 (mức bán × mức lắt nhắt, tính lúc T0) × **quy mô điểm bán** (số mặt hàng FRN; ngưỡng 30, 50 hoặc 75, hoặc không chia).
-  - Giá trị của một nhóm = tổng (lãi mặt hàng khi dùng LightGBM − lãi khi dùng EWMA) / lãi B-EWMA của điểm. Lãi mặt hàng = doanh thu − giá vốn − giá vốn hàng hủy. Chia theo lãi của điểm để điểm lớn không lấn át điểm nhỏ.
-  - Nhóm có giá trị dương thì dùng ML. Biến thể (đối xứng hay split) và ngưỡng quy mô được chọn để tổng giá trị lớn nhất.
+Mục 5.6 cho thấy dự báo tốt hơn chưa thành lãi nhiều hơn. Phần này thử ba cách đặt hàng với LightGBM và chọn giữa chúng theo lãi. **Không huấn luyện lại mô hình** (vẫn dùng `bt_q*`).
+
+**Ba biến thể đặt hàng với LightGBM** (biến thể ứng viên của bộ chọn):
+- **sym (cách cũ):** dự báo q50, σ đối xứng = (q90 − q10)/2,563.
+- **split (phân phối lệch):** split-normal khớp đúng q10/q50/q90: `σ_dưới = TB(q50 − q10)/1,2816`, `σ_trên = TB(q90 − q50)/1,2816`. Engine đặt hàng (`compute_order`) lấy σ_trên khi z ≥ 0 (tồn an toàn ở mức phục vụ trên 50%, trần HSD) và σ_dưới khi z < 0. EWMA không có hai trường này nên vẫn chạy y như cũ.
+- **ewma_sigma:** dự báo điểm q50 của LightGBM, nhưng tồn an toàn và trần HSD tính bằng σ của engine EWMA cho cùng mặt hàng. Router ghép hai engine (`forecast_router.py`).
+
+**Chọn theo lãi** (`choose_gate` trong `backend/app/sim/backtest.py`):
+- Nhóm = nhóm hàng của mục 3 (mức bán × mức lắt nhắt, tính lúc T0) × **quy mô điểm bán** (số mặt hàng FRN; ngưỡng 30, 50 hoặc 75, hoặc không chia).
+- Giá trị của một nhóm = tổng (lãi mặt hàng khi dùng LightGBM − lãi khi dùng EWMA) / lãi B-EWMA của điểm. Lãi mặt hàng = doanh thu − giá vốn − giá vốn hàng hủy. Chia theo lãi của điểm để điểm lớn không lấn át điểm nhỏ.
+- Nhóm có giá trị dương thì dùng ML. Biến thể và ngưỡng quy mô được chọn để tổng giá trị lớn nhất.
 
 **Chọn ngoài mẫu: kiểm chéo 2 lần theo điểm bán.**
 - 50 điểm chia thành 2 nửa cố định (seed 0), cân theo quy mô: xếp theo số mặt hàng, mỗi cặp liền kề chia ngẫu nhiên mỗi nửa một điểm.
@@ -211,40 +216,44 @@ Mục 5.6 cho thấy dự báo tốt hơn chưa thành lãi nhiều hơn. Có ha
 - Vì vậy kết quả B-gate của mọi điểm đều là **ngoài mẫu**.
 - Bộ chọn cho app học trên cả 50 điểm và ghi vào `backend/app/ml/artifacts/decision_gate.json`. Nó được chọn bằng mô hình backtest `bt_` rồi áp cho mô hình chạy thật `q*`.
 
-**Các biến thể** (trung vị qua 50 điểm, khoảng tứ phân vị trong ngoặc):
+**Kết quả** (trung vị qua 50 điểm, khoảng tứ phân vị trong ngoặc):
 
 | | Lãi so với A | So với B-EWMA | Điểm thắng B-EWMA | Hủy | Hết hàng | Hết hàng kéo khách |
 |---|---|---|---|---|---|---|
 | B-EWMA | +4,2% (−0,1% đến +5,1%) | — | — | 5,2% | 13,6% | 3,9% |
-| B-ML, bộ chọn cũ (σ đối xứng) | +3,7% (−1,4% đến +4,9%) | −0,4% (−1,7% đến +0,5%) | 34% | 5,7% | 13,2% | 2,7% |
-| B-ML phân phối lệch (split) | +1,7% (−3,8% đến +3,5%) | **−2,2%** (−3,6% đến −1,1%) | **6%** | 6,4% | 12,3% | 2,2% |
-| Chẩn đoán: dự báo LightGBM + σ EWMA | **+4,4%** (+1,3% đến +6,2%) | **+0,9%** (+0,0% đến +1,5%) | **76%** | 4,8% | 14,2% | 3,4% |
-| **B-gate** (chọn theo lãi, ngoài mẫu) | +4,1% (−0,3% đến +5,4%) | **+0,1%** (−0,2% đến +0,5%) | 54% | 5,1% | 14,0% | 3,9% |
+| B-ML, bộ chọn cũ (sym) | +3,7% (−1,4% đến +4,9%) | −0,4% (−1,7% đến +0,5%) | 34% | 5,7% | 13,2% | 2,7% |
+| B-ML split, mọi mặt hàng | +1,7% (−3,8% đến +3,5%) | −2,2% (−3,6% đến −1,1%) | 6% | 6,4% | 12,3% | 2,2% |
+| B-ML ewma_sigma, mọi mặt hàng | +4,4% (+1,3% đến +6,2%) | +0,9% (+0,0% đến +1,5%) | 76% | 4,8% | 14,2% | 3,4% |
+| **B-gate** (chọn theo lãi, ngoài mẫu) | **+4,8%** (+1,2% đến +6,4%) | **+0,8%** (+0,1% đến +1,4%) | **78%** | **4,8%** | 14,0% | 3,4% |
 
-- Bộ chọn cũ trong `meta.json` loại đúng một nhóm (bán chạy · lắt nhắt), và nhóm này gần như không có mặt hàng. Vì vậy "B-ML, bộ chọn cũ" trùng với "LightGBM ở mọi mặt hàng".
-- **B-gate so với B-EWMA:** thấp nhất −3,5%, cao nhất +2,2%. Theo quy mô:
-  - 13 điểm từ 30 mặt hàng trở xuống: trung vị 0,0%, vì gần như toàn EWMA;
-  - 37 điểm trên 30 mặt hàng: +0,3%.
-- **Điểm demo 18** (164 mặt hàng, thuộc nửa 0): B-gate −0,1% so với B-EWMA; chẩn đoán +0,5%.
+- Bộ chọn cũ trong `meta.json` loại đúng một nhóm (bán chạy · lắt nhắt), và nhóm này gần như không có mặt hàng. Vì vậy "B-ML, bộ chọn cũ" trùng với "sym ở mọi mặt hàng".
+- **B-gate so với B-EWMA:** thấp nhất −1,7%, cao nhất +4,0%. Theo quy mô:
+  - 13 điểm từ 30 mặt hàng trở xuống: +0,4%;
+  - 37 điểm trên 30 mặt hàng: +0,9%.
+- B-gate lãi hơn A ở 76% số điểm (B-EWMA: 72%). Hết hàng không nhiều hơn A ở 74% số điểm (B-ML cũ: 92%).
+- **Điểm demo 18** (164 mặt hàng, thuộc nửa 0): B-gate +0,6% so với B-EWMA.
 - **Kịch bản độ nhạy** ở mục 5.6 nay chạy bằng B-gate (bộ chọn ngoài mẫu của từng điểm).
 
 **Bộ chọn được chọn:**
-- Cả hai nửa và bản cho app đều chọn **σ đối xứng, ngưỡng 30 mặt hàng**. Biến thể split thua ở mọi ngưỡng.
-- Bản cho app chỉ dùng LightGBM ở **điểm lớn** (trên 30 mặt hàng), cho các nhóm:
-  - bán vừa · đều (832 mặt hàng-điểm, +46 triệu đ trên 50 điểm);
-  - bán ít · đều (655 mặt hàng-điểm, +8 triệu đ);
-  - bán ít · lắt nhắt (chỉ 4 mặt hàng-điểm, gần như nhiễu).
-- **Hàng bán chạy luôn dùng EWMA**. Đây là nơi LightGBM làm mất lãi nhiều nhất (−70 triệu đ ở điểm lớn, −34 triệu đ ở điểm nhỏ). Hàng kéo khách là 5 mặt hàng bán chạy nhất mỗi điểm, nên tỷ lệ hết hàng kéo khách của B-gate trùng B-EWMA.
-- Nửa 1 chọn thêm "bán ít · đều · điểm nhỏ". Hai nửa không chọn giống hệt nhau, tức bộ chọn có phần nhiễu.
-- Ở cửa hàng demo: **91/164 mặt hàng dùng LightGBM** (bán ít, bán vừa), **73 mặt hàng bán chạy dùng EWMA**. Trước đây cả 164 mặt hàng dùng LightGBM.
+- Cả hai nửa và bản cho app đều chọn **ewma_sigma, ngưỡng 30 mặt hàng**. Ở mọi ngưỡng, ewma_sigma đều hơn sym và split.
+- Bản cho app dùng LightGBM cho:
+  - điểm lớn (trên 30 mặt hàng): bán chạy · đều (889 mặt hàng-điểm, +80 triệu đ trên 50 điểm), bán vừa · đều (832, +41 triệu đ), bán ít · đều (655; dương sau khi chia theo lãi của điểm, nhưng tổng tiền −2,8 triệu đ, tức gần như hòa), bán ít · lắt nhắt (chỉ 4, gần như nhiễu);
+  - điểm nhỏ: bán vừa · đều (110, +3 triệu đ).
+- Giữ EWMA cho bán chạy và bán ít ở điểm nhỏ.
+- Hai nửa chọn gần giống nhau: nửa 0 không có "bán ít · đều · điểm lớn".
+- Ở cửa hàng demo, cả **164 mặt hàng dùng dự báo LightGBM**, với tồn an toàn theo σ của EWMA.
 
 **Đọc kết quả, nói thẳng:**
-1. **Chọn theo lãi gần như chỉ hòa với EWMA ngoài mẫu:** +0,1% trung vị, thắng 54% số điểm, khoảng tứ phân vị cắt qua 0. Nó gỡ lại phần thua của bộ chọn cũ (−0,4%, thua nặng ở điểm nhỏ), nhưng **không tạo ra lợi thế đáng kể**. Nói đúng là: LightGBM được giữ ở nơi nó không làm hại, chứ chưa phải "ML làm OC lãi hơn".
-2. **Dùng phân vị lệch làm tệ hơn hẳn** (−2,2%, chỉ 6% số điểm thắng). Phía trên của LightGBM dày hơn phía dưới (q90 − q50 > q50 − q10). Sàn mức phục vụ 90–95% dùng đúng phía trên, nên đặt nhiều hơn: hết hàng giảm còn 12,3%, nhưng hủy lên 6,4%. Với hàng tươi lãi mỏng, phần hủy thêm lớn hơn phần lãi giữ được.
-3. **Chẩn đoán chỉ ra nguyên nhân.** Lấy dự báo điểm của LightGBM nhưng giữ σ của EWMA thì lãi hơn EWMA ở 76% số điểm (+0,9% trung vị), hủy giảm còn 4,8%.
-   - **Dự báo điểm của LightGBM thực sự tốt hơn.** Phần làm mất lãi là **khoảng dự báo**: rộng hơn và trung thực hơn (độ phủ 81%), nên khi đi qua sàn mức phục vụ cao thì thành đặt dư.
-   - Nói cách khác, vấn đề nằm ở chỗ ghép khoảng dự báo với sàn mức phục vụ của engine đặt hàng, không nằm ở độ chính xác của mô hình.
-4. **Biến thể chẩn đoán không vào app**, vì kế hoạch đã duyệt chỉ dùng nó để chẩn đoán. Kết quả 50 điểm của nó không qua bước chọn nào, nhưng nó vẫn là một trong các biến thể đã thử. Muốn dùng thì phải quyết định riêng, và nên coi kết quả này là bằng chứng chứ chưa phải xác nhận.
+1. **LightGBM làm OC lãi hơn khi chỉ dùng dự báo điểm của nó.** Ngoài mẫu, B-gate hơn B-EWMA +0,8% (trung vị) và thắng ở 78% số điểm; khoảng tứ phân vị nằm hẳn trên 0. Hủy giảm từ 5,2% còn 4,8%. Hết hàng của hàng kéo khách giảm từ 3,9% còn 3,4%. Đổi lại, hết hàng chung nhích lên (13,6% → 14,0%).
+2. **Phần lớn lợi ích đến từ biến thể, không phải từ việc chọn nhóm.** Dùng ewma_sigma ở mọi mặt hàng, không chọn gì, đã được +0,9% và thắng 76% số điểm. Bộ chọn chủ yếu bỏ những nhóm nhỏ nơi biến thể này hòa hoặc thua.
+3. **Dùng thẳng khoảng dự báo của LightGBM thì lỗ.**
+   - Khoảng của LightGBM rộng và trung thực hơn (độ phủ 81% so với 73%). Đi qua sàn mức phục vụ 90–95%, nó thành đặt dư: sym −0,4%, split −2,2%. Split tệ hơn vì phía trên của LightGBM dày hơn phía dưới, mà sàn cao dùng đúng phía trên.
+   - Ghép dự báo điểm của LightGBM với σ hẹp hơn của EWMA cho kết quả tốt nhất. Điều này cho thấy với cấu trúc giá giả định (giá vốn 62–75%), sàn mức phục vụ đang cao hơn mức tối ưu theo lãi. σ "sai nhưng hẹp" của EWMA bù lại phần đó.
+   - Hướng sạch hơn là dùng σ trung thực của mô hình và hạ sàn cho hàng tươi. Hướng này chưa thử, vì sàn là quyết định vận hành (giữ khách), không chỉ là bài toán lãi.
+4. **Giới hạn của con số này:**
+   - Biến thể ewma_sigma ban đầu chỉ là chẩn đoán. Nó được đưa vào làm ứng viên **sau khi** đã thấy kết quả của nó trên chính 50 điểm này.
+   - Kiểm chéo bảo vệ bước chọn nhóm và biến thể, nhưng không xóa được việc người làm đã nhìn kết quả trước khi thêm ứng viên. Vì vậy +0,8% nên đọc là ước lượng hơi lạc quan.
+   - Muốn xác nhận cần các điểm FRN chưa dùng ở bước nào, hoặc một giai đoạn sau ngày 02/07/2024.
 
 ## 6. Giới hạn cần nói rõ
 
