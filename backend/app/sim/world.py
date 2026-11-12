@@ -54,3 +54,16 @@ OPTIMISTIC_WORLD = WorldParams()  # khach phan ung dung nhu engine gia dinh (tru
 # Tham chieu: khach chi phan ung bang mot nua gia dinh -> engine bi sai mo hinh, dung nhu ngoai doi.
 REFERENCE_WORLD = OPTIMISTIC_WORLD.scaled(0.5)
 PESSIMISTIC_WORLD = OPTIMISTIC_WORLD.scaled(0.25)
+
+
+def frn_world(store_id: int | None = None) -> WorldParams:
+    """The gioi cho cua hang chay nhu cau FreshRetailNet-50K: nhu cau THAT (FRN), khung gio ban cua chinh diem do (FRN).
+    Phan ung cua khach voi giam gia cua OC van la tham chieu cu (50% muc engine gia dinh): FRN khong cho uoc luong
+    duoc do co gian dang tin (gia noi sinh, xem docs/ml-frn.md), nen khong dung so do."""
+    from app.sim import frn
+    from app.sim.frn_catalog import category_name
+
+    e = REFERENCE_WORLD.elasticity["FRESH"]
+    shares = (frn.dayparts().get("world_by_store") or {}).get(str(store_id if store_id is not None else frn.demo_store_id()), {})
+    return WorldParams(elasticity={"FRESH": e, "SHORT": e, "LONG": e},
+                       dayparts={category_name(int(g)): tuple(v) for g, v in shares.items()})

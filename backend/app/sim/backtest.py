@@ -169,6 +169,130 @@ def run_sensitivity(start: date = SENSITIVITY_START, days: int = SENSITIVITY_DAY
     return {"start": start.isoformat(), "days": days, "rows": rows}
 
 
+# ------------------------------------------------------------------ FreshRetailNet-50K: nhieu diem ban, nhu cau that
+FRN_FILE = Path(__file__).parent / "data" / "frn" / "backtest.json"
+
+
+def frn_base(store_id: int, t0: int) -> tuple[StoreSim, list]:
+    """Cua hang chay nhu cau that cua diem FRN `store_id`; khoi dong ngay 0..t0 bang chinh sach 'kinh nghiem'."""
+    from app.sim import frn
+    from app.sim.demand import FrnDemand
+    from app.sim.frn_catalog import build_frn_catalog
+    from app.sim.world import frn_world
+
+    st, k = frn.store(store_id), frn.k_scale()
+    suppliers, products = build_frn_catalog(st, k)
+    base = StoreSim(suppliers, products, seed=store_id, demand=FrnDemand(st, k), world=frn_world(store_id))
+    initial_stock(base, st.dates[0])
+    base.run(st.dates[0], t0 + 1, BaselinePolicy())
+    return base, st.dates
+
+
+def _run(base: StoreSim, start: date, days: int, policy: Policy, class_a: set[str], world=None) -> dict:
+    sim = copy.deepcopy(base)
+    if world is not None:
+        sim.world = world
+    sim.reset_totals()
+    sim.run(start, days, policy)
+    k = summarize(sim.totals)
+    k.update(_role_breakdown(sim, days, class_a))
+    return k
+
+
+FRN_SCENARIOS = {
+    # key: (nhan, ghi chu, ham tao chinh sach B, he so phan ung cua khach so voi uoc luong FRN)
+    "reference": ("Tham chiếu", "Khách phản ứng với giảm giá bằng 50% mức engine giả định (FRN không đo được độ co giãn đáng tin)", lambda: OpsChestPolicy(ml_model="bt_"), 1.0),
+    "world_50": ("Khách phản ứng bằng nửa tham chiếu", "25% mức engine giả định: giảm giá kém tác dụng hơn", lambda: OpsChestPolicy(ml_model="bt_"), 0.5),
+    "world_25": ("Khách phản ứng bằng 1/4 tham chiếu", "12,5% mức engine giả định: engine đánh giá quá cao giảm giá", lambda: OpsChestPolicy(ml_model="bt_"), 0.25),
+    "approve_80": ("Store Manager duyệt 80%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm", lambda: OpsChestPolicy(ml_model="bt_", approval_rate=0.8), 1.0),
+    "approve_60": ("Store Manager duyệt 60%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm", lambda: OpsChestPolicy(ml_model="bt_", approval_rate=0.6), 1.0),
+    "no_floor": ("B không có sàn mức phục vụ", "Newsvendor được để thiếu hàng", lambda: OpsChestPolicy(ml_model="bt_", service_floors=False), 1.0),
+    "daypart_flat": ("Giờ giảm giá cố định 18h", "Không dùng khung giờ bán học từ FRN", lambda: OpsChestPolicy(ml_model="bt_", dayparts=False), 1.0),
+    "order_only": ("B chỉ đặt hàng", "Tắt giảm giá và trả NCC: đo riêng phần đặt hàng", lambda: OpsChestPolicy(ml_model="bt_", dispose=False), 1.0),
+}
+
+
+def _pct(a: float, b: float) -> float:
+    return round(b / a - 1, 4) if a else 0.0
+
+
+def _summary(values: list[float]) -> dict:
+    v = sorted(values)
+    if not v:
+        return {}
+
+    def q(p):
+        i = (len(v) - 1) * p
+        lo, hi = int(i), min(int(i) + 1, len(v) - 1)
+        return round(v[lo] + (v[hi] - v[lo]) * (i - lo), 4)
+    return {"median": q(0.5), "q25": q(0.25), "q75": q(0.75), "min": v[0], "max": v[-1], "n": len(v)}
+
+
+def run_frn(store_ids: list[int] | None = None, scenarios: list[str] | None = None, scenario_stores: int = 20,
+            log=print) -> dict:
+    """So A (kinh nghiem + gio vang) voi B-EWMA (OC, engine cu) va B-ML (OC, bo chon LightGBM, mo hinh backtest chi
+    thay du lieu den ngay T0) tren tung diem FRN giu lai, cung nhu cau that. Cac kich ban do nhay chay tren
+    `scenario_stores` diem dau tien."""
+    from app.sim import frn
+
+    meta = frn.meta()
+    t0 = int(meta.get("t0_day", 59))
+    ids = store_ids or [int(s) for s in meta.get("heldout_stores", [])] or sorted(frn.stores())
+    scen = scenarios if scenarios is not None else list(FRN_SCENARIOS)
+    per_store, scen_rows = [], {k: [] for k in scen}
+    t_start = time.perf_counter()
+    for n, sid in enumerate(ids):
+        base, dates = frn_base(sid, t0)
+        start, days = dates[t0 + 1], len(dates) - t0 - 1
+        class_a = _class_a(base)
+        a = _run(base, start, days, BaselineGoldenHourPolicy(), class_a)
+        b_ewma = _run(base, start, days, OpsChestPolicy(ml_model=None), class_a)
+        b_ml = _run(base, start, days, OpsChestPolicy(ml_model="bt_"), class_a)
+        row = {"store_id": sid, "products": len(base.products), "start": start.isoformat(), "days": days,
+               "gp_a": round(a["gross_profit"]), "gp_b_ewma": round(b_ewma["gross_profit"]), "gp_b_ml": round(b_ml["gross_profit"]),
+               "gain_ewma": _pct(a["gross_profit"], b_ewma["gross_profit"]), "gain_ml": _pct(a["gross_profit"], b_ml["gross_profit"]),
+               "ml_vs_ewma": _pct(b_ewma["gross_profit"], b_ml["gross_profit"])}
+        for key, k in (("a", a), ("b_ewma", b_ewma), ("b_ml", b_ml)):
+            row[f"waste_{key}"] = k["waste_rate"]
+            row[f"oos_{key}"] = k["oos_rate"]
+            row[f"oos_traffic_{key}"] = k["oos_traffic"]
+        per_store.append(row)
+        if n < scenario_stores:
+            for key in scen:
+                _, _, make, react = FRN_SCENARIOS[key]
+                world = base.world.scaled(react) if react != 1.0 else None
+                if key == "reference":
+                    bk, ak = b_ml, a
+                else:
+                    ak = _run(base, start, days, BaselineGoldenHourPolicy(), class_a, world) if world else a
+                    bk = _run(base, start, days, make(), class_a, world)
+                scen_rows[key].append({"gain": _pct(ak["gross_profit"], bk["gross_profit"]),
+                                       "waste_a": ak["waste_rate"], "waste_b": bk["waste_rate"],
+                                       "oos_a": ak["oos_rate"], "oos_b": bk["oos_rate"]})
+        log(f"[{n + 1}/{len(ids)}] điểm {sid}: B-ML {row['gain_ml']:+.1%}, B-EWMA {row['gain_ewma']:+.1%}, "
+            f"ML so với EWMA {row['ml_vs_ewma']:+.1%} ({time.perf_counter() - t_start:.0f}s)")
+
+    def col(name):
+        return [r[name] for r in per_store]
+
+    summary = {name: _summary(col(name)) for name in
+               ("gain_ml", "gain_ewma", "ml_vs_ewma", "waste_a", "waste_b_ewma", "waste_b_ml", "oos_a", "oos_b_ewma",
+                "oos_b_ml", "oos_traffic_a", "oos_traffic_b_ml")}
+    summary["share_ml_better_than_a"] = round(sum(r["gain_ml"] > 0 for r in per_store) / len(per_store), 4)
+    summary["share_ml_better_than_ewma"] = round(sum(r["ml_vs_ewma"] > 0 for r in per_store) / len(per_store), 4)
+    summary["share_oos_ml_not_worse"] = round(sum(r["oos_b_ml"] <= r["oos_a"] for r in per_store) / len(per_store), 4)
+    scenarios_out = []
+    for key in scen:
+        rows = scen_rows[key]
+        label, note, _, _ = FRN_SCENARIOS[key]
+        scenarios_out.append({"key": key, "label": label, "note": note, "stores": len(rows),
+                              **{f: _summary([r[f] for r in rows]).get("median") for f in
+                                 ("gain", "waste_a", "waste_b", "oos_a", "oos_b")}})
+    return {"source": "FreshRetailNet-50K", "t0_date": meta.get("t0_date"), "stores": len(per_store),
+            "summary": summary, "per_store": per_store, "scenarios": scenarios_out,
+            "runtime_s": round(time.perf_counter() - t_start)}
+
+
 def _class_breakdown(sim: StoreSim, days: int) -> dict:
     agg = defaultdict(lambda: defaultdict(float))
     for p in sim.products:
@@ -211,7 +335,23 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--sensitivity", action="store_true", help=f"Chạy các kịch bản và ghi vào {SENSITIVITY_FILE.name}")
+    ap.add_argument("--frn", action="store_true", help=f"A/B trên các điểm FRN giữ lại, ghi vào {FRN_FILE.name}")
+    ap.add_argument("--stores", type=int, default=None, help="--frn: chỉ chạy N điểm đầu")
+    ap.add_argument("--scenario-stores", type=int, default=20, help="--frn: số điểm chạy các kịch bản độ nhạy")
+    ap.add_argument("--out", type=Path, default=None, help="--frn: ghi kết quả vào file khác")
     args = ap.parse_args()
+    if args.frn:
+        from app.sim import frn
+        ids = [int(s) for s in frn.meta().get("heldout_stores", [])] or sorted(frn.stores())
+        out = run_frn(ids[:args.stores] if args.stores else ids, scenario_stores=args.scenario_stores)
+        path = args.out or FRN_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps(out["summary"], ensure_ascii=False, indent=1))
+        for r in out["scenarios"]:
+            print(f"{r['key']:<14} lãi {r['gain'] or 0:+.1%}  hủy {r['waste_a'] or 0:.1%}/{r['waste_b'] or 0:.1%}"
+                  f"  hết hàng {r['oos_a'] or 0:.1%}/{r['oos_b'] or 0:.1%}  ({r['stores']} điểm)")
+        return
     if args.sensitivity:
         out = run_sensitivity()
         SENSITIVITY_FILE.parent.mkdir(exist_ok=True)

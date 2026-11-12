@@ -1,0 +1,15 @@
+{
+  "features": ["lag_7", "lag_14", "roll_mean_7", "roll_mean_28", "dow", "discount", "holiday_flag", "precpt", "avg_temperature", "oos_hours_lag_1", "store_id", "first_category_id"],
+  "k_scale": 4.2,
+  "dates": ["2024-03-28", "2024-07-04"],
+  "cutoff_date": "2024-06-20",
+  "t0_date": "2024-06-27",
+  "demo_store": 17,
+  "heldout_stores": [3, 9, 17, 25, 41],
+  "use_ml_segments": ["ban_vua|deu", "ban_chay|deu", "ban_chay|lat_nhat"],
+  "metrics_eval_week": {
+    "lightgbm": {"n": 4210, "wape": 0.312, "bias": -0.021, "pinball50": 0.156},
+    "ewma_oc": {"n": 4210, "wape": 0.348, "bias": -0.083, "pinball50": 0.174}
+  },
+  "runtime_s": 1834.5
+}

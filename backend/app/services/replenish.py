@@ -103,7 +103,7 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
             "abc_xyz": cell, "freshness_class": p.freshness_class,
             "on_hand": sum(l.qty_remaining for l in lots.get(p.id, [])),
             "forecast_cover": round(res.demand_coverage, 1),
-            "explain": {**res.to_dict(), "hypotheses": fc.adjustments,
+            "explain": {**res.to_dict(), "hypotheses": fc.adjustments, "forecast_method": fc.method,
                         "order_adjustment": adj.factor if adj else None, "qty_before_adjustment": res.qty},
         })
     total = sum(l["line_value"] for l in lines)

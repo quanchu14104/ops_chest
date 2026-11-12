@@ -6,3 +6,4 @@
 *.db
 backend/generated/
 .pytest_cache/
+ml/dist_bt/

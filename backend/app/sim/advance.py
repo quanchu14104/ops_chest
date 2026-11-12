@@ -21,8 +21,8 @@ from app.services.inventory import active_lots
 from app.services.receiving import default_expiry, receive_po
 from app.services.shelf import confirm_pull, pull_list
 from app.sim.catalog import build_catalog
-from app.sim.demand import _poisson, _rng, expected_demand, sample_demand
-from app.sim.world import REFERENCE_WORLD
+from app.sim.demand import DemandSource, FrnDemand, FrnRangeError, SyntheticDemand, _poisson, _rng
+from app.sim.world import REFERENCE_WORLD, WorldParams
 
 MAX_DAYS = 14
 SEED = 7
@@ -60,7 +60,9 @@ def _sell(lot: Lot, take: int, price: int, pct: float, a: dict) -> None:
     a["md_loss"] += take * price * pct
 
 
-def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) -> dict:
+def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool, source: DemandSource | None = None,
+                 world: WorldParams = REFERENCE_WORLD) -> dict:
+    source = source or SyntheticDemand(SEED)
     received = _receive_arrivals(db, d)
     products = db.scalars(select(Product)).all()
     lots_by_pid = active_lots(db, [p.id for p in products])
@@ -71,7 +73,7 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         spec = specs.get(p.sku)
         if spec is None or db.get(DailySales, (p.id, d)):
             continue
-        need = sample_demand(SEED, spec, d)
+        need = source.need(spec, d)
         if realize_hypotheses:
             need = int(round(need * _true_multiplier(p, active, d)))
         lots = sorted((l for l in lots_by_pid.get(p.id, []) if l.sell_by >= d), key=lambda l: (l.expiry_date, l.id))
@@ -91,12 +93,12 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
                 a["discounted"] += take
                 a["weighted"] += take * pct
         lost = need
-        expected = expected_demand(SEED, spec, d)
+        expected = source.expected(spec, d)
         marked = [l for l in lots if all_day_pct(l) > 0 and l.qty_remaining > 0]
         if marked:
             top = max(l.markdown_pct for l in marked)
             extra = _poisson(_rng(SEED, "md", p.sku, d.toordinal()),
-                             expected * REFERENCE_WORLD.elasticity[p.freshness_class] * top)
+                             expected * world.elasticity[p.freshness_class] * top)
             for lot in marked:
                 take = min(lot.qty_remaining, extra)
                 if take > 0:
@@ -107,13 +109,13 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
         evening = [l for l in lots if l.sell_by == d and l.markdown_pct > 0 and l.qty_remaining > 0]
         if evening:
             top = max(l.markdown_pct for l in evening)
-            share = REFERENCE_WORLD.share_after(p.category, policies.for_category(pol, p.category)["markdown_hour"])
+            share = world.share_after(p.category, policies.for_category(pol, p.category)["markdown_hour"])
             rebate = (min(share * (a["sold"] - a["discounted"]), sum(l.qty_remaining for l in evening))
                       * p.unit_price * top)  # khach sau gio giam gia von tra gia goc cung duoc huong gia giam
             a["revenue"] -= rebate
             a["md_loss"] += rebate
             extra = _poisson(_rng(SEED, "ev", p.sku, d.toordinal()),
-                             expected * share * REFERENCE_WORLD.elasticity[p.freshness_class] * top)
+                             expected * share * world.elasticity[p.freshness_class] * top)
             for lot in evening:
                 take = min(lot.qty_remaining, extra)
                 if take > 0:
@@ -145,6 +147,23 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool) ->
     return day
 
 
+def demand_setup(db: Session) -> tuple[dict, DemandSource, WorldParams]:
+    """Nguon nhu cau theo du lieu da seed: FRN (nhu cau that cua diem ban da chon) hoac the gioi gia lap cu."""
+    row = db.get(AppMeta, "data_source")
+    if row and row.value == "frn":
+        from app.sim import frn
+        from app.sim.frn_catalog import build_frn_catalog
+        from app.sim.world import frn_world
+
+        sid = db.get(AppMeta, "frn_store")
+        store = frn.store(int(sid.value) if sid else None)
+        k = frn.k_scale()
+        _, spec_list = build_frn_catalog(store, k)
+        return {s.sku: s for s in spec_list}, FrnDemand(store, k), frn_world(store.store_id)
+    _, spec_list = build_catalog()
+    return {s.sku: s for s in spec_list}, SyntheticDemand(SEED), REFERENCE_WORLD
+
+
 def set_clock(db: Session, d: date) -> None:
     clock.set_today(d)
     db.merge(AppMeta(key=clock.SIM_CLOCK_KEY, value=d.isoformat()))
@@ -154,13 +173,17 @@ def set_clock(db: Session, d: date) -> None:
 def advance(db: Session, days: int, actor: str, realize_hypotheses: bool = True) -> dict:
     if not 1 <= days <= MAX_DAYS:
         raise ValueError(f"Chỉ tua được 1–{MAX_DAYS} ngày một lần.")
-    _, spec_list = build_catalog()
-    specs = {s.sku: s for s in spec_list}
+    specs, source, world = demand_setup(db)
     start = clock.today()
+    if isinstance(source, FrnDemand):
+        last = source.store.dates[-1]
+        if start + timedelta(days=days - 1) > last:
+            left = (last - start).days + 1
+            raise FrnRangeError(f"Hết dữ liệu FRN sau {last.strftime('%d/%m/%Y')}: chỉ còn tua được {max(0, left)} ngày.")
     log, expired, evaluated = [], 0, []
     for k in range(days):
         d = start + timedelta(days=k)
-        log.append(simulate_day(db, d, specs, realize_hypotheses))
+        log.append(simulate_day(db, d, specs, realize_hypotheses, source, world))
         set_clock(db, d + timedelta(days=1))
         expired += service.expire_stale(db)
         evaluated += hypotheses.evaluate_finished(db)

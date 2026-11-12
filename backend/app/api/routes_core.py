@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+import app as app_pkg
 from app.auth import create_token, current_user, require_manager, verify_password
 from app.clock import today
 from app.config import settings
@@ -268,6 +269,34 @@ def backtest_sensitivity(user: User = Depends(current_user)):
     if not SENSITIVITY_FILE.exists():
         raise HTTPException(404, "Chưa có bảng độ nhạy. Chạy: python -m app.sim.backtest --sensitivity")
     return json.loads(SENSITIVITY_FILE.read_text(encoding="utf-8"))
+
+
+_APP_DIR = Path(app_pkg.__file__).resolve().parent
+FRN_META_FILE = _APP_DIR / "ml" / "artifacts" / "meta.json"
+FRN_REPORT_FILE = _APP_DIR / "sim" / "data" / "frn" / "report.json"
+FRN_BACKTEST_FILE = _APP_DIR / "sim" / "data" / "frn" / "backtest.json"
+
+
+@router.get("/reports/backtest/frn")
+def backtest_frn(user: User = Depends(current_user)):
+    """Backtest A / B-EWMA / B-ML tren nhu cau that cua cac diem FRN giu lai (tinh san, chay mat nhieu phut)."""
+    if not FRN_BACKTEST_FILE.exists():
+        raise HTTPException(404, "Chưa có kết quả backtest trên dữ liệu FRN. Chạy: python -m app.sim.backtest --frn")
+    return json.loads(FRN_BACKTEST_FILE.read_text(encoding="utf-8"))
+_FRN_REPORT_KEYS = ("recovery_check", "eval_week_heldout", "rolling_heldout_bt", "gate", "importance_q50", "elasticity")
+
+
+@router.get("/reports/ml/frn")
+def frn_model_report(user: User = Depends(current_user)):
+    """Ket qua mo hinh LightGBM tren FreshRetailNet-50K (tinh san tren Kaggle + backtest). Bo `log`."""
+    if not FRN_REPORT_FILE.exists():
+        raise HTTPException(404, "Chưa có kết quả mô hình FRN. Đặt report.json vào backend/app/sim/data/frn/ "
+                                 "(sinh từ bước backtest FRN) và meta.json vào backend/app/ml/artifacts/.")
+    report = json.loads(FRN_REPORT_FILE.read_text(encoding="utf-8"))
+    meta = json.loads(FRN_META_FILE.read_text(encoding="utf-8")) if FRN_META_FILE.exists() else None
+    if meta is not None:
+        meta["n_heldout_stores"] = len(meta.get("heldout_stores") or [])
+    return {"meta": meta, **{k: report.get(k) for k in _FRN_REPORT_KEYS}}
 
 
 @router.get("/audit")

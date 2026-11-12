@@ -154,6 +154,7 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                       {(l.explain?.hypotheses ?? []).map((h: { hypothesis_id: number; factor: number }) => (
                         <span key={h.hypothesis_id} className="badge accent" style={{ marginLeft: 6 }} title="Dự báo đã áp dụng giả thuyết của Store Manager">giả thuyết ×{num(h.factor, 2)}</span>
                       ))}
+                      {l.explain?.forecast_method === "lightgbm_frn" && <span className="badge" style={{ marginLeft: 6 }} title="Dự báo bằng mô hình LightGBM học trên FreshRetailNet-50K; mặt hàng không đủ điều kiện dùng engine EWMA">LightGBM</span>}
                       {l.explain?.order_adjustment && <span className="badge accent" style={{ marginLeft: 6 }} title="Hệ số học từ cách Store Manager hay sửa đơn">hệ số ×{num(l.explain.order_adjustment, 2)}</span>}
                     </td>
                     <td>{l.abc_xyz ?? "—"}</td>

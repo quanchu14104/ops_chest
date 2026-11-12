@@ -9,6 +9,32 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 ELASTICITY = {"FRESH": 3.0, "SHORT": 2.0, "LONG": 1.2}
+ELASTICITY_SOURCE = {"FRESH": "giả định", "SHORT": "giả định", "LONG": "giả định"}
+
+
+def _calibrate_from_frn() -> None:
+    """Hang tuoi: thay gia dinh 3,0 bang uoc luong tren FreshRetailNet-50K (diem huan luyen, ngay con hang du gio,
+    dang 'ban tang ~ 1 + e x muc giam'). FRN la giam gia khuyen mai, khong phai giam vi can han: chi la xap xi."""
+    import json
+    from pathlib import Path
+
+    from app.config import settings
+
+    if not settings.elasticity_from_frn:
+        return
+    p = Path(__file__).resolve().parents[1] / "sim" / "data" / "frn" / "elasticity.json"
+    if not p.exists():
+        return
+    try:
+        e = json.loads(p.read_text(encoding="utf-8"))["engine"]["all"]["e"]
+    except (KeyError, ValueError, TypeError):
+        return
+    if e and e > 0:
+        ELASTICITY["FRESH"] = round(float(e), 2)
+        ELASTICITY_SOURCE["FRESH"] = "ước lượng trên FreshRetailNet-50K"
+
+
+_calibrate_from_frn()
 DISPOSAL_COST_PER_UNIT = 500  # VND: chi phi xu ly/huy uoc tinh moi don vi
 EVENING_SHARE = 0.3  # mac dinh: ty trong luot khach sau 18h; giam gia gio vang chi ap cho phan con du
 # Khung ban trong ngay: sang 6-11h, trua 11-14h, chieu 14-17h, toi 17-22h (cua hang dong cua 22h)

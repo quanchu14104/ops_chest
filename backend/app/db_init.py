@@ -38,7 +38,7 @@ def bootstrap() -> None:
     if empty:
         from app.sim.seed import seed
 
-        print("DB trống, đang sinh dữ liệu giả lập 365 ngày...", seed())
+        print("DB trống, đang nạp dữ liệu (FRN nếu có, nếu không thì giả lập)...", seed())
 
 
 if __name__ == "__main__":

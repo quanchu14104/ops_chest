@@ -96,3 +96,57 @@ def sample_demand(seed: int, p: ProductSpec, d: date) -> int:
     k = p.dispersion_k
     lam *= r.gammavariate(k, 1.0 / k)  # tron gamma -> phan phoi nhi thuc am (qua phan tan)
     return _poisson(r, lam)
+
+
+class DemandSource:
+    """Nguon nhu cau cua 'the gioi' mo phong: `need` = so khach muon mua (nguyen), `expected` = muc ky vong (de
+    tinh luong khach tang them khi giam gia)."""
+
+    name = "synthetic"
+
+    def need(self, p: ProductSpec, d: date) -> int:
+        raise NotImplementedError
+
+    def expected(self, p: ProductSpec, d: date) -> float:
+        raise NotImplementedError
+
+
+class SyntheticDemand(DemandSource):
+    """Mo hinh gia lap cu (chi con dung cho bo test quy tac nghiep vu: Tet, hang dai ngay, lich nghi NCC)."""
+
+    name = "synthetic"
+
+    def __init__(self, seed: int = 7):
+        self.seed = seed
+
+    def need(self, p: ProductSpec, d: date) -> int:
+        return sample_demand(self.seed, p, d)
+
+    def expected(self, p: ProductSpec, d: date) -> float:
+        return expected_demand(self.seed, p, d)
+
+
+class FrnRangeError(ValueError):
+    pass
+
+
+class FrnDemand(DemandSource):
+    """Nhu cau THAT cua mot diem ban FreshRetailNet-50K (da khoi phuc ngay het hang), quy ra don vi bang K."""
+
+    name = "frn"
+
+    def __init__(self, store, k: float):
+        self.store = store
+        self.k = k
+
+    def _value(self, p: ProductSpec, d: date) -> float:
+        i = self.store.day_index(d)
+        if i is None:
+            raise FrnRangeError(f"Hết dữ liệu FRN: chỉ có nhu cầu từ {self.store.dates[0]} đến {self.store.dates[-1]}.")
+        return self.store.series[p.frn_id].demand[i] * self.k
+
+    def need(self, p: ProductSpec, d: date) -> int:
+        return int(round(self._value(p, d)))
+
+    def expected(self, p: ProductSpec, d: date) -> float:
+        return self._value(p, d)

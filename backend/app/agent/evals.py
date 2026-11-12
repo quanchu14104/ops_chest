@@ -13,6 +13,10 @@ Tieu chi cham moi cau:
 - no_repeat:     khi da co widget, cau tra loi khong chep lai cac so trong bang (toi da MAX_REPEATED so)
 - no_receive:    (cau nhan hang) agent khong noi "da nhan hang": chi duoc mo form de nhan vien tu xac nhan
 Chay tren DB rieng (copy) neu khong muon de xuat tu eval lan vao hop duyet that.
+
+Cac cau hoi nhac ten hang/NCC cua the gioi GIA LAP cu (Banh mi chay, Nuoc suoi Suoi Mat, Bep Trung Tam...), nen eval
+chay tren DB seed gia lap: `python -m app.sim.seed --reset --source synthetic`. Eval cham hanh vi cua agent (goi dung
+tool, khong bia so, khong tu thuc thi), khong phu thuoc nhu cau la gia lap hay FreshRetailNet-50K.
 """
 from __future__ import annotations
 

@@ -12,6 +12,7 @@ from datetime import time as dtime
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
+from app import clock
 from app.auth import hash_password
 from app.clock import today
 from app.db import SessionLocal
@@ -20,7 +21,10 @@ from app.db_init import reset as reset_db
 from app.models import (AppMeta, CategoryPolicy, DailySales, InventorySnapshot, Lot, POLine, Product, PurchaseOrder, StockMovement, Supplier,
                         SupplierAgreement, SupplierClosure, User)
 from app.sim.backtest import initial_stock
+from app.sim import frn
 from app.sim.catalog import PULL_DAYS, build_catalog, category_policy
+from app.sim.demand import FrnDemand
+from app.sim.frn_catalog import build_frn_catalog, frn_category_policy
 from app.sim.policies import BaselinePolicy
 from app.sim.store_sim import StoreSim
 
@@ -36,16 +40,31 @@ def _chunks(rows: list[dict], n: int = 5000):
         yield rows[i:i + n]
 
 
-def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
+def seed(days: int | None = None, seed_value: int = 7, reset: bool = False, source: str = "frn") -> dict:
+    """source='frn': nhu cau THAT cua mot diem ban FreshRetailNet-50K, van hanh (lo, don, so sach) mo phong bang chinh
+    sach 'kinh nghiem'; dong ho dat o ngay ngay sau moc cat cua FRN. source='synthetic': the gioi gia lap cu (bo test
+    quy tac nghiep vu can Tet, hang dai ngay, lich nghi NCC)."""
     t0 = time.perf_counter()
+    if source == "frn" and not frn.available():
+        print("Chưa có dữ liệu FRN (app/sim/data/frn/stores_daily.csv.gz), dùng dữ liệu giả lập.")
+        source = "synthetic"
     if reset:
         reset_db()
     migrate()
-    end = today() - timedelta(days=1)
-    start = end - timedelta(days=days - 1)
-
-    suppliers, products = build_catalog()
-    sim = StoreSim(suppliers, products, seed=seed_value, record=True)
+    if source == "frn":
+        store, k = frn.store(), frn.k_scale()
+        cutoff = int(frn.meta().get("cutoff_day", 89))
+        days = cutoff + 1 if days is None else min(days, cutoff + 1)
+        start, end = store.dates[cutoff + 1 - days], store.dates[cutoff]
+        clock.set_today(store.dates[cutoff + 1])
+        suppliers, products = build_frn_catalog(store, k)
+        sim = StoreSim(suppliers, products, seed=seed_value, record=True, demand=FrnDemand(store, k))
+    else:
+        days = days or 365
+        end = today() - timedelta(days=1)
+        start = end - timedelta(days=days - 1)
+        suppliers, products = build_catalog()
+        sim = StoreSim(suppliers, products, seed=seed_value, record=True)
     initial_stock(sim, start)
     sim.run(start, days, BaselinePolicy())
 
@@ -87,7 +106,7 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
             pid[p.sku] = row.id
 
         for cat in sorted({p.category for p in products}):
-            pol = category_policy(cat)
+            pol = frn_category_policy(cat) if source == "frn" else category_policy(cat)
             db.add(CategoryPolicy(category=cat, markdown_allowed=pol["markdown_allowed"],
                                   max_markdown_pct=pol["max_markdown_pct"], daypart_shares=pol["daypart_shares"],
                                   markdown_hour=pol["markdown_hour"],
@@ -127,21 +146,27 @@ def seed(days: int = 365, seed_value: int = 7, reset: bool = False) -> dict:
                 db.add(User(username=u, full_name=name, role=role, password_hash=hash_password(pw)))
         db.merge(AppMeta(key="seeded_for_date", value=today().isoformat()))
         db.merge(AppMeta(key="seed_policy", value=BaselinePolicy.name))
+        db.merge(AppMeta(key="data_source", value=source))
+        if source == "frn":
+            db.merge(AppMeta(key="frn_store", value=str(store.store_id)))
+            db.merge(AppMeta(key=clock.SIM_CLOCK_KEY, value=today().isoformat()))
         db.commit()
     finally:
         db.close()
-    return {"days": days, "start": start.isoformat(), "end": end.isoformat(), "products": len(products),
+    return {"source": source, "today": today().isoformat(), "days": days, "start": start.isoformat(), "end": end.isoformat(), "products": len(products),
             "sales_rows": len(sim.sales_rows), "movements": len(sim.movements), "purchase_orders": len(sim.pos),
             "open_lots": sum(len(v) for v in sim.lots.values()), "seconds": round(time.perf_counter() - t0, 1)}
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=365)
+    ap.add_argument("--days", type=int, default=None, help="Mặc định: FRN 90 ngày, giả lập 365 ngày")
+    ap.add_argument("--source", choices=["frn", "synthetic"], default="frn",
+                    help="frn: nhu cầu thật FreshRetailNet-50K (mặc định); synthetic: thế giới giả lập cũ")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--reset", action="store_true", help="Xóa toàn bộ bảng rồi seed lại")
     args = ap.parse_args()
-    print(seed(args.days, args.seed, args.reset))
+    print(seed(args.days, args.seed, args.reset, args.source))
 
 
 if __name__ == "__main__":

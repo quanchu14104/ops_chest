@@ -181,7 +181,7 @@ def product_detail(db: Session, sku: str) -> dict | None:
         "sales_last_28d": {"total": sum(sales28), "avg_per_day": round(sum(sales28) / 28, 2),
                            "stockout_days": sum(h.series(p.id, "stockout", 28))},
         "forecast_next_14d": {"daily": [round(x, 1) for x in fc.daily], "total": round(sum(fc.daily), 1),
-                              "weekday_index": fc.weekday_index, "sigma_daily": round(fc.sigma_daily, 2),
+                              "weekday_index": fc.weekday_index, "sigma_daily": round(fc.sigma_daily, 2), "method": fc.method,
                               "censored_days_adjusted": fc.n_censored},
         "abc_xyz": None if not cls else {"cell": cls.cell, "cv": cls.cv, "margin_90d": round(cls.margin),
                                          "policy": POLICY_BY_CLASS[cls.cell]},

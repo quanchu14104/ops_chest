@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type ChartSpec, type Proposal } from "../api";
+import { api, ApiError, type ChartSpec, type Proposal } from "../api";
 import ChartView from "../components/ChartView";
+import FrnBacktest, { type FrnBt } from "../components/FrnBacktest";
+import FrnModelReport from "../components/FrnModelReport";
 import { dateVi, money, pct } from "../format";
 
 type Cost = {
@@ -49,7 +51,9 @@ export default function Reports() {
   const cost = useQuery({ enabled: !!meta.data, queryKey: ["cost", days, meta.data?.today], queryFn: () => api<Cost>(`/reports/cost?start=${iso(start)}&end=${iso(end)}`) });
   const cands = useQuery({ queryKey: ["delist"], queryFn: () => api<Cand[]>(`/reports/delist`) });
   const bt = useMutation({ mutationFn: (d: number) => api<BT>(`/reports/backtest?days=${d}`) });
-  const sens = useQuery({ queryKey: ["bt-sensitivity"], queryFn: () => api<Sens>("/reports/backtest/sensitivity"), retry: false });
+  const frnBt = useQuery({ queryKey: ["bt-frn"], queryFn: () => api<FrnBt>("/reports/backtest/frn"), retry: false });
+  // Bang do nhay cu chi can khi chua co backtest FRN
+  const sens = useQuery({ enabled: frnBt.isError, queryKey: ["bt-sensitivity"], queryFn: () => api<Sens>("/reports/backtest/sensitivity"), retry: false });
   const delist = useMutation({
     mutationFn: (sku: string) => api<Proposal[]>("/proposals/create", { method: "POST", body: { type: "DELIST", sku } }),
     onSuccess: (r) => { setMsg(`Đã tạo đề xuất #${r[0].id}. Vào Hộp duyệt để quyết định.`); qc.invalidateQueries(); },
@@ -144,8 +148,18 @@ export default function Reports() {
         </div>
       )}
 
+      <FrnModelReport />
+
+      {frnBt.data ? (
+        <div className="card"><FrnBacktest d={frnBt.data} /></div>
+      ) : frnBt.isPending ? (
+        <div className="card"><p className="muted">Đang tải kết quả mô phỏng…</p></div>
+      ) : (
       <div className="card">
-        <h2>Mô phỏng A/B: "kinh nghiệm" và Ops Chest</h2>
+        <h2>Mô phỏng A/B (dữ liệu giả lập cũ)</h2>
+        {!(frnBt.error instanceof ApiError && frnBt.error.status === 404) && (
+          <div className="alert error" style={{ marginBottom: 8 }}>Không tải được backtest trên dữ liệu FRN: {(frnBt.error as Error).message}</div>
+        )}
         <p className="small secondary">
           Chạy lại cùng cửa hàng với <b>cùng nhu cầu khách</b> (tất định) bằng 2 chính sách đặt hàng. A: mức tồn theo trung bình 4 tuần, cuối ngày giảm 30% hàng hết hạn hôm nay.
           B: dự báo + newsvendor/order-up-to có sàn mức phục vụ (kéo khách 95%, nhóm A 90%) + trần HSD và sức chứa + giảm giá giờ vàng theo khung bán của nhóm hàng/trả NCC (coi như SM duyệt hết). Trong mô phỏng, khách chỉ phản ứng với giảm giá bằng một nửa mức engine giả định. Mất khoảng 10-30 giây.
@@ -158,6 +172,7 @@ export default function Reports() {
         {bt.data && <Backtest d={bt.data} />}
         {sens.data && <Sensitivity d={sens.data} />}
       </div>
+      )}
     </>
   );
 }

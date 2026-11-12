@@ -58,10 +58,10 @@ const TOOL_LABEL: Record<string, string> = {
 // `quick` = khóa truy vấn nhanh (/chat/quick/<khóa>): dùng làm dự phòng khi LLM lỗi, không cần LLM
 const SUGGESTIONS: { text: string; quick?: string }[] = [
   { text: "Tình hình kho hôm nay thế nào? Có gì cần tôi xử lý không?", quick: "inventory" },
-  { text: "Vẽ biểu đồ nhập/xuất kho nhóm Nước ngọt 30 ngày qua theo tuần" },
+  { text: "Vẽ biểu đồ nhập/xuất kho nhóm hàng bán chạy nhất 30 ngày qua theo tuần" },
   { text: "Hàng nào sắp hết hạn trong tuần này, nên xử lý thế nào?", quick: "expiring7" },
   { text: "Chi phí hàng hủy tháng vừa rồi nằm ở nhóm nào nhiều nhất?", quick: "kpi" },
-  { text: "Lên đơn đặt hàng cho Bếp Trung Tâm Hạnh Phúc", quick: "reorder:NCC01" },
+  { text: "Lên đơn đặt hàng cho nhà cung cấp NCC01", quick: "reorder:NCC01" },
   { text: "Có mặt hàng nào nên ngừng nhập không? Giải thích lý do" },
 ];
 

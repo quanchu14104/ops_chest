@@ -1,0 +1,55 @@
+{
+  "recovery_check": {"n": 1820, "wape_recovered": 0.214, "bias_recovered": -0.018, "wape_sales_as_demand": 0.297, "bias_sales_as_demand": -0.161},
+  "eval_week_heldout": {
+    "lightgbm": {
+      "obs": {
+        "all": {"n": 4210, "wape": 0.312, "bias": -0.021, "pinball50": 0.156, "pinball10": 0.071, "pinball90": 0.088, "coverage80": 0.774},
+        "ban_it|deu": {"n": 610, "wape": 0.552, "bias": 0.064, "pinball50": 0.276, "pinball10": 0.112, "pinball90": 0.131, "coverage80": 0.702},
+        "ban_vua|deu": {"n": 1320, "wape": 0.301, "bias": -0.015, "pinball50": 0.150, "pinball10": 0.068, "pinball90": 0.085, "coverage80": 0.781},
+        "ban_chay|deu": {"n": 1640, "wape": 0.221, "bias": -0.019, "pinball50": 0.110, "pinball10": 0.051, "pinball90": 0.063, "coverage80": 0.795},
+        "ban_chay|lat_nhat": {"n": 640, "wape": 0.402, "bias": -0.052, "pinball50": 0.201, "pinball10": 0.094, "pinball90": 0.118, "coverage80": 0.744}
+      },
+      "rec": {
+        "all": {"n": 4900, "wape": 0.298, "bias": -0.012, "pinball50": 0.149, "pinball10": 0.069, "pinball90": 0.084, "coverage80": 0.781}
+      }
+    },
+    "ewma_oc": {
+      "obs": {
+        "all": {"n": 4210, "wape": 0.348, "bias": -0.083, "pinball50": 0.174, "pinball10": 0.082, "pinball90": 0.101, "coverage80": 0.712},
+        "ban_it|deu": {"n": 610, "wape": 0.531, "bias": 0.041, "pinball50": 0.265, "pinball10": 0.109, "pinball90": 0.128, "coverage80": 0.731},
+        "ban_vua|deu": {"n": 1320, "wape": 0.337, "bias": -0.071, "pinball50": 0.168, "pinball10": 0.077, "pinball90": 0.097, "coverage80": 0.715},
+        "ban_chay|deu": {"n": 1640, "wape": 0.259, "bias": -0.090, "pinball50": 0.129, "pinball10": 0.060, "pinball90": 0.077, "coverage80": 0.701},
+        "ban_chay|lat_nhat": {"n": 640, "wape": 0.455, "bias": -0.121, "pinball50": 0.227, "pinball10": 0.105, "pinball90": 0.139, "coverage80": 0.683}
+      },
+      "rec": {
+        "all": {"n": 4900, "wape": 0.351, "bias": -0.101, "pinball50": 0.175, "pinball10": 0.083, "pinball90": 0.104, "coverage80": 0.701}
+      }
+    },
+    "ewma_khong_co_het_hang": {
+      "obs": {"all": {"n": 4210, "wape": 0.366, "bias": -0.124, "pinball50": 0.183, "pinball10": 0.087, "pinball90": 0.109, "coverage80": 0.688}},
+      "rec": {"all": {"n": 4900, "wape": 0.379, "bias": -0.152, "pinball50": 0.189, "pinball10": 0.090, "pinball90": 0.113, "coverage80": 0.669}}
+    },
+    "cung_thu_tuan_truoc": {
+      "obs": {"all": {"n": 4210, "wape": 0.441, "bias": -0.010, "pinball50": 0.220}},
+      "rec": {"all": {"n": 4900, "wape": 0.433, "bias": -0.031, "pinball50": 0.216}}
+    },
+    "tb_28_ngay": {
+      "obs": {"all": {"n": 4210, "wape": 0.372, "bias": -0.066, "pinball50": 0.186}},
+      "rec": {"all": {"n": 4900, "wape": 0.381, "bias": -0.094, "pinball50": 0.190}}
+    }
+  },
+  "rolling_heldout_bt": {
+    "lightgbm": {"obs": {"all": {"n": 22100, "wape": 0.325, "bias": -0.027, "pinball50": 0.162, "pinball10": 0.073, "pinball90": 0.091, "coverage80": 0.769}}, "rec": {"all": {"n": 25400, "wape": 0.309, "bias": -0.018, "pinball50": 0.154, "pinball10": 0.071, "pinball90": 0.087, "coverage80": 0.777}}},
+    "ewma_oc": {"obs": {"all": {"n": 22100, "wape": 0.352, "bias": -0.079, "pinball50": 0.176, "pinball10": 0.083, "pinball90": 0.102, "coverage80": 0.709}}, "rec": {"all": {"n": 25400, "wape": 0.356, "bias": -0.097, "pinball50": 0.178, "pinball10": 0.084, "pinball90": 0.105, "coverage80": 0.698}}},
+    "ewma_khong_co_het_hang": {"obs": {"all": {"n": 22100, "wape": 0.369, "bias": -0.119, "pinball50": 0.185, "pinball10": 0.088, "pinball90": 0.110, "coverage80": 0.684}}, "rec": {"all": {"n": 25400, "wape": 0.383, "bias": -0.148, "pinball50": 0.191, "pinball10": 0.091, "pinball90": 0.114, "coverage80": 0.666}}},
+    "cung_thu_tuan_truoc": {"obs": {"all": {"n": 22100, "wape": 0.447, "bias": -0.008, "pinball50": 0.223}}, "rec": {"all": {"n": 25400, "wape": 0.439, "bias": -0.029, "pinball50": 0.219}}},
+    "tb_28_ngay": {"obs": {"all": {"n": 22100, "wape": 0.377, "bias": -0.061, "pinball50": 0.188}}, "rec": {"all": {"n": 25400, "wape": 0.385, "bias": -0.090, "pinball50": 0.192}}}
+  },
+  "gate": {"ban_it|deu": false, "ban_vua|deu": true, "ban_chay|deu": true, "ban_chay|lat_nhat": true},
+  "importance_q50": {"roll_mean_7": 18234.5, "lag_7": 9120.2, "roll_mean_28": 7412.9, "dow": 3301.4, "discount": 2987.0, "oos_hours_lag_1": 1820.3, "store_id": 1544.1, "lag_14": 1410.8, "first_category_id": 990.2, "avg_temperature": 512.7, "precpt": 301.0, "holiday_flag": 120.4},
+  "elasticity": {
+    "train_stores": {"all": {"e": -1.42, "n": 182000, "ci90": [-1.55, -1.30]}, "by_group": {"1": {"e": -1.21, "n": 64000}, "2": {"e": -1.68, "n": 51000}, "3": {"e": -1.35, "n": 67000}}},
+    "heldout_stores": {"all": {"e": -1.18, "n": 9100, "ci90": [-1.61, -0.77]}, "by_group": {"1": {"e": -0.94, "n": 3100}, "2": {"e": -1.40, "n": 2600}}}
+  },
+  "log": ["train rows=1.2M", "eval done"]
+}

@@ -1,0 +1,32 @@
+{
+  "source": "FreshRetailNet-50K",
+  "t0_date": "2024-05-26",
+  "stores": 3,
+  "runtime_s": 912.4,
+  "summary": {
+    "gain_ml": {"median": 0.039, "q25": 0.012, "q75": 0.071, "min": -0.034, "max": 0.118, "n": 3},
+    "gain_ewma": {"median": 0.042, "q25": 0.018, "q75": 0.066, "min": -0.021, "max": 0.104, "n": 3},
+    "ml_vs_ewma": {"median": -0.003, "q25": -0.011, "q75": 0.009, "min": -0.019, "max": 0.024, "n": 3},
+    "waste_a": {"median": 0.081, "q25": 0.064, "q75": 0.097, "min": 0.051, "max": 0.121, "n": 3},
+    "waste_b_ewma": {"median": 0.047, "q25": 0.036, "q75": 0.058, "min": 0.029, "max": 0.072, "n": 3},
+    "waste_b_ml": {"median": 0.044, "q25": 0.033, "q75": 0.057, "min": 0.027, "max": 0.069, "n": 3},
+    "oos_a": {"median": 0.052, "q25": 0.041, "q75": 0.066, "min": 0.033, "max": 0.081, "n": 3},
+    "oos_b_ewma": {"median": 0.058, "q25": 0.044, "q75": 0.071, "min": 0.035, "max": 0.090, "n": 3},
+    "oos_b_ml": {"median": 0.055, "q25": 0.043, "q75": 0.069, "min": 0.034, "max": 0.087, "n": 3},
+    "oos_traffic_a": {"median": 0.031, "q25": 0.022, "q75": 0.040, "min": 0.015, "max": 0.052, "n": 3},
+    "oos_traffic_b_ml": {"median": 0.027, "q25": 0.019, "q75": 0.036, "min": 0.012, "max": 0.048, "n": 3},
+    "share_ml_better_than_a": 0.6667,
+    "share_ml_better_than_ewma": 0.3333,
+    "share_oos_ml_not_worse": 0.6667
+  },
+  "per_store": [
+    {"store_id": 3, "products": 42, "start": "2024-05-27", "days": 37, "gp_a": 18250000, "gp_b_ewma": 19020000, "gp_b_ml": 18960000, "gain_ewma": 0.042, "gain_ml": 0.039, "ml_vs_ewma": -0.003, "waste_a": 0.081, "waste_b_ewma": 0.047, "waste_b_ml": 0.044, "oos_a": 0.052, "oos_b_ewma": 0.058, "oos_b_ml": 0.055, "oos_traffic_a": 0.031, "oos_traffic_b_ewma": 0.029, "oos_traffic_b_ml": 0.027},
+    {"store_id": 9, "products": 38, "start": "2024-05-27", "days": 37, "gp_a": 15400000, "gp_b_ewma": 16950000, "gp_b_ml": 17220000, "gain_ewma": 0.101, "gain_ml": 0.118, "ml_vs_ewma": 0.016, "waste_a": 0.121, "waste_b_ewma": 0.072, "waste_b_ml": 0.069, "oos_a": 0.033, "oos_b_ewma": 0.035, "oos_b_ml": 0.034, "oos_traffic_a": 0.015, "oos_traffic_b_ewma": 0.013, "oos_traffic_b_ml": 0.012},
+    {"store_id": 25, "products": 45, "start": "2024-05-27", "days": 37, "gp_a": 21100000, "gp_b_ewma": 20660000, "gp_b_ml": 20380000, "gain_ewma": -0.021, "gain_ml": -0.034, "ml_vs_ewma": -0.014, "waste_a": 0.051, "waste_b_ewma": 0.029, "waste_b_ml": 0.027, "oos_a": 0.081, "oos_b_ewma": 0.090, "oos_b_ml": 0.087, "oos_traffic_a": 0.052, "oos_traffic_b_ewma": 0.050, "oos_traffic_b_ml": 0.048}
+  ],
+  "scenarios": [
+    {"key": "reference", "label": "Tham chiếu", "note": "Giả định mặc định", "stores": 3, "gain": 0.039, "waste_a": 0.081, "waste_b": 0.044, "oos_a": 0.052, "oos_b": 0.055},
+    {"key": "low_elasticity", "label": "Khách ít phản ứng với giảm giá", "note": "Độ co giãn bằng một nửa", "stores": 3, "gain": 0.021, "waste_a": 0.081, "waste_b": 0.051, "oos_a": 0.052, "oos_b": 0.055},
+    {"key": "short_shelf_life", "label": "HSD ngắn hơn 1 ngày", "note": "Chưa chạy xong", "stores": 3, "gain": -0.008, "waste_a": null, "waste_b": null, "oos_a": null, "oos_b": null}
+  ]
+}

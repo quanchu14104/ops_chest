@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     # Nut tua nhanh ngay cho demo. Tat khi chay voi du lieu that.
     enable_sim_controls: bool = True
 
+    # Du bao: "auto" = LightGBM (hoc tren FreshRetailNet-50K) cho hang tuoi co du lieu FRN o nhom no thang engine cu,
+    # con lai EWMA; "ewma" = luon dung engine EWMA cu.
+    forecast_engine: str = "auto"
+    # Do co gian khi giam gia cua hang tuoi lay tu uoc luong tren FRN. MAC DINH TAT: uoc luong tren FRN ra ~5-10
+    # (khong hop ly, gia cua Dingdong noi sinh), xem docs/ml-frn.md. Bat chi de thu nghiem.
+    elasticity_from_frn: bool = False
+
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_from: str = "dathang@opschest-demo.test"

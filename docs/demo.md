@@ -1,8 +1,10 @@
-# Kịch bản demo (khoảng 10 phút)
+# Kịch bản demo (khoảng 12 phút)
+
+Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong FreshRetailNet-50K: 164 mặt hàng tươi, 7 nhà cung cấp hư cấu. Hôm nay của hệ thống là **26/06/2024**. Tên hàng có dạng "Mặt hàng 412 · nhóm 3.10", vì FRN chỉ công bố mã số; giá, giá vốn và HSD là giả định (xem [ml-frn.md](ml-frn.md), mục 4).
 
 ## Chuẩn bị
 
-1. Điền `.env` (LLM, và `SIM_TODAY` nếu muốn cố định ngày), rồi chạy:
+1. Điền `.env` (khóa LLM), rồi chạy lệnh dưới. Lần đầu, backend tự nạp 90 ngày dữ liệu FRN, mất khoảng 10 giây.
 
    ```bash
    docker compose up -d --build
@@ -10,70 +12,74 @@
 
 2. Mở http://localhost:5173 và đăng nhập tài khoản Store Manager trong `.env.example`.
 3. Mở thêm tab http://localhost:8025 (Mailpit).
+4. Muốn chạy lại demo từ đầu (sau khi tua nhanh), dùng lệnh:
+
+   ```bash
+   docker compose exec backend python -m app.sim.seed --reset
+   ```
 
 ## 1. Buổi sáng của Store Manager (2 phút)
 
 - Trang chủ **Trợ lý** hiện **bản tin đầu ngày**: số đề xuất chờ duyệt, lô cận date, nhà cung cấp đến lịch đặt, đơn đang chờ giao, hàng hết. Nhấn mạnh: bản tin dựng từ dữ liệu thật, **không qua LLM**, nên không thể bịa số.
-- Bấm một dòng của bản tin, ví dụ *lô cận date*: bảng lô hiện ngay trong chat kèm phương án xử lý tốt nhất, agent chỉ tóm tắt 2–3 ý.
-- Để có đề xuất mới ngay, vào **Số liệu tổng quan** và bấm **"Quét & tạo đề xuất ngay"**. Đây chính là việc job 06:30 làm mỗi sáng: đề xuất đặt hàng cho nhà cung cấp đến lịch, giảm giá hàng cận date, ghi hủy hàng quá hạn. Dashboard KPI 30 ngày cũng nằm ở đây.
+- Bấm một dòng của bản tin, ví dụ *lô cận date*: bảng lô hiện ngay trong chat, kèm phương án xử lý tốt nhất. Agent chỉ tóm tắt 2–3 ý.
+- Vào **Số liệu tổng quan**, bấm **"Quét & tạo đề xuất ngay"**. Đây là việc job 06:30 làm mỗi sáng: đề xuất đặt hàng cho nhà cung cấp đến lịch, giảm giá hàng cận date, ghi hủy hàng quá hạn.
 - Nhấn mạnh: **chưa có gì được gửi đi.**
+- Nếu hỏi về dòng "… mặt hàng đang hết hàng" (con số lớn): đây là tồn **buổi sáng trước khi nhận hàng**. Hàng tươi HSD 1–2 ngày bán gần hết trong ngày, và hàng mới đang trên đường giao (dòng "đơn hàng đang chờ giao"). Lịch sử 90 ngày được vận hành bằng chính sách "kinh nghiệm", nên hết hàng khoảng 30% số ngày–mặt hàng, sát với thực tế FRN (44% số ngày có giờ hết hàng).
 
-## 2. Hộp duyệt: HITL (3 phút)
+## 2. Dự báo bằng mô hình học máy (2 phút)
 
-- Mở đề xuất **Đặt hàng Bếp Trung Tâm** (trong hộp duyệt ở trang Trợ lý). Chỉ cho người xem:
-  - cột *Dự báo phủ* và *Đề xuất*;
-  - nhãn *trần HSD*, *sức chứa* (tủ kem), *giữ ≥95%* / *giữ ≥90%* cho hàng kéo khách và nhóm A;
-  - phân loại ABC-XYZ của từng dòng.
-- Nếu đơn dưới giá trị tối thiểu của NCC, thẻ hiện hai phương án: **Áp dụng bù đơn** (kéo sớm hàng bền ít ngày tồn nhất) hoặc hoãn. Duyệt đơn vẫn thiếu mức tối thiểu mà không tick "đã thỏa thuận với NCC" sẽ bị từ chối khi thực thi.
-- Hỏi agent *"Nhà cung cấp nào sắp nghỉ?"*: demo có lịch nghỉ Tết của các đại lý; trong 14 ngày trước kỳ nghỉ bản tin nhắc ngày đặt đơn cuối, và đơn đó tự lớn lên để phủ kỳ nghỉ.
-- **Sửa bằng lời:** nói với agent *"giảm mỗi món còn một nửa"* hoặc bấm **Hỏi lại** trên thẻ. Agent tạo đề xuất **mới** chờ duyệt, bản cũ chuyển sang "Đã có bản sửa". Agent không tự duyệt.
-- **Sửa bằng tay:** đổi số lượng một dòng (ô chuyển màu vàng), rồi bấm **Duyệt với chỉnh sửa**.
-- Sang Mailpit: email đơn hàng kèm **PDF** (font tiếng Việt), ghi rõ người duyệt.
+- Mở một đề xuất **Đặt hàng** (ví dụ Nông sản Tân Phát, khoảng 80 mặt hàng). Các dòng có nhãn **LightGBM**: dự báo do mô hình học trên 848 điểm bán FRN khác tính ra, không phải do engine EWMA cũ.
+- Nhấn mạnh hai điều:
+  - **Mô hình chỉ dự báo, không quyết định.** Số lượng đặt vẫn do engine tất định tính, với trần HSD, sức chứa và sàn mức phục vụ (nhãn *trần HSD*, *giữ ≥95%*). Mô hình không thể đề xuất vượt các giới hạn này (có test kiểm).
+  - **Mô hình được chọn theo bằng chứng.** Nhóm hàng nào mô hình không thắng engine cũ trên các điểm bán giữ lại thì vẫn dùng EWMA. Với cửa hàng demo, cả 164 mặt hàng đều thuộc nhóm mô hình thắng.
+- Vào **Phân tích → Dự báo nhu cầu bằng LightGBM trên dữ liệu thật**:
+  - bảng 5 phương pháp: LightGBM WAPE 30,2% so với EWMA 35,1%, độ phủ khoảng 80% là 81% so với 73%;
+  - bảng theo nhóm hàng, có nhãn "Dùng ML" / "Giữ engine cũ";
+  - kiểm tra khôi phục nhu cầu ngày hết hàng (sai số 20,5% so với 32,3% nếu coi số bán là nhu cầu).
+- Nói thẳng kết quả âm: **FRN không cho ước lượng được độ co giãn khi giảm giá** (ra con số phi lý e ≈ 9,6 vì giá nội sinh), nên OC giữ giả định cũ. Bảng ước lượng có trên trang để hội đồng thấy.
+
+## 3. Hộp duyệt: HITL (2 phút)
+
+- Trong thẻ đặt hàng: cột *Dự báo phủ*, *Đề xuất*, phân loại ABC-XYZ của từng dòng.
+- **Sửa bằng lời:** nói với agent *"giảm mỗi món còn một nửa"*, hoặc bấm **Hỏi lại** trên thẻ. Agent tạo đề xuất **mới** chờ duyệt, bản cũ chuyển sang "Đã có bản sửa". Agent không tự duyệt.
+- **Sửa bằng tay:** đổi số lượng một dòng (ô chuyển màu vàng), rồi bấm **Duyệt với chỉnh sửa**. Sang Mailpit xem email đơn hàng kèm **PDF** (font tiếng Việt), ghi rõ người duyệt.
 - Mở **Nhật ký**: các bước tạo → sửa → duyệt → thực thi, mỗi bước có người làm và thời điểm.
-- Đăng nhập tài khoản **nhân viên**: thấy đề xuất nhưng không có nút duyệt; gọi API duyệt sẽ nhận lỗi 403.
+- Đăng nhập tài khoản **nhân viên**: thấy đề xuất nhưng không có nút duyệt; gọi API duyệt nhận lỗi 403.
 
-## 3. Trò chuyện với Ops Chest (3 phút)
+## 4. Trò chuyện với Ops Chest (2 phút)
 
 Hỏi lần lượt:
-
 - *"Tổng quan tồn kho hiện giờ"*: thẻ KPI và bảng theo nhóm hàng hiện trong chat.
-- *"Vẽ biểu đồ nhập/xuất kho nhóm Nước ngọt 30 ngày qua theo tuần"*: biểu đồ hiện ngay trong khung chat, có nút "Xem bảng".
-- *"Chi phí hàng hủy tháng vừa rồi nằm ở nhóm nào nhiều nhất?"*
-- *"Có mặt hàng nào nên ngừng nhập không?"*: agent đưa ra Bánh mì chay (ô CZ, hủy 68%, lỗ 90 ngày, có hàng thay thế).
-- *"Ngừng nhập Nước suối Suối Mát 500ml đi"*: tool `propose_delist` **không tạo đề xuất** vì SKU này không nằm trong danh sách ứng viên (là hàng kéo khách, ở nhóm A). Chặn bằng code, không phụ thuộc LLM; agent chỉ giải thích lý do.
-- *"Duyệt luôn đơn hàng và gửi email giúp tôi"*: agent chỉ tạo đề xuất, giải thích rằng quyết định thuộc về Store Manager, và thẻ đề xuất có nút Duyệt cho chính Store Manager bấm.
+- *"Vẽ biểu đồ nhập/xuất kho Nhóm tươi 6 30 ngày qua theo tuần"*: biểu đồ hiện ngay trong khung chat.
+- *"Có mặt hàng nào nên ngừng nhập không?"*: agent đưa ra các mặt hàng ô CY hủy nhiều, ví dụ Mặt hàng 536 (nhóm 0.5, hủy khoảng 30%).
+- *"Ngừng nhập Mặt hàng 70 đi"*: đây là hàng kéo khách (thuộc 5 mặt hàng bán nhiều nhất cửa hàng), nên `propose_delist` **không tạo đề xuất**. Chặn bằng code, không phụ thuộc LLM.
+- *"Duyệt luôn đơn hàng và gửi email giúp tôi"*: agent chỉ tạo đề xuất và giải thích quyết định thuộc về Store Manager.
 
-**Mẹo khi LLM chậm hoặc lỗi:** các mục bản tin và gợi ý nhanh có đường dự phòng không cần LLM. Nếu LLM trả lỗi, giao diện vẫn hiện số liệu tra cứu trực tiếp (bảng/thẻ KPI) thay vì chết trắng.
+**Mẹo khi LLM chậm hoặc lỗi:** các mục bản tin và gợi ý nhanh có đường dự phòng không cần LLM.
 
-## 4. Nhận hàng và HSD (1 phút)
+## 5. Nhận hàng, rút kệ, kiểm date (2 phút)
 
-- Nói trong chat: *"Nhận đơn hàng đang chờ giao"*. Agent **chỉ mở form** nhận hàng trong chat (không tự nhận, và không bao giờ nói "đã nhận"). Điền số lượng thực nhận và HSD từng dòng rồi bấm xác nhận.
-- Hoặc vào **Đặt & nhận hàng**, chọn một đơn "Chờ giao" và bấm **Nhận hàng** (cùng một endpoint). Form đầy đủ ở trang này: bấm **+ HSD** để tách một dòng thành hai lô có hai HSD, nhập số **từ chối** kèm lý do, nhập **giá hóa đơn** nếu khác đơn.
-- Ô HSD là bắt buộc. Để trống sẽ báo lỗi, nhập ngày đã qua cũng bị từ chối. Nhập HSD còn ít hơn 2/3 vòng đời bằng tài khoản nhân viên: bị chặn; chỉ Store Manager tick xác nhận mới nhận được.
-- Nhận thiếu so với đơn: kết quả báo giao thiếu và bản tin hôm sau có dòng "Đơn … giao thiếu".
-- Đơn quá ngày giao có nhãn "trễ N ngày" và hiện trong bản tin. Store Manager bấm **Huỷ đơn** (bắt buộc ghi lý do) khi NCC không giao nữa; đơn chưa huỷ vẫn được tính là hàng đang về nên không bị đặt trùng.
-- Giải thích: đây là dữ liệu POS không có, nền tảng cho FEFO và cảnh báo cận date. Nguyên tắc chung: LLM không có quyền ghi, mọi thao tác ghi là một cú bấm của con người.
+- Nói trong chat *"Nhận đơn hàng đang chờ giao"*: agent **chỉ mở form**; nhân viên điền số thực nhận và HSD rồi tự bấm xác nhận.
+- Trang **Đặt & nhận hàng**: form đầy đủ (tách dòng thành nhiều HSD, số từ chối kèm lý do, giá hóa đơn). HSD còn dưới 2/3 vòng đời thì tài khoản nhân viên bị chặn.
+- Trang **Hàng cận date → Rút kệ cuối ngày**: ghi số thực gỡ rồi xác nhận (không cần duyệt). Store Manager chỉ duyệt bút toán ghi hủy.
+- Giờ giảm giá cuối ngày lấy theo **khung bán thật của từng nhóm trong FRN**: nhóm bán đỉnh buổi sáng giảm từ 11h, nhóm bán đỉnh buổi tối giảm từ 18h.
 
-## 4b. Giả thuyết, tua nhanh, học từ phần sửa (3 phút, tùy chọn)
+## 6. Tua nhanh và giả thuyết (1 phút, tùy chọn)
 
-- Nói trong chat: *"Thứ Bảy này có trận bóng, nhóm Bia bán gấp rưỡi"* (nêu rõ ngày). Thẻ đề xuất hiện dự báo trước và sau. Bấm **Duyệt**.
-- Vào **Số liệu tổng quan → Tua nhanh → Tua 7 ngày**. Giả thuyết được chấm đúng/sai và hiện trong bản tin. Bỏ chọn "Giả thuyết đang áp dụng xảy ra đúng" để xem trường hợp sai.
-- Nhấn mạnh: tua nhanh **không tự duyệt**. Nếu không ai duyệt đơn hàng, kệ trống dần và các lô đã rút kệ nằm chờ ghi hủy.
-- Bấm **Nạp lịch sử sửa mẫu**: thẻ "Học từ cách anh/chị sửa đơn" hiện thói quen và nút đề xuất hệ số.
-- Vào **Kiểm kê → Kiểm date theo HSD**: phiếu chỉ có các HSD trên sổ, không có số lượng. Nhập số theo từng HSD, bấm **Thêm HSD** cho một ngày sổ chưa có: đề xuất điều chỉnh cấp lô hiện ra, lô đó xuất hiện trong báo cáo cận date sau khi duyệt. Tab **Kiểm kê theo SKU** giữ cách đếm cũ.
-- Vào **Hàng cận date**: thẻ **Rút kệ cuối ngày** liệt kê lô hết ngày bán. Ghi số thực gỡ rồi xác nhận: không cần duyệt, lô rời khỏi tồn ngay; Store Manager chỉ duyệt đề xuất ghi hủy (phần chênh với sổ ghi hao hụt). Chọn một lô và **Báo hủy** với lý do "Vỡ, móp" để thấy đề xuất hủy có lý do.
-- Tua nhanh giả lập cả việc rút kệ của nhân viên, nên sau khi tua sẽ có đề xuất ghi hủy chờ duyệt.
-- Trong form nhận hàng, bấm **Chụp HSD** để đọc tem bằng ảnh.
-- Ngày đã tua được lưu lại. Muốn quay về, seed lại DB rồi khởi động lại backend.
+- Nói *"Thứ Bảy này nhóm tươi 6 bán gấp rưỡi"* (nêu rõ ngày), rồi duyệt đề xuất giả thuyết.
+- **Số liệu tổng quan → Tua nhanh**: tua được tối đa **7 ngày** (hết dữ liệu FRN vào 02/07/2024; tua quá sẽ báo lỗi rõ ràng). Nhu cầu trong 7 ngày này là nhu cầu thật mà mô hình chưa từng thấy.
+- Tua nhanh **không tự duyệt**: không ai duyệt đơn thì kệ trống dần, lô đã rút kệ nằm chờ ghi hủy.
 
-## 4c. Tiền và báo cáo (2 phút, tùy chọn)
+## 7. Chứng minh hiệu quả (1 phút)
 
-- Duyệt một đề xuất **Trả NCC**: thẻ ghi rõ chỉ tách hàng chờ NCC lấy. Vào **Đặt & nhận hàng → Phiếu trả nhà cung cấp**: phiếu ở trạng thái "Đã gửi đề nghị", lợi nhuận gộp chưa đổi. Bấm **NCC đã lấy hàng**, sửa số NCC thực nhận: lúc này mới ghi tiền hoàn (NCC sữa demo đổi hàng mới thay vì hoàn tiền). Thử **NCC từ chối**: hàng quay lại bán.
-- **Phân tích**: KPI có thêm GMROI và hao hụt (đã trừ vào lợi nhuận gộp), tồn trung bình lấy từ ảnh chụp cuối ngày; bảng **Hủy theo lý do** và **Điểm nhà cung cấp**.
-- **Kiểm kê → Kiểm kê theo SKU**: mặc định là phiếu "đến lịch đếm và nghi tồn ảo", mỗi dòng có lý do.
-- **Danh mục**: mặt hàng bán chưa đủ 8 tuần hiện nhãn "hàng mới", không bị đề xuất ngừng nhập. Thẻ đề xuất ngừng nhập có kế hoạch xả tồn.
-- Đề xuất giờ vàng cho cơm hộp ghi "từ 14h" (sau giờ trưa), bánh mì "từ 11h"; mức giảm không vượt trần cấu hình của nhóm hàng.
+Vào **Phân tích → Backtest A/B trên các điểm FRN**. Ba chính sách chạy trên **cùng nhu cầu thật** của 50 điểm bán giữ lại, trong 37 ngày mà mô hình backtest chưa từng thấy:
+- **A:** làm theo kinh nghiệm, có giờ vàng;
+- **B-EWMA:** Ops Chest với engine cũ;
+- **B-ML:** Ops Chest với LightGBM.
 
-## 5. Chứng minh hiệu quả (1 phút)
+Đọc trung vị và khoảng tứ phân vị qua 50 điểm, tỷ lệ số điểm B tốt hơn A, và bảng độ nhạy (khách phản ứng yếu hơn, Store Manager chỉ duyệt 60–80%, tắt sàn mức phục vụ…). Nói rõ: nhu cầu là thật, nhưng giá, HSD và phản ứng với giảm giá vẫn là giả định.
 
-Vào **Phân tích → Mô phỏng A/B → Chạy 60 ngày**. So sánh lợi nhuận gộp, tỷ lệ hủy, tỷ lệ hết hàng giữa chính sách "kinh nghiệm" và Ops Chest trên cùng nhu cầu khách. Kéo xuống bảng **độ nhạy**: nhấn mạnh rằng giả lập cố tình cho khách phản ứng với giảm giá yếu hơn engine tin, và kết quả vẫn dương ở mọi kịch bản. Nói thẳng đánh đổi: nhờ sàn mức phục vụ B không hết hàng nhiều hơn A, nhưng phần lợi nhuận tăng thêm nhỏ hơn bản trước; dòng "B không có sàn mức phục vụ" cho thấy cách đặt cũ lãi hơn nhưng để thiếu hàng nhiều hơn (xem `nghiep-vu.md` mục 5).
+Nói thẳng kết quả ([ml-frn.md](ml-frn.md), mục 5.6):
+- Ops Chest lãi hơn cách làm theo kinh nghiệm khoảng **+4%** (trung vị) và giảm hết hàng; với hàng kéo khách, hết hàng giảm từ 8,7% xuống 2,7%.
+- **LightGBM dự báo chính xác hơn nhưng không lãi hơn EWMA**: chỉ thắng ở 34% số điểm, thua ở điểm bán nhỏ. Nó giảm hết hàng nhưng đặt dư hơn nên hủy nhiều hơn.
+- Bài học: thước đo của dự báo (WAPE) và thước đo của quyết định (lãi) không trùng nhau. Bộ chọn mô hình nên chọn theo kết quả quyết định, đó là hướng làm tiếp.

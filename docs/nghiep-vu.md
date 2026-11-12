@@ -158,6 +158,10 @@ Lưu ý: dữ liệu giả lập biết chính xác "nhu cầu hụt". Cửa hà
 
 ## 5. Kết quả mô phỏng A/B (`python -m app.sim.backtest`)
 
+> **Cập nhật 12/11/2026.** Mục này là kết quả trên **thế giới giả lập cũ** (263 SKU, nhu cầu do nhóm tự sinh), giữ lại để đối chiếu.
+> - Kết quả mới, trên **nhu cầu thật** của 50 điểm bán FreshRetailNet-50K, nằm ở [ml-frn.md](ml-frn.md), mục 5.6: Ops Chest lãi hơn cách làm theo kinh nghiệm khoảng +4% (trung vị) và giảm hết hàng.
+> - Dự báo LightGBM chính xác hơn EWMA nhưng **không** lãi hơn EWMA trong backtest.
+
 Hai chính sách chạy trên cùng cửa hàng, với **cùng nhu cầu khách** (tất định theo seed):
 
 - **A, "kinh nghiệm":** mức tồn = trung bình doanh số 4 tuần × hệ số an toàn; cuối ngày giảm 30% hàng hết hạn hôm nay. Không biết thứ trong tuần, Tết, hay việc doanh số bị chặn khi hết hàng.

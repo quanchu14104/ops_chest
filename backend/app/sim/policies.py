@@ -15,7 +15,9 @@ from datetime import date, timedelta
 from app.engines.abc_xyz import Z_BY_CLASS, SkuStats, classify
 from app.engines.disposition import ELASTICITY, EVENING_SHARE, DispositionInput, best
 from app.engines.expiry import LotInput, project_lots
-from app.engines.forecast import baseline_demand, estimate_event_factors, forecast_demand
+from app.engines.forecast import baseline_demand, estimate_event_factors
+from app.engines.forecast_router import forecast as route_forecast
+from app.sim.frn import holiday_of as frn_holiday_of
 from app.config import service_floors
 from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, review_period, schedule,
                                        service_floor)
@@ -82,8 +84,11 @@ class OpsChestPolicy(Policy):
 
     def __init__(self, dispose: bool = True, lookback_classify: int = 90, adjust_markdown: bool = True,
                  approval_rate: float = 1.0, service_floors: bool = True, floors: dict | None = None,
-                 dayparts: bool = True):
+                 dayparts: bool = True, ml_model: str | None = None):
         self.dispose = dispose
+        # Du bao: None = engine EWMA; "" / "bt_" = bo chon LightGBM/EWMA voi mo hinh chay that / mo hinh backtest
+        # (mo hinh backtest chi thay du lieu truoc ky so sanh). Chi ap cho mat hang co nhu cau FRN.
+        self.ml_model = ml_model
         # San muc phuc vu theo vai tro (N6). Tat = cach cu: newsvendor co the de thieu hang toi 70% so ngay.
         self.service_floors = service_floors
         self.floors = floors  # None = lay theo config (SERVICE_FLOOR_*)
@@ -141,8 +146,14 @@ class OpsChestPolicy(Policy):
     def _forecast(self, sim: StoreSim, p: ProductSpec, end: date, horizon: int, start: date | None = None):
         h = sim.hist[p.sku]
         events = self._event_factors(sim, end + timedelta(days=1)).get(p.sku, {})
-        return forecast_demand(self._demand(sim, p, 120), end, horizon, stockout=h["stockout"][-120:],
-                               start=start, event_factors=events)
+        statics = None
+        store = getattr(sim.demand, "store", None)
+        if self.ml_model is not None and p.frn_id is not None and store is not None:
+            x = store.series[p.frn_id]
+            statics = (x.management_group_id, x.first_category_id, x.second_category_id)
+        return route_forecast(self._demand(sim, p, 120), end, horizon, stockout=h["stockout"][-120:],
+                              start=start, event_factors=events, frn_statics=statics, model=self.ml_model or "",
+                              holiday_of=frn_holiday_of(store) if store is not None else None)
 
     # --- xu ly can date (sang som, truoc khi ban) ---
     def pre_sales(self, sim: StoreSim, d: date) -> None:

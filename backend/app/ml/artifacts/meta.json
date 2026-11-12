@@ -1,0 +1,213 @@
+{
+ "version": 3,
+ "features": [
+  "lag1",
+  "lag2",
+  "lag3",
+  "lag4",
+  "lag5",
+  "lag6",
+  "lag7",
+  "mean3",
+  "mean7",
+  "mean14",
+  "same_wd",
+  "same_wd_last",
+  "std28",
+  "zero28",
+  "stockout28",
+  "stockout7",
+  "days_since_stockout",
+  "stockout_last",
+  "trend",
+  "log_level",
+  "ewma_h",
+  "ewma_sigma",
+  "h",
+  "target_wd",
+  "origin_wd",
+  "target_holiday",
+  "mgmt_group",
+  "cat1",
+  "cat2"
+ ],
+ "categorical": [
+  "target_wd",
+  "origin_wd",
+  "mgmt_group",
+  "cat1",
+  "cat2"
+ ],
+ "k_scale": 10.0,
+ "window": 28,
+ "max_h": 7,
+ "dates": [
+  "2024-03-28",
+  "2024-07-02"
+ ],
+ "cutoff_day": 89,
+ "cutoff_date": "2024-06-25",
+ "t0_day": 59,
+ "t0_date": "2024-05-26",
+ "demo_store": 18,
+ "heldout_stores": [
+  18,
+  488,
+  786,
+  399,
+  114,
+  552,
+  432,
+  192,
+  298,
+  867,
+  193,
+  420,
+  243,
+  40,
+  415,
+  407,
+  710,
+  494,
+  390,
+  583,
+  264,
+  753,
+  143,
+  449,
+  752,
+  258,
+  620,
+  513,
+  103,
+  303,
+  443,
+  663,
+  765,
+  803,
+  879,
+  48,
+  4,
+  104,
+  245,
+  548,
+  691,
+  223,
+  714,
+  888,
+  701,
+  869,
+  766,
+  629,
+  713,
+  532
+ ],
+ "quantiles": [
+  0.1,
+  0.5,
+  0.9
+ ],
+ "segment_cuts_oc_units": [
+  5.373333333333332,
+  8.722222222222221
+ ],
+ "intermittent_zero_share": 0.3,
+ "deflate": {
+  "elasticity": 0.0,
+  "activity_uplift": 0.0
+ },
+ "use_ml_segments": [
+  "ban_chay|deu",
+  "ban_it|deu",
+  "ban_it|lat_nhat",
+  "ban_vua|deu",
+  "ban_vua|lat_nhat"
+ ],
+ "runtime_s": 9077,
+ "params": {
+  "num_leaves": 127,
+  "min_data_in_leaf": 200,
+  "learning_rate": 0.03
+ },
+ "train_info": {
+  "q50": {
+   "rounds": 502,
+   "seconds": 1245,
+   "valid_pinball": 0.24890454124360062,
+   "refit_all_rounds": 552
+  },
+  "q10": {
+   "rounds": 677,
+   "seconds": 1343,
+   "valid_pinball": 0.08791328252666092,
+   "refit_all_rounds": 744
+  },
+  "q90": {
+   "rounds": 310,
+   "seconds": 960,
+   "valid_pinball": 0.14385512796664657,
+   "refit_all_rounds": 341
+  },
+  "bt_q50": {
+   "rounds": 291,
+   "seconds": 406,
+   "valid_pinball": 0.21111916593166374
+  },
+  "bt_q10": {
+   "rounds": 257,
+   "seconds": 355,
+   "valid_pinball": 0.07663896040017097
+  },
+  "bt_q90": {
+   "rounds": 270,
+   "seconds": 359,
+   "valid_pinball": 0.1164009664127129
+  }
+ },
+ "metrics_eval_week": {
+  "lightgbm": {
+   "n": 11037,
+   "wape": 0.30169155012463705,
+   "bias": 0.02711338413011101,
+   "pinball50": 0.15084577506231853,
+   "pinball10": 0.058610558545700416,
+   "pinball90": 0.07745592718613747,
+   "coverage80": 0.812267826402102
+  },
+  "ewma_oc": {
+   "n": 11037,
+   "wape": 0.350643036558713,
+   "bias": 0.06946130106368348,
+   "pinball50": 0.1753215182793565,
+   "pinball10": 0.07038383392857855,
+   "pinball90": 0.08873426671327113,
+   "coverage80": 0.7260125033976624
+  },
+  "ewma_khong_co_het_hang": {
+   "n": 11037,
+   "wape": 0.35058080492709287,
+   "bias": -0.10750600374077494,
+   "pinball50": 0.17529040246354644,
+   "pinball10": 0.06731563875956167,
+   "pinball90": 0.09449062490423703,
+   "coverage80": 0.7595361058258585
+  },
+  "cung_thu_tuan_truoc": {
+   "n": 11037,
+   "wape": 0.38650794351864526,
+   "bias": -0.007414318797820481,
+   "pinball50": 0.19325397175932263
+  },
+  "tb_28_ngay": {
+   "n": 11037,
+   "wape": 0.3548244148704705,
+   "bias": -0.10977189659933653,
+   "pinball50": 0.17741220743523525
+  }
+ },
+ "refit_all": [
+  "q50",
+  "q10",
+  "q90"
+ ]
+}

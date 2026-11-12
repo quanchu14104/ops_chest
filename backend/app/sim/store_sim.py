@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from app.engines.kpi import KpiTotals
 from app.engines.replenishment import next_delivery
 from app.sim.catalog import ProductSpec, SupplierSpec
-from app.sim.demand import _poisson, _rng, expected_demand, sample_demand
+from app.sim.demand import DemandSource, SyntheticDemand, _poisson, _rng
 from app.sim.world import REFERENCE_WORLD, WorldParams
 
 
@@ -66,8 +66,9 @@ def can_order(sup, d: date) -> bool:
 
 class StoreSim:
     def __init__(self, suppliers: list[SupplierSpec], products: list[ProductSpec], seed: int = 7,
-                 record: bool = False, world: WorldParams = REFERENCE_WORLD):
+                 record: bool = False, world: WorldParams = REFERENCE_WORLD, demand: DemandSource | None = None):
         self.seed = seed
+        self.demand = demand or SyntheticDemand(seed)
         self.world = world
         self.suppliers = {s.code: s for s in suppliers}
         self.products = products
@@ -186,7 +187,7 @@ class StoreSim:
             sku = p.sku
             lots = self.lots[sku]
             lots.sort(key=lambda l: (l.expiry, l.lot_no))
-            need = sample_demand(self.seed, p, d)
+            need = self.demand.need(p, d)
             # sold, rev, cogs, md_loss, lost, so ban giam gia ca ngay, tong (so x muc giam), so ban gio vang
             a = acc[sku] = [0, 0.0, 0.0, 0.0, 0, 0, 0.0, 0]
             from_back = self._non_fefo_units(sku, d, need)
@@ -203,7 +204,7 @@ class StoreSim:
             md_lots = [l for l in lots if l.markdown > 0 and l.qty > 0]
             if md_lots:
                 top = max(l.markdown for l in md_lots)
-                lam = expected_demand(self.seed, p, d) * self.world.elasticity[p.freshness_class] * top
+                lam = self.demand.expected(p, d) * self.world.elasticity[p.freshness_class] * top
                 extra = _poisson(_rng(self.seed, "md", sku, d.toordinal()), lam)
                 for lot in md_lots:
                     take = min(lot.qty, extra)
@@ -224,7 +225,7 @@ class StoreSim:
                 rebate = min(share * (a[0] - a[5]), sum(l.qty for l in ev_lots)) * p.unit_price * top
                 a[1] -= rebate
                 a[3] += rebate
-                lam = (expected_demand(self.seed, p, d) * share
+                lam = (self.demand.expected(p, d) * share
                        * self.world.elasticity[p.freshness_class] * top)
                 extra = _poisson(_rng(self.seed, "ev", sku, d.toordinal()), lam)
                 for lot in ev_lots:

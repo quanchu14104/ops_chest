@@ -6,6 +6,9 @@ _tmp = Path(tempfile.mkdtemp(prefix="opschest_test_"))
 os.environ["DATABASE_URL"] = f"sqlite:///{(_tmp / 'test.db').as_posix()}"
 os.environ["SIM_TODAY"] = "2026-11-07"  # Thu 7 -> NCC01, NCC02 (hang ngay) den lich dat
 os.environ["ENABLE_SCHEDULER"] = "false"
+# Bo test quy tac nghiep vu chay tren the gioi gia lap cu: giu gia dinh co gian 3,0 va engine EWMA
+os.environ["ELASTICITY_FROM_FRN"] = "false"
+os.environ["FORECAST_ENGINE"] = "ewma"
 os.environ["PDF_OUTPUT_DIR"] = str(_tmp / "pdf")
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -23,7 +26,7 @@ settings.llm_model_fallback = ""
 @pytest.fixture(scope="session")
 def seeded():
     from app.sim.seed import seed
-    return seed(days=200, reset=True)
+    return seed(days=200, reset=True, source="synthetic")  # test quy tac can Tet, hang dai ngay
 
 
 @pytest.fixture()

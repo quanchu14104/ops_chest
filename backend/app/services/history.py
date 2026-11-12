@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 from app.clock import today
 from app.engines.abc_xyz import SkuClass, SkuStats, classify
 from app.engines.disposition import ELASTICITY
-from app.engines.forecast import Forecast, baseline_demand, estimate_event_factors, forecast_demand
-from app.models import DailySales, DemandHypothesis, Product, StockMovement
+from app.engines.forecast import Forecast, baseline_demand, estimate_event_factors
+from app.engines.forecast_router import forecast as route_forecast
+from app.models import AppMeta, DailySales, DemandHypothesis, Product, StockMovement
 
 
 @dataclass
@@ -106,15 +107,30 @@ def _apply_hypotheses(fc: Forecast, active: list[DemandHypothesis]) -> None:
     fc.adjustments = [{"hypothesis_id": i, "factor": f} for i, f in applied.items()]
 
 
+def _frn_context(db: Session, product: Product):
+    """Ma nhom FRN va lich ngay le cho bo chon du bao; (None, None) neu cua hang khong chay du lieu FRN."""
+    row = db.get(AppMeta, "frn_store")
+    if row is None:
+        return None, None
+    from app.sim import frn
+
+    statics = frn.statics_for(int(row.value), product.sku)
+    if statics is None:
+        return None, None
+    return statics, frn.holiday_of(frn.store(int(row.value)))
+
+
 def forecast_for(db: Session, product: Product, horizon: int = 14, start: date | None = None,
                  with_hypotheses: bool = True) -> Forecast:
     h = load_history(db)
     hyps = hypotheses_for(db, product)
     skip = {x.start_date + timedelta(days=i) for x in hyps for i in range((x.end_date - x.start_date).days + 1)}
-    fc = forecast_demand(
+    statics, hol = _frn_context(db, product)
+    fc = route_forecast(
         h.series(product.id, "demand", 120), h.end, horizon,
         stockout=h.series(product.id, "stockout", 120),
         start=start or today(), event_factors=event_factors(h, product.id), skip_dates=skip,
+        frn_statics=statics, holiday_of=hol,
     )
     if with_hypotheses:
         _apply_hypotheses(fc, [x for x in hyps if x.status == "ACTIVE"])

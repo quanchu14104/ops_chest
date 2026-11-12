@@ -11,7 +11,12 @@ Agent dạng chatbot (chat là giao diện chính, dashboard chỉ để tham kh
 
 **Mọi quyết định cuối cùng thuộc về Store Manager (Human-in-the-loop).** Ops Chest chỉ *đề xuất*. Đặt hàng, gửi email, đổi giá, ghi hủy và ngừng nhập chỉ xảy ra khi Store Manager bấm duyệt.
 
-> Đây là đồ án/demo. Dữ liệu là **giả lập**: 1 cửa hàng, 263 SKU, 10 nhà cung cấp, 365 ngày. Thương hiệu, nhà cung cấp và email đều là tên hư cấu (`*.test`). Mọi email đều rơi vào hộp thư sandbox Mailpit, không gửi ra Internet.
+> Đây là đồ án/demo.
+> - **Nhu cầu là dữ liệu thật** của bộ [FreshRetailNet-50K](https://huggingface.co/datasets/Dingdong-Inc/FreshRetailNet-50K) (Dingdong, giấy phép CC BY 4.0). Cửa hàng OC là điểm bán số 18 của FRN: 164 mặt hàng tươi, 90 ngày lịch sử, từ 28/03 đến 25/06/2024.
+> - **Phần còn lại vẫn là giả định có ghi chú:** tên hàng (FRN chỉ có mã số), giá, giá vốn, hạn sử dụng, nhà cung cấp, và phần vận hành (lô, đơn, sổ sách).
+> - Dự báo cho hàng tươi dùng mô hình **LightGBM huấn luyện trên Kaggle** với các điểm FRN khác. Xem [docs/ml-frn.md](docs/ml-frn.md).
+> - Thế giới giả lập cũ (263 SKU, 365 ngày) chỉ còn dùng cho bộ test quy tắc nghiệp vụ (`--source synthetic`).
+> - Tên nhà cung cấp và email đều là hư cấu (`*.test`). Mọi email đều rơi vào hộp thư sandbox Mailpit, không gửi ra Internet.
 
 ## Chạy nhanh (Docker)
 
@@ -26,9 +31,9 @@ docker compose up -d --build
 | API + tài liệu OpenAPI | http://localhost:8000/docs |
 | Hộp thư sandbox (đơn hàng PDF gửi tới đây) | http://localhost:8025 |
 
-- Lần chạy đầu, backend tự migrate schema (Alembic) và seed 365 ngày dữ liệu giả lập, mất khoảng 20 giây.
+- Lần chạy đầu, backend tự migrate schema (Alembic) và nạp 90 ngày của điểm FRN demo, mất khoảng 10 giây. Đồng hồ hệ thống đặt ở ngày 26/06/2024. Tua nhanh được tối đa 7 ngày (hết dữ liệu FRN vào 02/07/2024).
 - Tài khoản demo ghi trong `.env.example`: một Store Manager (được duyệt) và một nhân viên (chỉ xem, chat, nhận hàng).
-- Muốn demo ổn định theo một ngày cố định, đặt `SIM_TODAY` trong `.env` rồi seed lại:
+- Muốn nạp lại dữ liệu từ đầu (ví dụ sau khi tua nhanh), chạy lệnh sau. Thêm `--source synthetic` để dùng thế giới giả lập cũ:
 
   ```bash
   docker compose exec backend python -m app.sim.seed --reset
@@ -39,9 +44,9 @@ docker compose up -d --build
 ```bash
 cd backend
 uv sync
-uv run python -m app.sim.seed --reset      # SQLite ./ops_chest.db
+uv run python -m app.sim.seed --reset      # SQLite ./ops_chest.db, dữ liệu FRN
 uv run uvicorn app.api.main:app --reload
-uv run pytest -q                            # 155 test: engine, HITL, quy tắc nghiệp vụ, API, widget, bản tin, backtest
+uv run pytest -q                            # engine, HITL, quy tắc nghiệp vụ, API, widget, bản tin, backtest, FRN
 ```
 
 Frontend chạy bằng `cd frontend && npm install && npm run dev` (Node 20+). Email cần một SMTP ở `localhost:1025`, ví dụ chạy riêng Mailpit:
@@ -63,7 +68,8 @@ FastAPI
  ├─ proposals/  builders (tạo PENDING) · service (duyệt/sửa/từ chối) · executor (thực thi sau khi duyệt)
  ├─ notify/     email SMTP + PDF đơn hàng (reportlab, font tiếng Việt)
  ├─ jobs/       06:30 quét sáng (đơn hàng, cận date, quá hạn), 17:00 giờ vàng
- └─ sim/        bộ giả lập cửa hàng + seed + backtest A/B + tua nhanh demo
+ ├─ ml/         mô hình LightGBM (FRN) + bộ dự báo; huấn luyện ở ml/kaggle/train_frn.py (chạy trên Kaggle)
+ └─ sim/        nguồn nhu cầu FRN / giả lập + seed + backtest A/B nhiều điểm bán + tua nhanh demo
 PostgreSQL (SQLite khi dev/test) · Alembic · Mailpit
 ```
 
