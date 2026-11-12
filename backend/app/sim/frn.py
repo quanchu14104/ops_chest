@@ -138,3 +138,11 @@ def statics_for(store_id: int, sku: str) -> tuple[int, int, int] | None:
     s = stores().get(store_id, None)
     x = s.series.get(int(sku[1:])) if s else None
     return (x.management_group_id, x.first_category_id, x.second_category_id) if x else None
+
+
+def store_size(store_id: int) -> int | None:
+    """So mat hang FRN cua diem ban (= so mat hang cua cua hang OC dung du lieu diem do): bac quy mo trong bo chon."""
+    if not available():
+        return None
+    s = stores().get(store_id, None)
+    return len(s.series) if s else None

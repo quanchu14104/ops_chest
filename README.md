@@ -14,7 +14,7 @@ Agent dạng chatbot (chat là giao diện chính, dashboard chỉ để tham kh
 > Đây là đồ án/demo.
 > - **Nhu cầu là dữ liệu thật** của bộ [FreshRetailNet-50K](https://huggingface.co/datasets/Dingdong-Inc/FreshRetailNet-50K) (Dingdong, giấy phép CC BY 4.0). Cửa hàng OC là điểm bán số 18 của FRN: 164 mặt hàng tươi, 90 ngày lịch sử, từ 28/03 đến 25/06/2024.
 > - **Phần còn lại vẫn là giả định có ghi chú:** tên hàng (FRN chỉ có mã số), giá, giá vốn, hạn sử dụng, nhà cung cấp, và phần vận hành (lô, đơn, sổ sách).
-> - Dự báo cho hàng tươi dùng mô hình **LightGBM huấn luyện trên Kaggle** với các điểm FRN khác. Xem [docs/ml-frn.md](docs/ml-frn.md).
+> - Dự báo cho hàng tươi dùng mô hình **LightGBM huấn luyện trên Kaggle** với các điểm FRN khác. Mặt hàng nào dùng LightGBM, mặt hàng nào giữ EWMA được chọn **theo lãi trong backtest**, không theo sai số dự báo. Ngoài mẫu, cách chọn này chỉ hòa engine EWMA (+0,1%). Xem [docs/ml-frn.md](docs/ml-frn.md), mục 5.6–5.7.
 > - Thế giới giả lập cũ (263 SKU, 365 ngày) chỉ còn dùng cho bộ test quy tắc nghiệp vụ (`--source synthetic`).
 > - Tên nhà cung cấp và email đều là hư cấu (`*.test`). Mọi email đều rơi vào hộp thư sandbox Mailpit, không gửi ra Internet.
 

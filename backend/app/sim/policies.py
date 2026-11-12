@@ -17,6 +17,7 @@ from app.engines.disposition import ELASTICITY, EVENING_SHARE, DispositionInput,
 from app.engines.expiry import LotInput, project_lots
 from app.engines.forecast import baseline_demand, estimate_event_factors
 from app.engines.forecast_router import forecast as route_forecast
+from app.ml.forecaster import METHOD as ML_METHOD
 from app.sim.frn import holiday_of as frn_holiday_of
 from app.config import service_floors
 from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, review_period, schedule,
@@ -84,11 +85,18 @@ class OpsChestPolicy(Policy):
 
     def __init__(self, dispose: bool = True, lookback_classify: int = 90, adjust_markdown: bool = True,
                  approval_rate: float = 1.0, service_floors: bool = True, floors: dict | None = None,
-                 dayparts: bool = True, ml_model: str | None = None):
+                 dayparts: bool = True, ml_model: str | None = None, gate: dict | None = None,
+                 sigma_from_ewma: bool = False):
         self.dispose = dispose
         # Du bao: None = engine EWMA; "" / "bt_" = bo chon LightGBM/EWMA voi mo hinh chay that / mo hinh backtest
         # (mo hinh backtest chi thay du lieu truoc ky so sanh). Chi ap cho mat hang co nhu cau FRN.
         self.ml_model = ml_model
+        # Bo chon tam (backtest truyen vao, khong doc decision_gate.json): nhom dung ML va bien the sigma.
+        # None = de forecaster tu doc file / meta.json.
+        self.gate = gate
+        # Chan doan (chi backtest): du bao diem cua LightGBM + do lech chuan cua EWMA cho cung mat hang. Tach phan
+        # "du bao diem tot hon" khoi phan "khoang rong hon lam dat du".
+        self.sigma_from_ewma = sigma_from_ewma
         # San muc phuc vu theo vai tro (N6). Tat = cach cu: newsvendor co the de thieu hang toi 70% so ngay.
         self.service_floors = service_floors
         self.floors = floors  # None = lay theo config (SERVICE_FLOOR_*)
@@ -151,9 +159,15 @@ class OpsChestPolicy(Policy):
         if self.ml_model is not None and p.frn_id is not None and store is not None:
             x = store.series[p.frn_id]
             statics = (x.management_group_id, x.first_category_id, x.second_category_id)
-        return route_forecast(self._demand(sim, p, 120), end, horizon, stockout=h["stockout"][-120:],
-                              start=start, event_factors=events, frn_statics=statics, model=self.ml_model or "",
-                              holiday_of=frn_holiday_of(store) if store is not None else None)
+        demand, stockout = self._demand(sim, p, 120), h["stockout"][-120:]
+        fc = route_forecast(demand, end, horizon, stockout=stockout, start=start, event_factors=events,
+                            frn_statics=statics, model=self.ml_model or "",
+                            holiday_of=frn_holiday_of(store) if store is not None else None,
+                            store_size=len(store.series) if store is not None else None, gate=self.gate)
+        if self.sigma_from_ewma and fc.method == ML_METHOD:
+            ewma = route_forecast(demand, end, horizon, stockout=stockout, start=start, event_factors=events)
+            fc.sigma_daily, fc.sigma_lo, fc.sigma_hi = ewma.sigma_daily, None, None
+        return fc
 
     # --- xu ly can date (sang som, truoc khi ban) ---
     def pre_sales(self, sim: StoreSim, d: date) -> None:

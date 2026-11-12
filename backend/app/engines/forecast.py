@@ -30,6 +30,15 @@ class Forecast:
     n_censored: int = 0
     method: str = "ewma_weekday_censored"
     adjustments: list[dict] = field(default_factory=list)  # gia thuyet cua SM da ap vao du bao
+    # Phan phoi lech (split-normal) cua mo hinh phan vi: do lech chuan phia duoi / phia tren cua nhu cau ngay.
+    # None = doi xung, dung sigma_daily (EWMA va che do cu). Dat hang chon phia theo dau cua z.
+    sigma_lo: float | None = None
+    sigma_hi: float | None = None
+
+    def sigma_for(self, z: float) -> float:
+        """Do lech chuan ngay dung cho he so z: z >= 0 (vuot muc giua) lay phia tren, z < 0 lay phia duoi."""
+        side = self.sigma_hi if z >= 0 else self.sigma_lo
+        return self.sigma_daily if side is None else side
 
     def total(self, offset: int, days: int) -> float:
         return sum(self.at(offset + i) for i in range(days))

@@ -158,10 +158,13 @@ def test_router_respects_config_and_eligibility(monkeypatch):
         def __init__(self, ok):
             self.ok = ok
 
-        def eligible(self, history):
+        def eligible(self, history, store_size=None, gate=None):
             return self.ok
 
-        def forecast(self, history, stockout, end, horizon, statics, start=None, holiday_of=None):
+        def asymmetric(self, gate=None):
+            return False
+
+        def forecast(self, history, stockout, end, horizon, statics, start=None, holiday_of=None, asymmetric=None):
             calls.append(statics)
             return Forecast(start=end + timedelta(days=1), daily=[1.0] * horizon, sigma_daily=1.0, level=1.0,
                             weekday_index=[1.0] * 7, method="lightgbm_frn")
@@ -223,3 +226,113 @@ def test_real_model_forecast_still_capped_by_capacity_and_shelf_life():
     assert capped.qty <= 5 and capped.capped_by_capacity
     free = compute_order(ReplenishmentInput(**base))
     assert free.qty <= free.shelf_life_cap + 1  # tran HSD 2 ngay van chan khi du bao do LightGBM tinh
+
+
+def test_real_model_split_normal_matches_quantiles():
+    """sigma_lo / sigma_hi khop q10 / q90 quanh q50: q10 = mid - Z90*sigma_lo, q90 = mid + Z90*sigma_hi (TB 7 ngay)."""
+    from app.ml.forecaster import Z90
+    m = _real_model()
+    rng = np.random.default_rng(5)
+    hist = list(rng.poisson(12, 60).astype(float))
+    end = date(2024, 5, 31)
+    m._cache.clear()
+    fc = m.forecast(hist, [False] * 60, end, 14, (1, 10, 100), asymmetric=True)
+    lo, mid, hi, _ = next(iter(m._cache.values()))
+    lo, mid, hi = lo[0], mid[0], hi[0]
+    assert fc.sigma_lo == pytest.approx(max(float(np.mean(mid - lo)) / Z90, 0.1))
+    assert fc.sigma_hi == pytest.approx(max(float(np.mean(hi - mid)) / Z90, 0.1))
+    assert fc.sigma_daily == pytest.approx(max(float(np.mean(hi - lo)) / (2 * Z90), 0.1))  # giu nguyen sigma cu
+    sym = m.forecast(hist, [False] * 60, end, 14, (1, 10, 100), asymmetric=False)
+    assert sym.sigma_lo is None and sym.sigma_hi is None and sym.daily == fc.daily
+
+
+# ---------------------------------------------------------------- bo chon theo lai (decision_gate.json)
+def _stub_forecaster(art_dir, use_ml=("ban_vua|deu",)):
+    """MlForecaster khong nap LightGBM: chi phan nhom va bo chon (doc decision_gate.json trong art_dir)."""
+    from app.ml.forecaster import MlForecaster, load_gate
+
+    class Stub(MlForecaster):
+        def __init__(self):
+            self.cuts, self.zero_cut, self.use_ml = (5.0, 9.0), 0.3, set(use_ml)
+            self.gate = load_gate(art_dir)
+
+        def forecast(self, history, stockout, end, horizon, statics, start=None, holiday_of=None, asymmetric=None):
+            return Forecast(start=end + timedelta(days=1), daily=[1.0] * horizon, sigma_daily=1.0, level=1.0,
+                            weekday_index=[1.0] * 7, method="lightgbm_frn",
+                            sigma_lo=0.5 if asymmetric else None, sigma_hi=2.0 if asymmetric else None)
+    return Stub()
+
+
+def test_gate_file_overrides_meta_segments(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr("app.config.settings.forecast_engine", "auto")
+    mid = [7.0] * 60  # ban_vua|deu
+    m = _stub_forecaster(tmp_path)
+    assert m.gate is None and m.eligible(mid)  # thieu file: theo meta (ban_vua|deu duoc dung ML)
+    monkeypatch.setattr("app.ml.forecaster.load", lambda prefix="", art_dir=None: m)
+    fc = forecast_router.forecast(mid, END, 7, frn_statics=(1, 2, 3), store_size=164)
+    assert fc.method == "lightgbm_frn" and fc.sigma_hi is None  # meta: doi xung nhu cu
+
+    (tmp_path / "decision_gate.json").write_text(json.dumps(
+        {"variant": "split", "size_cut": 30, "use_ml": ["ban_vua|deu|lon"]}), encoding="utf-8")
+    m = _stub_forecaster(tmp_path)
+    monkeypatch.setattr("app.ml.forecaster.load", lambda prefix="", art_dir=None: m)
+    big = forecast_router.forecast(mid, END, 7, frn_statics=(1, 2, 3), store_size=164)  # cua hang demo: 164 mat hang
+    assert big.method == "lightgbm_frn" and (big.sigma_lo, big.sigma_hi) == (0.5, 2.0)  # bien the split
+    small = forecast_router.forecast(mid, END, 7, frn_statics=(1, 2, 3), store_size=20)  # diem nho: nhom bi loai
+    assert small.method.startswith("ewma")
+    assert forecast_router.forecast(mid, END, 7, frn_statics=(1, 2, 3)).method.startswith("ewma")  # khong ro quy mo
+    assert forecast_router.forecast([1.0] * 60, END, 7, frn_statics=(1, 2, 3), store_size=164).method.startswith("ewma")
+    # bo chon tam cua backtest thay cho file
+    assert forecast_router.forecast(mid, END, 7, frn_statics=(1, 2, 3), store_size=20,
+                                    gate={"variant": "sym", "size_cut": None, "use_ml": "all"}).method == "lightgbm_frn"
+
+
+def test_broken_gate_file_falls_back_to_meta(tmp_path):
+    (tmp_path / "decision_gate.json").write_text("{khong phai json", encoding="utf-8")
+    m = _stub_forecaster(tmp_path)
+    assert m.gate is None and m.eligible([7.0] * 60)
+
+
+def test_demo_store_size_is_its_frn_sku_count():
+    if not frn.available():
+        pytest.skip("Chưa có dữ liệu FRN")
+    frn._all.cache_clear()
+    from app.ml.forecaster import store_tier
+    assert frn.store_size(frn.demo_store_id()) == len(frn.store().series) == 164
+    assert store_tier(164, 30) == "lon" and store_tier(30, 30) == "nho"
+
+
+def _sku_rows():
+    """4 diem, 2 nhom. ML thang o diem lon (+), thua o diem nho (-)."""
+    rows = []
+    for sid, size, d in ((1, 20, -50.0), (2, 25, -40.0), (3, 120, 30.0), (4, 150, 20.0)):
+        for seg in ("ban_vua|deu", "ban_it|deu"):
+            rows.append({"store_id": sid, "size": size, "sku": f"{sid}{seg}", "segment": seg,
+                         "gp": {"b_ewma": 100.0, "sym": 100.0 + d, "split": 100.0 + d / 2}})
+    return rows, {1: 1000.0, 2: 1000.0, 3: 1000.0, 4: 1000.0}
+
+
+def test_choose_gate_picks_profitable_groups_by_size():
+    from app.sim.backtest import choose_gate
+    rows, gp = _sku_rows()
+    g = choose_gate(rows, gp, cuts=(None, 50))
+    assert g["size_cut"] == 50 and g["variant"] == "sym"
+    assert g["use_ml"] == ["ban_it|deu|lon", "ban_vua|deu|lon"]
+    assert choose_gate(rows, gp, cuts=(None,))["use_ml"] == []  # khong chia quy mo: tong ML thua -> EWMA moi noi
+
+
+def test_crossfit_never_uses_test_stores():
+    from app.sim.backtest import crossfit_gates, fold_split
+    rows, gp = _sku_rows()
+    fold = fold_split({1: 20, 2: 25, 3: 120, 4: 150}, seed=0)
+    assert sorted(fold.values()) == [0, 0, 1, 1]
+    assert fold[1] != fold[2] and fold[3] != fold[4]  # can theo quy mo: moi nua co 1 diem nho, 1 diem lon
+    gates = crossfit_gates(rows, gp, fold, cuts=(None, 50))
+    for f in (0, 1):
+        assert set(gates[f]["stores"]) == {s for s, k in fold.items() if k != f}
+        # Doi lai cua cac diem "thi" (nua f) thanh cuc doan: bo chon cua nua f khong doi
+        poisoned = [dict(r, gp={k: (1e9 if k != "b_ewma" else 0.0) for k in r["gp"]}) if fold[r["store_id"]] == f
+                    else r for r in rows]
+        again = crossfit_gates(poisoned, gp, fold, cuts=(None, 50))
+        assert again[f]["use_ml"] == gates[f]["use_ml"] and again[f]["variant"] == gates[f]["variant"]

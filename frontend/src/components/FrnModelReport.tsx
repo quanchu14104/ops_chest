@@ -174,12 +174,14 @@ function GroupTable({ data, mode, gate }: { data: Board; mode: Mode; gate: Recor
     <div className="table-wrap" style={{ marginTop: 16 }}>
       <h3>Theo nhóm hàng: LightGBM hay engine cũ</h3>
       <p className="small secondary" style={{ marginTop: -4 }}>
-        Cột Quyết định lấy từ bộ chọn dự báo: nhóm nào dùng LightGBM, nhóm nào giữ engine EWMA cũ. Số liệu theo đúng giai đoạn và cách chấm đang chọn ở trên.
+        Cột "Theo sai số" là bộ chọn cũ: nhóm nào LightGBM sai ít hơn EWMA trên tuần eval. Số liệu theo đúng giai đoạn và cách chấm đang chọn ở trên.
+        App hiện <b>không</b> dùng cột này mà chọn theo lãi trong backtest (decision_gate.json, xem mục Backtest A/B bên dưới): ở điểm bán lớn như
+        cửa hàng demo, LightGBM chỉ dùng cho hàng bán ít và bán vừa; hàng bán chạy giữ EWMA.
       </p>
       <table>
         <thead><tr>
           <th>Nhóm hàng</th><th className="num">Số dòng</th><th className="num">WAPE LightGBM</th><th className="num">WAPE EWMA</th>
-          <th className="num">Chênh lệch</th><th className="num">Độ phủ 80% (ML / EWMA)</th><th>Quyết định</th>
+          <th className="num">Chênh lệch</th><th className="num">Độ phủ 80% (ML / EWMA)</th><th>Theo sai số</th>
         </tr></thead>
         <tbody>{groups.map((g) => {
           const a = ml[g], b = oc[g];

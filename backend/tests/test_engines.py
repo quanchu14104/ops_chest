@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 
+import pytest
+
 from app.engines.abc_xyz import SkuStats, classify, delist_candidates
 from app.engines.disposition import DispositionInput, evaluate
 from app.engines.expiry import LotInput, project_lots
@@ -136,3 +138,44 @@ def test_abc_xyz_thresholds_and_delist_rules():
     assert cls["C1"].cell == "CZ"
     cands = delist_candidates(stats, cls)
     assert [c["sku"] for c in cands] == ["C1"]  # hang keo khach khong bao gio bi de xuat ngung nhap
+
+
+# ---------------- phan phoi lech (sigma_lo / sigma_hi cua mo hinh phan vi) ----------------
+def _skew(level: float, lo: float | None, hi: float | None, sigma: float = 2.0) -> Forecast:
+    fc = flat(level, sigma=sigma)
+    fc.sigma_lo, fc.sigma_hi = lo, hi
+    return fc
+
+
+def test_symmetric_forecast_orders_exactly_as_before():
+    """sigma_lo/hi = None: ket qua y het cong thuc cu (z * sigma_daily), ca hang tuoi lan hang ben."""
+    import math
+    from statistics import NormalDist
+    for kw in (dict(shelf_life_days=2, review_period_days=1, unit_cost=30, unit_price=100),   # newsvendor, z > 0
+               dict(shelf_life_days=2, review_period_days=1, unit_cost=95, unit_price=100),   # newsvendor, z < 0
+               dict(shelf_life_days=365, review_period_days=3)):                                # order-up-to
+        old = compute_order(inp(forecast=flat(10, sigma=3), **kw))
+        same = compute_order(inp(forecast=_skew(10, 3.0, 3.0, sigma=3), **kw))
+        assert old.to_dict() == same.to_dict()
+        L, R = 1, kw["review_period_days"]
+        horizon = R if kw["shelf_life_days"] <= R + 7 else L + R
+        assert old.safety_stock == pytest.approx(NormalDist().inv_cdf(old.service_level) * 3 * math.sqrt(horizon))
+
+
+def test_skewed_sigma_uses_upper_side_when_z_positive():
+    kw = dict(shelf_life_days=2, review_period_days=1, unit_cost=30, unit_price=100)  # muc phuc vu 70%
+    r = compute_order(inp(forecast=_skew(10, lo=0.5, hi=4.0), **kw))
+    ref = compute_order(inp(forecast=flat(10, sigma=4.0), **kw))  # doi xung voi sigma = phia tren
+    assert r.service_level > 0.5
+    assert r.safety_stock == pytest.approx(ref.safety_stock) and r.qty == ref.qty
+    assert r.shelf_life_cap == pytest.approx(ref.shelf_life_cap)  # tran HSD (z >= 0) cung dung phia tren
+
+
+def test_skewed_sigma_uses_lower_side_when_z_negative():
+    kw = dict(shelf_life_days=2, review_period_days=1, unit_cost=95, unit_price=100, salvage_per_unit=0)
+    r = compute_order(inp(forecast=_skew(10, lo=0.5, hi=4.0), **kw))
+    ref = compute_order(inp(forecast=flat(10, sigma=0.5), **kw))
+    assert r.service_level < 0.5
+    assert r.safety_stock == pytest.approx(ref.safety_stock) and r.safety_stock < 0
+    # tran HSD dung z_cap = 0 nen khong phu thuoc sigma
+    assert r.shelf_life_cap == pytest.approx(ref.shelf_life_cap)

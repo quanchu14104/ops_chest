@@ -196,19 +196,23 @@ def _run(base: StoreSim, start: date, days: int, policy: Policy, class_a: set[st
     sim.run(start, days, policy)
     k = summarize(sim.totals)
     k.update(_role_breakdown(sim, days, class_a))
+    # Lai theo mat hang (giong _class_breakdown): dau vao cua bo chon theo lai
+    k["sku_gp"] = {p.sku: sum(sim.hist[p.sku]["revenue"][-days:]) - sum(sim.hist[p.sku]["cogs"][-days:])
+                   - sum(sim.hist[p.sku]["waste_cost"][-days:]) for p in sim.products}
     return k
 
 
 FRN_SCENARIOS = {
-    # key: (nhan, ghi chu, ham tao chinh sach B, he so phan ung cua khach so voi uoc luong FRN)
-    "reference": ("Tham chiếu", "Khách phản ứng với giảm giá bằng 50% mức engine giả định (FRN không đo được độ co giãn đáng tin)", lambda: OpsChestPolicy(ml_model="bt_"), 1.0),
-    "world_50": ("Khách phản ứng bằng nửa tham chiếu", "25% mức engine giả định: giảm giá kém tác dụng hơn", lambda: OpsChestPolicy(ml_model="bt_"), 0.5),
-    "world_25": ("Khách phản ứng bằng 1/4 tham chiếu", "12,5% mức engine giả định: engine đánh giá quá cao giảm giá", lambda: OpsChestPolicy(ml_model="bt_"), 0.25),
-    "approve_80": ("Store Manager duyệt 80%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm", lambda: OpsChestPolicy(ml_model="bt_", approval_rate=0.8), 1.0),
-    "approve_60": ("Store Manager duyệt 60%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm", lambda: OpsChestPolicy(ml_model="bt_", approval_rate=0.6), 1.0),
-    "no_floor": ("B không có sàn mức phục vụ", "Newsvendor được để thiếu hàng", lambda: OpsChestPolicy(ml_model="bt_", service_floors=False), 1.0),
-    "daypart_flat": ("Giờ giảm giá cố định 18h", "Không dùng khung giờ bán học từ FRN", lambda: OpsChestPolicy(ml_model="bt_", dayparts=False), 1.0),
-    "order_only": ("B chỉ đặt hàng", "Tắt giảm giá và trả NCC: đo riêng phần đặt hàng", lambda: OpsChestPolicy(ml_model="bt_", dispose=False), 1.0),
+    # key: (nhan, ghi chu, ham tao chinh sach B tu bo chon, he so phan ung cua khach so voi uoc luong FRN).
+    # Moi kich ban dung bo chon B-gate cua diem do (hoc tren nua diem ban con lai: ngoai mau).
+    "reference": ("Tham chiếu", "Khách phản ứng với giảm giá bằng 50% mức engine giả định (FRN không đo được độ co giãn đáng tin)", lambda g: OpsChestPolicy(ml_model="bt_", gate=g), 1.0),
+    "world_50": ("Khách phản ứng bằng nửa tham chiếu", "25% mức engine giả định: giảm giá kém tác dụng hơn", lambda g: OpsChestPolicy(ml_model="bt_", gate=g), 0.5),
+    "world_25": ("Khách phản ứng bằng 1/4 tham chiếu", "12,5% mức engine giả định: engine đánh giá quá cao giảm giá", lambda g: OpsChestPolicy(ml_model="bt_", gate=g), 0.25),
+    "approve_80": ("Store Manager duyệt 80%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm", lambda g: OpsChestPolicy(ml_model="bt_", gate=g, approval_rate=0.8), 1.0),
+    "approve_60": ("Store Manager duyệt 60%", "Đơn không được duyệt thì SM tự đặt theo kinh nghiệm", lambda g: OpsChestPolicy(ml_model="bt_", gate=g, approval_rate=0.6), 1.0),
+    "no_floor": ("B không có sàn mức phục vụ", "Newsvendor được để thiếu hàng", lambda g: OpsChestPolicy(ml_model="bt_", gate=g, service_floors=False), 1.0),
+    "daypart_flat": ("Giờ giảm giá cố định 18h", "Không dùng khung giờ bán học từ FRN", lambda g: OpsChestPolicy(ml_model="bt_", gate=g, dayparts=False), 1.0),
+    "order_only": ("B chỉ đặt hàng", "Tắt giảm giá và trả NCC: đo riêng phần đặt hàng", lambda g: OpsChestPolicy(ml_model="bt_", gate=g, dispose=False), 1.0),
 }
 
 
@@ -228,59 +232,257 @@ def _summary(values: list[float]) -> dict:
     return {"median": q(0.5), "q25": q(0.25), "q75": q(0.75), "min": v[0], "max": v[-1], "n": len(v)}
 
 
+# ---------------------------------------------------------------- bo chon theo LAI (decision gate)
+# Bien the B tren moi diem FRN. "Tat ca" = LightGBM o moi mat hang du lich su (khong loc nhom): dung de do lai
+# theo nhom. b_ml giu nguyen nghia cu (nhom trong meta.json, chon theo sai so du bao) de so voi lan chay truoc.
+GATE_VARIANTS = ("sym", "split")  # bien the ung vien cho bo chon: sigma doi xung (cu) / phan phoi lech q10-q50-q90
+GATE_SIZE_CUTS = (None, 30, 50, 75)  # bac quy mo diem ban (so mat hang FRN): khong chia / <=cut va >cut
+ML_ALL = {"sym": "b_ml_all", "split": "b_ml_split"}
+B_VARIANTS = ("b_ewma", "b_ml", "b_ml_all", "b_ml_split", "b_ml_mid_ewma_sigma", "b_gate")
+
+
+def _short(v: str) -> str:
+    return {"b_ewma": "ewma", "b_ml": "ml"}.get(v, v[2:])
+
+
+def group_key(segment: str, store_size: int, size_cut: int | None) -> str:
+    from app.ml.forecaster import store_tier
+
+    return segment if size_cut is None else f"{segment}|{store_tier(store_size, size_cut)}"
+
+
+def choose_gate(skus: list[dict], store_gp: dict[int, float], variants=GATE_VARIANTS, cuts=GATE_SIZE_CUTS) -> dict:
+    """Chon bien the va tap nhom dung ML theo LAI tren cac diem trong `skus` (chi cac diem do).
+
+    skus: moi dong {store_id, size, segment, gp: {"b_ewma": lai, "sym": lai, "split": lai}} - lai cua mat hang
+    trong lan chay EWMA va lan chay LightGBM-tat-ca cua bien the. store_gp: lai B-EWMA cua ca diem ban.
+    Gia tri mot nhom = tong (lai ML - lai EWMA) / lai B-EWMA cua diem: moi diem duoc tinh theo %, nen diem nho khong
+    bi diem lon lan at (chi so bao cao la trung vi % theo diem). Nhom co gia tri > 0 thi dung ML.
+    Chon (bien the, nguong quy mo) co tong gia tri cac nhom duoc chon lon nhat; hoa thi giu cach don gian hon
+    (doi xung, khong chia quy mo) vi duoc thu truoc."""
+    best = None
+    candidates = []
+    for v in variants:
+        for cut in cuts:
+            groups: dict[str, dict] = defaultdict(lambda: {"value": 0.0, "delta": 0.0, "n_sku": 0, "stores": set()})
+            for s in skus:
+                g = groups[group_key(s["segment"], s["size"], cut)]
+                d = s["gp"][v] - s["gp"]["b_ewma"]
+                g["value"] += d / abs(store_gp[s["store_id"]]) if store_gp[s["store_id"]] else 0.0
+                g["delta"] += d
+                g["n_sku"] += 1
+                g["stores"].add(s["store_id"])
+            use = sorted(k for k, g in groups.items() if g["value"] > 0)
+            obj = sum(groups[k]["value"] for k in use)
+            candidates.append({"variant": v, "size_cut": cut, "objective": round(obj, 5), "use_ml": use})
+            if best is None or obj > best[0] + 1e-12:
+                ev = {k: {"value": round(g["value"], 5), "delta_vnd": round(g["delta"]), "n_sku": g["n_sku"],
+                          "n_stores": len(g["stores"]), "use_ml": k in use} for k, g in sorted(groups.items())}
+                best = (obj, {"variant": v, "size_cut": cut, "use_ml": use, "objective": round(obj, 5),
+                              "groups": ev})
+    gate = best[1] if best else {"variant": "sym", "size_cut": None, "use_ml": [], "objective": 0.0, "groups": {}}
+    gate["candidates"] = candidates
+    gate["stores"] = sorted({s["store_id"] for s in skus})
+    return gate
+
+
+def fold_split(sizes: dict[int, int], seed: int = 0) -> dict[int, int]:
+    """Chia diem ban thanh 2 nua co dinh, can theo quy mo: xep theo so mat hang, moi cap lien ke chia ngau nhien
+    (co seed) mot diem cho moi nua."""
+    import random
+
+    rng = random.Random(seed)
+    order = sorted(sizes, key=lambda s: (sizes[s], s))
+    fold = {}
+    for i in range(0, len(order), 2):
+        pair = order[i:i + 2]
+        flip = rng.random() < 0.5
+        for j, sid in enumerate(pair):
+            fold[sid] = (j + flip) % 2
+    return fold
+
+
+def crossfit_gates(skus: list[dict], store_gp: dict[int, float], fold: dict[int, int], **kw) -> dict[int, dict]:
+    """Kiem cheo 2 lan: bo chon cho nua f chi hoc tu nua con lai. Tra ve {fold: gate}."""
+    return {f: choose_gate([s for s in skus if fold[s["store_id"]] != f],
+                           {k: v for k, v in store_gp.items() if fold.get(k) != f}, **kw) for f in (0, 1)}
+
+
+def _gate_for_policy(gate: dict) -> dict:
+    return {"variant": gate["variant"], "size_cut": gate["size_cut"], "use_ml": list(gate["use_ml"])}
+
+
+def _kpis(k: dict) -> dict:
+    return {x: k[x] for x in ("gross_profit", "waste_rate", "oos_rate", "oos_traffic")}
+
+
+def _frn_learn_store(sid: int, t0: int) -> dict:
+    """Pha 1 cua mot diem: A, B-EWMA va cac bien the B-ML; lai theo mat hang va nhom (segment luc T0)."""
+    from app.ml.forecaster import load
+
+    base, dates = frn_base(sid, t0)
+    start, days = dates[t0 + 1], len(dates) - t0 - 1
+    class_a = _class_a(base)
+    ml = load("bt_")
+    meta_gate = {"variant": "sym", "size_cut": None, "use_ml": sorted(ml.use_ml) if ml else []}
+    all_sym = {"variant": "sym", "size_cut": None, "use_ml": "all"}
+    policies = {
+        "a": BaselineGoldenHourPolicy(),
+        "b_ewma": OpsChestPolicy(ml_model=None),
+        "b_ml": OpsChestPolicy(ml_model="bt_", gate=meta_gate),
+        "b_ml_all": OpsChestPolicy(ml_model="bt_", gate=all_sym),
+        "b_ml_split": OpsChestPolicy(ml_model="bt_", gate={**all_sym, "variant": "split"}),
+        "b_ml_mid_ewma_sigma": OpsChestPolicy(ml_model="bt_", gate=all_sym, sigma_from_ewma=True),
+    }
+    runs = {k: _run(base, start, days, p, class_a) for k, p in policies.items()}
+    probe = OpsChestPolicy()
+    seg = {p.sku: (ml.segment(probe._demand(base, p, 120)) if ml else "?") for p in base.products}
+    skus = [{"store_id": sid, "size": len(base.products), "sku": p.sku, "segment": seg[p.sku],
+             "gp": {"b_ewma": runs["b_ewma"]["sku_gp"][p.sku], **{v: runs[r]["sku_gp"][p.sku] for v, r in ML_ALL.items()}}}
+            for p in base.products]
+    return {"store_id": sid, "products": len(base.products), "start": start.isoformat(), "days": days,
+            "kpis": {k: _kpis(r) for k, r in runs.items()}, "skus": skus}
+
+
+def _frn_gate_store(sid: int, t0: int, gate: dict, scen: list[str], a_kpis: dict) -> dict:
+    """Pha 2 cua mot diem: chinh sach B-gate (bo chon hoc tren nua kia) va cac kich ban do nhay."""
+    base, dates = frn_base(sid, t0)
+    start, days = dates[t0 + 1], len(dates) - t0 - 1
+    class_a = _class_a(base)
+    g = _gate_for_policy(gate)
+    b_gate = _kpis(_run(base, start, days, OpsChestPolicy(ml_model="bt_", gate=g), class_a))
+    rows = {}
+    for key in scen:
+        _, _, make, react = FRN_SCENARIOS[key]
+        world = base.world.scaled(react) if react != 1.0 else None
+        if key == "reference":
+            bk, ak = b_gate, a_kpis
+        else:
+            ak = _kpis(_run(base, start, days, BaselineGoldenHourPolicy(), class_a, world)) if world else a_kpis
+            bk = _kpis(_run(base, start, days, make(g), class_a, world))
+        rows[key] = {"gain": _pct(ak["gross_profit"], bk["gross_profit"]), "waste_a": ak["waste_rate"],
+                     "waste_b": bk["waste_rate"], "oos_a": ak["oos_rate"], "oos_b": bk["oos_rate"]}
+    return {"store_id": sid, "b_gate": b_gate, "scenarios": rows}
+
+
+def _pmap(fn, arglist: list[tuple], workers: int, log, label: str) -> list:
+    """Chay fn(*args) cho tung diem, song song theo tien trinh neu workers > 1; giu thu tu dau vao."""
+    t = time.perf_counter()
+    if workers <= 1:
+        out = []
+        for i, args in enumerate(arglist):
+            out.append(fn(*args))
+            log(f"[{label} {i + 1}/{len(arglist)}] điểm {args[0]} ({time.perf_counter() - t:.0f}s)")
+        return out
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
+    res = [None] * len(arglist)
+    with ProcessPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(fn, *args): i for i, args in enumerate(arglist)}
+        for n, f in enumerate(as_completed(futs)):
+            i = futs[f]
+            res[i] = f.result()
+            log(f"[{label} {n + 1}/{len(arglist)}] điểm {arglist[i][0]} ({time.perf_counter() - t:.0f}s)")
+    return res
+
+
+def _app_gate_file(gate: dict, t0_date: str | None, n_stores: int, size_of_demo: int | None) -> dict:
+    return {
+        "version": 1,
+        "variant": gate["variant"],
+        "size_cut": gate["size_cut"],
+        "use_ml": gate["use_ml"],
+        "tiers": ({"nho": f"<= {gate['size_cut']} mặt hàng FRN", "lon": f"> {gate['size_cut']} mặt hàng FRN"}
+                  if gate["size_cut"] is not None else None),
+        "demo_store_size": size_of_demo,
+        "selected_by": "Lãi trong backtest FRN (python -m app.sim.backtest --frn), không theo sai số dự báo",
+        "data": f"{n_stores} điểm FRN giữ lại, so sánh từ ngày sau T0 = {t0_date}",
+        "note": ("Bộ chọn học bằng mô hình backtest bt_q* (chỉ thấy dữ liệu đến T0) rồi áp cho mô hình chạy thật "
+                 "q* (học thêm đến ngày 89). Học trên cả các điểm; kết quả ngoài mẫu của cách chọn này nằm trong "
+                 "backtest.json (b_gate, kiểm chéo 2 lần theo điểm bán)."),
+        "objective": gate["objective"],
+        "groups": gate["groups"],
+        "candidates": gate["candidates"],
+    }
+
+
 def run_frn(store_ids: list[int] | None = None, scenarios: list[str] | None = None, scenario_stores: int = 20,
-            log=print) -> dict:
-    """So A (kinh nghiem + gio vang) voi B-EWMA (OC, engine cu) va B-ML (OC, bo chon LightGBM, mo hinh backtest chi
-    thay du lieu den ngay T0) tren tung diem FRN giu lai, cung nhu cau that. Cac kich ban do nhay chay tren
-    `scenario_stores` diem dau tien."""
+            log=print, workers: int = 1, fold_seed: int = 0) -> dict:
+    """So A (kinh nghiem + gio vang) voi cac bien the B tren tung diem FRN giu lai, cung nhu cau that:
+      - b_ewma: OC voi engine EWMA; b_ml: bo chon cu (nhom trong meta.json, chon theo sai so du bao);
+      - b_ml_all / b_ml_split: LightGBM o moi mat hang du lich su, sigma doi xung / phan phoi lech q10-q50-q90;
+      - b_ml_mid_ewma_sigma (chan doan): du bao diem LightGBM + do lech chuan EWMA;
+      - b_gate: bo chon theo LAI, kiem cheo 2 lan theo diem ban - bo chon cua moi diem chi hoc tu nua con lai,
+        nen ket qua b_gate la NGOAI MAU.
+    Mo hinh backtest (bt_) chi thay du lieu den ngay T0. Cac kich ban do nhay chay B-gate tren `scenario_stores`
+    diem dau tien. Ket qua co them `gate_app`: bo chon hoc tren tat ca cac diem (cho app, decision_gate.json)."""
     from app.sim import frn
 
     meta = frn.meta()
     t0 = int(meta.get("t0_day", 59))
     ids = store_ids or [int(s) for s in meta.get("heldout_stores", [])] or sorted(frn.stores())
     scen = scenarios if scenarios is not None else list(FRN_SCENARIOS)
-    per_store, scen_rows = [], {k: [] for k in scen}
     t_start = time.perf_counter()
-    for n, sid in enumerate(ids):
-        base, dates = frn_base(sid, t0)
-        start, days = dates[t0 + 1], len(dates) - t0 - 1
-        class_a = _class_a(base)
-        a = _run(base, start, days, BaselineGoldenHourPolicy(), class_a)
-        b_ewma = _run(base, start, days, OpsChestPolicy(ml_model=None), class_a)
-        b_ml = _run(base, start, days, OpsChestPolicy(ml_model="bt_"), class_a)
-        row = {"store_id": sid, "products": len(base.products), "start": start.isoformat(), "days": days,
-               "gp_a": round(a["gross_profit"]), "gp_b_ewma": round(b_ewma["gross_profit"]), "gp_b_ml": round(b_ml["gross_profit"]),
-               "gain_ewma": _pct(a["gross_profit"], b_ewma["gross_profit"]), "gain_ml": _pct(a["gross_profit"], b_ml["gross_profit"]),
-               "ml_vs_ewma": _pct(b_ewma["gross_profit"], b_ml["gross_profit"])}
-        for key, k in (("a", a), ("b_ewma", b_ewma), ("b_ml", b_ml)):
-            row[f"waste_{key}"] = k["waste_rate"]
-            row[f"oos_{key}"] = k["oos_rate"]
-            row[f"oos_traffic_{key}"] = k["oos_traffic"]
+
+    learned = _pmap(_frn_learn_store, [(sid, t0) for sid in ids], workers, log, "pha 1")
+    sizes = {r["store_id"]: r["products"] for r in learned}
+    skus = [s for r in learned for s in r["skus"]]
+    store_gp = {r["store_id"]: r["kpis"]["b_ewma"]["gross_profit"] for r in learned}
+    fold = fold_split(sizes, fold_seed)
+    gates = crossfit_gates(skus, store_gp, fold)
+    gate_app = choose_gate(skus, store_gp)
+    for f, g in gates.items():
+        log(f"Bộ chọn nửa {f} (học trên nửa {1 - f}): {g['variant']}, ngưỡng {g['size_cut']}, ML ở {g['use_ml']}")
+
+    scen_ids = set(ids[:scenario_stores])
+    tested = _pmap(_frn_gate_store, [(r["store_id"], t0, gates[fold[r["store_id"]]],
+                                      scen if r["store_id"] in scen_ids else [], r["kpis"]["a"]) for r in learned],
+                   workers, log, "pha 2")
+
+    per_store, scen_rows = [], {k: [] for k in scen}
+    for r, t in zip(learned, tested):
+        k = {**r["kpis"], "b_gate": t["b_gate"]}
+        a, ew = k["a"], k["b_ewma"]
+        row = {"store_id": r["store_id"], "products": r["products"], "fold": fold[r["store_id"]],
+               "start": r["start"], "days": r["days"], "gp_a": round(a["gross_profit"])}
+        for v in B_VARIANTS:
+            s = _short(v)
+            row[f"gp_{v}"] = round(k[v]["gross_profit"])
+            row[f"gain_{s}"] = _pct(a["gross_profit"], k[v]["gross_profit"])
+            if v != "b_ewma":
+                row[f"{s}_vs_ewma"] = _pct(ew["gross_profit"], k[v]["gross_profit"])
+        for key in ("a", *B_VARIANTS):
+            row[f"waste_{key}"] = k[key]["waste_rate"]
+            row[f"oos_{key}"] = k[key]["oos_rate"]
+            row[f"oos_traffic_{key}"] = k[key]["oos_traffic"]
         per_store.append(row)
-        if n < scenario_stores:
-            for key in scen:
-                _, _, make, react = FRN_SCENARIOS[key]
-                world = base.world.scaled(react) if react != 1.0 else None
-                if key == "reference":
-                    bk, ak = b_ml, a
-                else:
-                    ak = _run(base, start, days, BaselineGoldenHourPolicy(), class_a, world) if world else a
-                    bk = _run(base, start, days, make(), class_a, world)
-                scen_rows[key].append({"gain": _pct(ak["gross_profit"], bk["gross_profit"]),
-                                       "waste_a": ak["waste_rate"], "waste_b": bk["waste_rate"],
-                                       "oos_a": ak["oos_rate"], "oos_b": bk["oos_rate"]})
-        log(f"[{n + 1}/{len(ids)}] điểm {sid}: B-ML {row['gain_ml']:+.1%}, B-EWMA {row['gain_ewma']:+.1%}, "
-            f"ML so với EWMA {row['ml_vs_ewma']:+.1%} ({time.perf_counter() - t_start:.0f}s)")
+        for key, x in t["scenarios"].items():
+            scen_rows[key].append(x)
 
-    def col(name):
-        return [r[name] for r in per_store]
+    def col(name, rows=per_store):
+        return [r[name] for r in rows]
 
-    summary = {name: _summary(col(name)) for name in
-               ("gain_ml", "gain_ewma", "ml_vs_ewma", "waste_a", "waste_b_ewma", "waste_b_ml", "oos_a", "oos_b_ewma",
-                "oos_b_ml", "oos_traffic_a", "oos_traffic_b_ml")}
-    summary["share_ml_better_than_a"] = round(sum(r["gain_ml"] > 0 for r in per_store) / len(per_store), 4)
-    summary["share_ml_better_than_ewma"] = round(sum(r["ml_vs_ewma"] > 0 for r in per_store) / len(per_store), 4)
-    summary["share_oos_ml_not_worse"] = round(sum(r["oos_b_ml"] <= r["oos_a"] for r in per_store) / len(per_store), 4)
+    def share(cond, rows=per_store):
+        return round(sum(1 for r in rows if cond(r)) / len(rows), 4) if rows else 0.0
+
+    names = []
+    for v in B_VARIANTS:
+        s = _short(v)
+        names += [f"gain_{s}", f"waste_{v}", f"oos_{v}", f"oos_traffic_{v}"] + ([f"{s}_vs_ewma"] if v != "b_ewma" else [])
+    summary = {n: _summary(col(n)) for n in ("waste_a", "oos_a", "oos_traffic_a", *names)}
+    for v in B_VARIANTS:
+        s = _short(v)
+        summary[f"share_{s}_better_than_a"] = share(lambda r, s=s: r[f"gain_{s}"] > 0)
+        if v != "b_ewma":
+            summary[f"share_{s}_better_than_ewma"] = share(lambda r, s=s: r[f"{s}_vs_ewma"] > 0)
+            summary[f"share_oos_{s}_not_worse"] = share(lambda r, v=v: r[f"oos_{v}"] <= r["oos_a"])
+    # Theo quy mo diem ban (nguong cua bo chon cho app, mac dinh 30): ML thua ro o diem nho
+    cut = gate_app["size_cut"] or 30
+    summary["by_size"] = {"cut": cut, **{
+        tier: {"stores": len(rows), **{f"{_short(v)}_vs_ewma": _summary(col(f"{_short(v)}_vs_ewma", rows)).get("median")
+                                       for v in B_VARIANTS if v != "b_ewma"}}
+        for tier, rows in (("nho", [r for r in per_store if r["products"] <= cut]),
+                           ("lon", [r for r in per_store if r["products"] > cut]))}}
     scenarios_out = []
     for key in scen:
         rows = scen_rows[key]
@@ -289,8 +491,10 @@ def run_frn(store_ids: list[int] | None = None, scenarios: list[str] | None = No
                               **{f: _summary([r[f] for r in rows]).get("median") for f in
                                  ("gain", "waste_a", "waste_b", "oos_a", "oos_b")}})
     return {"source": "FreshRetailNet-50K", "t0_date": meta.get("t0_date"), "stores": len(per_store),
+            "selection": "Bộ chọn theo lãi, chọn ngoài mẫu: kiểm chéo 2 lần theo điểm bán (b_gate)",
             "summary": summary, "per_store": per_store, "scenarios": scenarios_out,
-            "runtime_s": round(time.perf_counter() - t_start)}
+            "gates": {f"fold{f}": {k: v for k, v in g.items() if k != "candidates"} for f, g in gates.items()},
+            "gate_app": gate_app, "runtime_s": round(time.perf_counter() - t_start)}
 
 
 def _class_breakdown(sim: StoreSim, days: int) -> dict:
@@ -339,14 +543,26 @@ def main() -> None:
     ap.add_argument("--stores", type=int, default=None, help="--frn: chỉ chạy N điểm đầu")
     ap.add_argument("--scenario-stores", type=int, default=20, help="--frn: số điểm chạy các kịch bản độ nhạy")
     ap.add_argument("--out", type=Path, default=None, help="--frn: ghi kết quả vào file khác")
+    ap.add_argument("--workers", type=int, default=None, help="--frn: số tiến trình chạy song song (mặc định: số lõi - 2)")
+    ap.add_argument("--gate-out", type=Path, default=None,
+                    help=f"--frn: nơi ghi bộ chọn cho app (mặc định ml/artifacts/decision_gate.json; '-' = không ghi)")
     args = ap.parse_args()
     if args.frn:
         from app.sim import frn
         ids = [int(s) for s in frn.meta().get("heldout_stores", [])] or sorted(frn.stores())
-        out = run_frn(ids[:args.stores] if args.stores else ids, scenario_stores=args.scenario_stores)
+        import os
+
+        from app.ml.forecaster import ARTIFACTS, GATE_FILE
+        workers = args.workers if args.workers is not None else max(1, (os.cpu_count() or 2) - 2)
+        out = run_frn(ids[:args.stores] if args.stores else ids, scenario_stores=args.scenario_stores, workers=workers)
         path = args.out or FRN_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        if str(args.gate_out) != "-":
+            gpath = args.gate_out or ARTIFACTS / GATE_FILE
+            gate = _app_gate_file(out["gate_app"], out["t0_date"], out["stores"], frn.store_size(frn.demo_store_id()))
+            gpath.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"Bộ chọn cho app -> {gpath}: {gate['variant']}, ngưỡng {gate['size_cut']}, ML ở {gate['use_ml']}")
         print(json.dumps(out["summary"], ensure_ascii=False, indent=1))
         for r in out["scenarios"]:
             print(f"{r['key']:<14} lãi {r['gain'] or 0:+.1%}  hủy {r['waste_a'] or 0:.1%}/{r['waste_b'] or 0:.1%}"

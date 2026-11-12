@@ -175,7 +175,6 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     unmet = max(0.0, demand_cov - served)
 
     perishable = inp.shelf_life_days <= R + 7
-    sigma_cov = fc.sigma_daily * math.sqrt(R if perishable else L + R)
     floor = min(max(inp.min_service_level, 0.0), 0.99)
     if perishable:
         sl = max(floor, newsvendor_service_level(inp.unit_cost, inp.unit_price, inp.salvage_per_unit,
@@ -186,6 +185,8 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
         z = max(inp.z, NormalDist().inv_cdf(floor)) if floor > 0 else inp.z
         sl = NormalDist().cdf(z)
         mode = "order_up_to"
+    # Phan phoi lech (mo hinh phan vi): z >= 0 lay do lech phia tren, z < 0 phia duoi; doi xung thi = sigma_daily
+    sigma_cov = fc.sigma_for(z) * math.sqrt(R if perishable else L + R)
     safety = z * sigma_cov
     if not perishable:
         safety = max(safety, inp.min_display)
@@ -197,7 +198,7 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     lots_win = [list(x) for x in lots]
     served_win, _, _ = _simulate_fefo(lots_win, arrival, window, demand_at)
     z_cap = max(z, 0.0) if perishable else max(z, 1.0)
-    cap = max(0.0, demand_window - served_win) + z_cap * fc.sigma_daily * math.sqrt(window)
+    cap = max(0.0, demand_window - served_win) + z_cap * fc.sigma_for(z_cap) * math.sqrt(window)
     capped = raw > cap
     qty_f = max(0.0, min(raw, cap))
     cap_room = None

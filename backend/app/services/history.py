@@ -108,16 +108,18 @@ def _apply_hypotheses(fc: Forecast, active: list[DemandHypothesis]) -> None:
 
 
 def _frn_context(db: Session, product: Product):
-    """Ma nhom FRN va lich ngay le cho bo chon du bao; (None, None) neu cua hang khong chay du lieu FRN."""
+    """Ma nhom FRN, lich ngay le va so mat hang FRN cua diem ban (bac quy mo trong bo chon du bao);
+    (None, None, None) neu cua hang khong chay du lieu FRN."""
     row = db.get(AppMeta, "frn_store")
     if row is None:
-        return None, None
+        return None, None, None
     from app.sim import frn
 
-    statics = frn.statics_for(int(row.value), product.sku)
+    sid = int(row.value)
+    statics = frn.statics_for(sid, product.sku)
     if statics is None:
-        return None, None
-    return statics, frn.holiday_of(frn.store(int(row.value)))
+        return None, None, None
+    return statics, frn.holiday_of(frn.store(sid)), frn.store_size(sid)
 
 
 def forecast_for(db: Session, product: Product, horizon: int = 14, start: date | None = None,
@@ -125,12 +127,12 @@ def forecast_for(db: Session, product: Product, horizon: int = 14, start: date |
     h = load_history(db)
     hyps = hypotheses_for(db, product)
     skip = {x.start_date + timedelta(days=i) for x in hyps for i in range((x.end_date - x.start_date).days + 1)}
-    statics, hol = _frn_context(db, product)
+    statics, hol, size = _frn_context(db, product)
     fc = route_forecast(
         h.series(product.id, "demand", 120), h.end, horizon,
         stockout=h.series(product.id, "stockout", 120),
         start=start or today(), event_factors=event_factors(h, product.id), skip_dates=skip,
-        frn_statics=statics, holiday_of=hol,
+        frn_statics=statics, holiday_of=hol, store_size=size,
     )
     if with_hypotheses:
         _apply_hypotheses(fc, [x for x in hyps if x.status == "ACTIVE"])

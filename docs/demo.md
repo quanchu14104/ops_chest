@@ -31,10 +31,10 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
 - Mở một đề xuất **Đặt hàng** (ví dụ Nông sản Tân Phát, khoảng 80 mặt hàng). Các dòng có nhãn **LightGBM**: dự báo do mô hình học trên 848 điểm bán FRN khác tính ra, không phải do engine EWMA cũ.
 - Nhấn mạnh hai điều:
   - **Mô hình chỉ dự báo, không quyết định.** Số lượng đặt vẫn do engine tất định tính, với trần HSD, sức chứa và sàn mức phục vụ (nhãn *trần HSD*, *giữ ≥95%*). Mô hình không thể đề xuất vượt các giới hạn này (có test kiểm).
-  - **Mô hình được chọn theo bằng chứng.** Nhóm hàng nào mô hình không thắng engine cũ trên các điểm bán giữ lại thì vẫn dùng EWMA. Với cửa hàng demo, cả 164 mặt hàng đều thuộc nhóm mô hình thắng.
+  - **Mô hình được chọn theo lãi, không theo độ chính xác.** Bộ chọn (`decision_gate.json`) học từ backtest FRN: nhóm hàng × quy mô điểm bán nào mà LightGBM không làm lãi hơn EWMA thì vẫn dùng EWMA. Ở cửa hàng demo, **91/164 mặt hàng** (bán ít, bán vừa) có nhãn LightGBM. **73 mặt hàng bán chạy dùng EWMA**, vì ở đó LightGBM đặt dư và làm mất lãi.
 - Vào **Phân tích → Dự báo nhu cầu bằng LightGBM trên dữ liệu thật**:
   - bảng 5 phương pháp: LightGBM WAPE 30,2% so với EWMA 35,1%, độ phủ khoảng 80% là 81% so với 73%;
-  - bảng theo nhóm hàng, có nhãn "Dùng ML" / "Giữ engine cũ";
+  - bảng theo nhóm hàng, có nhãn "Dùng ML" / "Giữ engine cũ" theo sai số dự báo. Đây là bộ chọn cũ; app nay chọn theo lãi (mục 7);
   - kiểm tra khôi phục nhu cầu ngày hết hàng (sai số 20,5% so với 32,3% nếu coi số bán là nhu cầu).
 - Nói thẳng kết quả âm: **FRN không cho ước lượng được độ co giãn khi giảm giá** (ra con số phi lý e ≈ 9,6 vì giá nội sinh), nên OC giữ giả định cũ. Bảng ước lượng có trên trang để hội đồng thấy.
 
@@ -72,14 +72,17 @@ Hỏi lần lượt:
 
 ## 7. Chứng minh hiệu quả (1 phút)
 
-Vào **Phân tích → Backtest A/B trên các điểm FRN**. Ba chính sách chạy trên **cùng nhu cầu thật** của 50 điểm bán giữ lại, trong 37 ngày mà mô hình backtest chưa từng thấy:
+Vào **Phân tích → Backtest A/B trên các điểm FRN**. Các chính sách chạy trên **cùng nhu cầu thật** của 50 điểm bán giữ lại, trong 37 ngày mà mô hình backtest chưa từng thấy:
 - **A:** làm theo kinh nghiệm, có giờ vàng;
 - **B-EWMA:** Ops Chest với engine cũ;
-- **B-ML:** Ops Chest với LightGBM.
+- **B-ML:** Ops Chest với LightGBM (bộ chọn cũ, theo sai số dự báo);
+- **B-gate:** Ops Chest với bộ chọn theo lãi, chọn ngoài mẫu (kiểm chéo 2 lần theo điểm bán). Kèm hai biến thể để giải thích: phân phối lệch q10/q50/q90, và chẩn đoán "dự báo LightGBM + σ EWMA".
 
 Đọc trung vị và khoảng tứ phân vị qua 50 điểm, tỷ lệ số điểm B tốt hơn A, và bảng độ nhạy (khách phản ứng yếu hơn, Store Manager chỉ duyệt 60–80%, tắt sàn mức phục vụ…). Nói rõ: nhu cầu là thật, nhưng giá, HSD và phản ứng với giảm giá vẫn là giả định.
 
 Nói thẳng kết quả ([ml-frn.md](ml-frn.md), mục 5.6):
 - Ops Chest lãi hơn cách làm theo kinh nghiệm khoảng **+4%** (trung vị) và giảm hết hàng; với hàng kéo khách, hết hàng giảm từ 8,7% xuống 2,7%.
 - **LightGBM dự báo chính xác hơn nhưng không lãi hơn EWMA**: chỉ thắng ở 34% số điểm, thua ở điểm bán nhỏ. Nó giảm hết hàng nhưng đặt dư hơn nên hủy nhiều hơn.
-- Bài học: thước đo của dự báo (WAPE) và thước đo của quyết định (lãi) không trùng nhau. Bộ chọn mô hình nên chọn theo kết quả quyết định, đó là hướng làm tiếp.
+- Chọn theo lãi, đo ngoài mẫu ([ml-frn.md](ml-frn.md), mục 5.7): B-gate **chỉ hòa** B-EWMA (+0,1% trung vị, thắng 54% số điểm). Đặt hàng theo phân vị lệch còn tệ hơn (−2,2%).
+- Chẩn đoán chỉ ra nguyên nhân: dự báo điểm của LightGBM tốt hơn (giữ σ của EWMA thì thắng ở 76% số điểm, +0,9%). Phần làm mất lãi là khoảng dự báo rộng, khi đi qua sàn mức phục vụ 90–95% thì thành đặt dư.
+- Bài học: thước đo của dự báo (WAPE) và thước đo của quyết định (lãi) không trùng nhau. Mô hình tốt hơn chưa đủ; cách engine dùng độ bất định mới quyết định lãi.
