@@ -85,7 +85,7 @@ def apply_catalog_overrides(suppliers: list[SupplierSpec], products: list[Produc
         if o:
             ratio = p.unit_cost / p.unit_price
             p.name, p.unit_price = o.get("name", p.name), int(o.get("unit_price", p.unit_price))
-            p.unit_cost = int(round(p.unit_price * ratio))
+            p.unit_cost = round(p.unit_price * ratio)
     for s in suppliers:
         o = doc.get("suppliers", {}).get(s.code)
         if o:
