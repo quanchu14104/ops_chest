@@ -142,7 +142,8 @@ def purchase_orders(status: str | None = None, limit: int = Query(50, le=300),
     return [{"id": po.id, "code": po.code, "supplier": po.supplier.name, "status": po.status,
              "order_date": po.order_date.isoformat(), "expected_date": po.expected_date.isoformat(),
              "total_value": po.total_value, "proposal_id": po.proposal_id, "has_pdf": bool(po.pdf_path),
-             "overdue_days": max(0, (t - po.expected_date).days) if po.status == "SENT" else 0}
+             "overdue_days": max(0, (t - po.expected_date).days) if po.status == "SENT" else 0,
+             "received_at": po.received_at.isoformat() if po.received_at else None}
             for po in db.scalars(q)]
 
 

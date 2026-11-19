@@ -6,7 +6,9 @@ nhom 3"), khong gan ten loai hang cu the vi FRN khong cho biet ma nhom nao la ra
 """
 from __future__ import annotations
 
+import json
 import zlib
+from pathlib import Path
 
 from app.sim.catalog import ALL_DAYS, ProductSpec, SupplierSpec
 from app.sim.frn import FrnStore
@@ -69,6 +71,25 @@ def build_frn_catalog(store: FrnStore, k: float) -> tuple[list[SupplierSpec], li
             supplier_code=sup_of[s.management_group_id], substitutes=[f"F{x:04d}" for x in subs], frn_id=pid,
         ))
     return suppliers, products
+
+
+def apply_catalog_overrides(suppliers: list[SupplierSpec], products: list[ProductSpec], path: str | None) -> None:
+    """Ghi de ten + gia ban (gia von tinh lai theo DUNG ty le gia von/gia ban cu) va ten + email NCC tu file JSON
+    {"products": {sku: {name, unit_price}}, "suppliers": {code: {name, email}}}. Khong co path thi khong lam gi.
+    KHONG doi category: frn_category_policy tach ma nhom tu chuoi "Nhom tuoi N"."""
+    if not path:
+        return
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    for p in products:
+        o = doc.get("products", {}).get(p.sku)
+        if o:
+            ratio = p.unit_cost / p.unit_price
+            p.name, p.unit_price = o.get("name", p.name), int(o.get("unit_price", p.unit_price))
+            p.unit_cost = int(round(p.unit_price * ratio))
+    for s in suppliers:
+        o = doc.get("suppliers", {}).get(s.code)
+        if o:
+            s.name, s.email = o.get("name", s.name), o.get("email", s.email)
 
 
 def frn_category_policy(category: str) -> dict:
