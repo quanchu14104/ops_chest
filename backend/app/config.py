@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     store_name: str = "Cửa hàng Tiện Lợi Ops Chest Demo"
     store_address: str = "123 Nguyễn Văn Cừ, Q.5, TP.HCM"
     store_phone: str = "028 0000 0000"
+    # File JSON ghi de ten/gia hang va ten/email NCC luc seed FRN (vd bridge sinh). De trong = khong ghi de.
+    catalog_overrides_path: str | None = None
 
     # Ngay nghiep vu. De trong = ngay that (Asia/Ho_Chi_Minh). Dat co dinh de demo on dinh.
     sim_today: date | None = None

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import clock
 from app.auth import hash_password
 from app.clock import today
+from app.config import settings
 from app.db import SessionLocal
 from app.db_init import migrate
 from app.db_init import reset as reset_db
@@ -24,7 +25,7 @@ from app.sim.backtest import initial_stock
 from app.sim import frn
 from app.sim.catalog import PULL_DAYS, build_catalog, category_policy
 from app.sim.demand import FrnDemand
-from app.sim.frn_catalog import build_frn_catalog, frn_category_policy
+from app.sim.frn_catalog import apply_catalog_overrides, build_frn_catalog, frn_category_policy
 from app.sim.policies import BaselinePolicy
 from app.sim.store_sim import StoreSim
 
@@ -58,6 +59,7 @@ def seed(days: int | None = None, seed_value: int = 7, reset: bool = False, sour
         start, end = store.dates[cutoff + 1 - days], store.dates[cutoff]
         clock.set_today(store.dates[cutoff + 1])
         suppliers, products = build_frn_catalog(store, k)
+        apply_catalog_overrides(suppliers, products, settings.catalog_overrides_path)  # truoc StoreSim: lich su dung gia moi
         sim = StoreSim(suppliers, products, seed=seed_value, record=True, demand=FrnDemand(store, k))
     else:
         days = days or 365
