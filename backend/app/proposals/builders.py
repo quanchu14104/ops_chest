@@ -462,7 +462,8 @@ class ReviseError(Exception):
 
 
 def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, int] | None = None,
-           markdown_pct: float | None = None, chat_session_id: int | None = None) -> Proposal:
+           markdown_pct: float | None = None, chat_session_id: int | None = None,
+           sku_add: dict[str, int] | None = None) -> Proposal:
     """Tao de xuat MOI (PENDING) thay cho de xuat PENDING cu, ban cu chuyen SUPERSEDED (khong duyet duoc nua).
 
     Chi doc/ghi ban ghi de xuat: khong duyet, khong thuc thi. Ban moi van phai qua Store Manager duyet.
@@ -479,16 +480,36 @@ def revise(db: Session, proposal_id: int, created_by: str, sku_qty: dict[str, in
     structured: list[dict] = []  # cung dang voi sm_edits khi SM sua tay, de hoc thoi quen sua
     est_value = old.est_value
     if old.type == "PURCHASE_ORDER":
+        by_sku = {l["sku"].upper(): l for l in payload["lines"]}
+        # "Đặt thêm 50": cộng vào số đang có trong đơn (món chưa có thì thêm dòng 50), không bắt agent tự tính tổng
+        sku_qty = dict(sku_qty or {})
+        for sku, add in (sku_add or {}).items():
+            if int(add) <= 0:
+                raise ReviseError("Số lượng đặt thêm phải lớn hơn 0")
+            current = by_sku[sku.upper()]["qty"] if sku.upper() in by_sku else 0
+            sku_qty[sku] = int(sku_qty.get(sku, current)) + int(add)
         if not sku_qty:
             raise ReviseError("Cần nêu số lượng mới theo SKU cho đơn đặt hàng.")
-        by_sku = {l["sku"].upper(): l for l in payload["lines"]}
         for sku, qty in sku_qty.items():
-            line = by_sku.get(sku.upper())
-            if line is None:
-                raise ReviseError(f"{sku} không có trong đơn #{old.id}")
             qty = int(qty)
             if qty < 0:
                 raise ReviseError("Số lượng không được âm")
+            line = by_sku.get(sku.upper())
+            if line is None:
+                # "Đặt thêm 50 cà rốt" khi món chưa có trong đơn: thêm dòng, như SM tự thêm trong Hộp duyệt
+                prod = db.scalar(select(Product).where(Product.sku == sku.upper()))
+                if prod is None or prod.supplier_id != payload.get("supplier_id"):
+                    raise ReviseError(f"{sku} không có trong đơn #{old.id} và không thuộc nhà cung cấp của đơn này")
+                if qty == 0:
+                    continue
+                agr = prod.supplier.agreement_on(today())
+                unit_cost = int(round(prod.unit_cost * (1 - (agr.discount_pct if agr else 0.0))))
+                payload["lines"].append({"product_id": prod.id, "sku": prod.sku, "name": prod.name, "qty": qty,
+                                         "suggested_qty": 0, "pack_size": prod.pack_size, "unit_cost": unit_cost,
+                                         "line_value": qty * unit_cost, "added_in_chat": True})
+                changes.append(f"{prod.sku}: thêm {qty}")
+                structured.append({"field": f"lines[{prod.sku}]", "from": None, "to": qty})
+                continue
             if qty != line["qty"]:
                 changes.append(f"{line['sku']}: {line['qty']} → {qty}")
                 structured.append({"field": f"lines[{line['sku']}].qty", "from": line["qty"], "to": qty})

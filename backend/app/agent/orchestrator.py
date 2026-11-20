@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -24,9 +25,48 @@ from app.config import settings
 from app.models import ChatMessage, ChatSession, User
 
 log = logging.getLogger(__name__)
-MAX_TOOL_RESULT_CHARS = 8000
-HISTORY_MESSAGES = 24
+# Moi vong goi LLM gui lai toan bo prompt + 31 tool + lich su: gioi han chat de mot luot khong vuot han muc
+# token/phut cua goi LLM mien phi (vd Groq 8.000 TPM). Widget tren UI van hien du du lieu.
+MAX_TOOL_RESULT_CHARS = 5000
+HISTORY_MESSAGES = 16
 OLD_TOOL_RESULT_CHARS = 400  # ket qua tool cua cac luot truoc chi giu phan dau
+COMPACT_TOOL_RESULT_CHARS = 1500  # khi provider bao request qua lon: thu lai mot lan voi ngu canh gon
+CREATED_CLAIM = re.compile(r"(?:đã|vừa)\s+tạo\s+(?:đề xuất|tờ trình)\s*(?:số\s*)?#?\s*(\d+)", re.I)
+
+
+def llm_error_kind(e: Exception) -> str:
+    """Phan loai loi provider de bao cho nguoi dung bang loi thuong (khong lo noi dung loi cua provider)."""
+    status = getattr(e, "status_code", None)
+    text = str(e).lower()
+    name = type(e).__name__
+    if status == 413 or "request too large" in text or "context length" in text or "maximum context" in text:
+        return "too_large"
+    if name == "RateLimitError" or status == 429:
+        return "rate_limit"
+    if name in ("APIConnectionError", "APITimeoutError") or isinstance(e, (TimeoutError, ConnectionError)):
+        return "connection"
+    return "other"
+
+
+FRIENDLY_LLM_ERRORS = {
+    "rate_limit": ("Trợ lý đang chạm giới hạn lượt gọi của dịch vụ AI. Anh/chị chờ khoảng 1 phút rồi hỏi lại nhé; "
+                   "Hộp duyệt và các trang số liệu vẫn dùng bình thường."),
+    "too_large": ("Câu hỏi này cần gửi quá nhiều dữ liệu cho trợ lý. Anh/chị thử hỏi hẹp hơn (một nhóm hàng, một "
+                  "nhà cung cấp) hoặc mở phiên chat mới nhé."),
+    "connection": "Trợ lý chưa kết nối được dịch vụ AI. Anh/chị thử lại sau ít phút nhé.",
+    "other": "Trợ lý gặp lỗi khi gọi dịch vụ AI. Anh/chị thử lại sau ít phút nhé.",
+}
+
+
+def compact_messages(messages: list[dict]) -> list[dict]:
+    """Bo lich su truoc cau hoi hien tai va cat ngan ket qua tool cua luot nay."""
+    last_user = max(i for i, m in enumerate(messages) if m["role"] == "user")
+    out = [messages[0]]
+    for m in messages[last_user:]:
+        if m["role"] == "tool" and len(m.get("content") or "") > COMPACT_TOOL_RESULT_CHARS:
+            m = {**m, "content": m["content"][:COMPACT_TOOL_RESULT_CHARS] + '..."[truncated: narrow the query]"'}
+        out.append(m)
+    return out
 
 
 def _now() -> datetime:
@@ -126,7 +166,10 @@ def run_turn(db: Session, session: ChatSession, user: User, text: str, llm: LLM 
     schemas = toolmod.schemas()
     messages = [{"role": "system", "content": system_prompt(user.full_name, user.role)}] + history_messages(session)
 
-    for round_no in range(settings.llm_max_tool_rounds + 1):
+    created_ids: set[int] = set()  # de xuat do tool tao/dung lai TRONG luot nay
+    compacted = False
+    round_no = 0
+    while round_no <= settings.llm_max_tool_rounds:
         use_tools = round_no < settings.llm_max_tool_rounds
         text_buf: list[str] = []
         calls: dict[int, dict] = {}
@@ -157,14 +200,21 @@ def run_turn(db: Session, session: ChatSession, user: User, text: str, llm: LLM 
                     if rest and rest[0]:
                         c["extra"] = rest[0]  # vd thought_signature cua Gemini, phai gui lai o luot sau
         except Exception as e:  # noqa: BLE001
-            log.exception("LLM error")
             st.llm_seconds += time.perf_counter() - t_llm
             st.rounds += 1
-            msg = f"Lỗi khi gọi LLM ({type(e).__name__}): {e}"
+            kind = llm_error_kind(e)
+            if kind == "too_large" and not compacted and not text_buf and not calls:
+                log.warning("LLM bao request qua lon, thu lai voi ngu canh gon: %s", type(e).__name__)
+                messages = compact_messages(messages)
+                compacted = True
+                continue
+            log.exception("LLM error (%s)", kind)
+            # Noi dung loi cua provider (ma to chuc, link thanh toan, tieng Anh) chi vao log, khong hien cho nguoi dung
+            msg = "⚠️ " + FRIENDLY_LLM_ERRORS[kind]
             db.add(ChatMessage(session_id=session.id, role="assistant", content=msg, created_at=_now()))
             db.commit()
             yield {"type": "error", "message": msg}
-            yield {"type": "done", "metrics": _finish(db, session, user, st, "llm_error")}
+            yield {"type": "done", "metrics": _finish(db, session, user, st, f"llm_error:{kind}")}
             return
         st.llm_seconds += time.perf_counter() - t_llm
         st.rounds += 1
@@ -181,6 +231,9 @@ def run_turn(db: Session, session: ChatSession, user: User, text: str, llm: LLM 
         if not tool_calls and content:
             sources = [m["content"] or "" for m in messages if m["role"] in ("tool", "user")]
             res = check_answer(content, sources)
+            # "Đã tạo đề xuất #13" cho de xuat KHONG do luot nay tao (vd job quet tu dong tao tu truoc) la noi sai
+            if any(int(n) not in created_ids for n in CREATED_CLAIM.findall(content)):
+                res.false_exec = True
             st.ungrounded_numbers, st.false_exec = res.ungrounded_numbers, res.false_exec
             if not res.ok:
                 guard_ev = [res.event()]
@@ -226,6 +279,10 @@ def run_turn(db: Session, session: ChatSession, user: User, text: str, llm: LLM 
             for u in ui:
                 yield u
             ok = not (isinstance(result, dict) and "error" in result)
+            if ok and t is not None and t.kind == "propose":
+                for r in result if isinstance(result, list) else [result]:
+                    if isinstance(r, dict) and r.get("proposal_id"):
+                        created_ids.add(int(r["proposal_id"]))
             st.tools.append(name)
             st.tool_errors += 0 if ok else 1
             yield {"type": "tool_result", "id": tc["id"], "name": name, "ok": ok,
@@ -235,5 +292,6 @@ def run_turn(db: Session, session: ChatSession, user: User, text: str, llm: LLM 
                                content=content, ui_events=ui or None, created_at=_now()))
             db.commit()
             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": content})
+        round_no += 1
 
     yield {"type": "done", "metrics": _finish(db, session, user, st, "max_rounds")}

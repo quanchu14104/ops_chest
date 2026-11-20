@@ -8,7 +8,7 @@ QUY TAC HITL (duoc test kiem tra):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Callable
 
 from sqlalchemy import func, select
@@ -99,18 +99,41 @@ def _inventory_summary(ctx: ToolContext) -> ToolOutput:
     return ToolOutput(s, ui=ui)
 
 
-@tool("search_products", "read", "Find products by name/SKU/category. Returns SKU, prices, on-hand qty.",
-      {"query": {"type": "string"}, "category": CATEGORY})
-def _search_products(ctx: ToolContext, query: str | None = None, category: str | None = None) -> ToolOutput:
-    prods = inventory.find_products(ctx.db, query, category, limit=25)
+@tool("search_products", "read", "Find products by name/SKU/category, or list items out of stock now "
+      "(out_of_stock=true, best sellers of the last 28 days first). Returns SKU, prices, on-hand qty, supplier.",
+      {"query": {"type": "string"}, "category": CATEGORY, "out_of_stock": {"type": "boolean", "default": False},
+       "limit": {"type": "integer", "default": 15}})
+def _search_products(ctx: ToolContext, query: str | None = None, category: str | None = None,
+                     out_of_stock: bool = False, limit: int = 15) -> ToolOutput:
+    limit = max(1, min(int(limit), 30))
+    # Hang het chi tim duoc khi quet toan bo danh muc (164-263 SKU), roi moi cat theo limit
+    prods = inventory.find_products(ctx.db, query, category, limit=500 if out_of_stock else limit)
     lots = inventory.active_lots(ctx.db, [p.id for p in prods])
     rows = [{"sku": p.sku, "name": p.name, "category": p.category, "status": p.status,
              "unit_price": p.unit_price, "unit_cost": p.unit_cost, "supplier": p.supplier.name,
              "on_hand": sum(l.qty_remaining for l in lots.get(p.id, []))} for p in prods]
-    ui = [W.table("Kết quả tìm sản phẩm", [
-        W.col("sku", "SKU"), W.col("name", "Tên"), W.col("category", "Nhóm"), W.col("on_hand", "Tồn", "num"),
-        W.col("unit_price", "Giá bán", "money"), W.col("supplier", "NCC")], rows, empty="Không tìm thấy sản phẩm.")]
+    title = "Kết quả tìm sản phẩm"
+    cols = [W.col("sku", "SKU"), W.col("name", "Tên"), W.col("category", "Nhóm"), W.col("on_hand", "Tồn", "num"),
+            W.col("unit_price", "Giá bán", "money"), W.col("supplier", "NCC")]
+    if out_of_stock:
+        rows = [r for r in rows if r["on_hand"] <= 0 and r["status"] == "ACTIVE"]
+        sold = _sold_last_days(ctx.db, 28)
+        for r in rows:
+            r["sold_28d"] = sold.get(r["sku"], 0)
+        rows = sorted(rows, key=lambda r: (-r["sold_28d"], r["sku"]))[:limit]
+        title = "Mặt hàng đang hết (bán chạy nhất 28 ngày trước)"
+        cols.insert(4, W.col("sold_28d", "Bán 28 ngày", "num"))
+    ui = [W.table(title, cols, rows, empty="Không có mặt hàng nào phù hợp.")]
     return ToolOutput(rows, ui=ui)
+
+
+def _sold_last_days(db: Session, days: int) -> dict[str, int]:
+    from app.models import DailySales, Product
+
+    t = today()
+    q = (select(Product.sku, func.sum(DailySales.qty_sold)).join(DailySales, DailySales.product_id == Product.id)
+         .where(DailySales.date >= t - timedelta(days=days), DailySales.date < t).group_by(Product.sku))
+    return {sku: int(n or 0) for sku, n in db.execute(q)}
 
 
 @tool("get_product_detail", "read", "One SKU: lots with expiry, incoming POs, 28-day sales, 14-day forecast, ABC-XYZ cell.", {"sku": SKU}, ["sku"])
@@ -464,19 +487,23 @@ def _propose_delist(ctx: ToolContext, sku: str) -> ToolOutput:
     return _prop_out(p, created)
 
 
-@tool("revise_proposal", "propose", "Store Manager only. Revise a PENDING proposal when the user asks to change it (e.g. 'giảm còn 30 thùng', 'giảm giá 30% thôi'). Creates a NEW pending proposal and marks the old one superseded; the manager must still approve. Only PENDING purchase orders (sku_qty: new qty per SKU) and markdowns (markdown_pct: 0.3 = 30%).",
+@tool("revise_proposal", "propose", "Store Manager only. Revise a PENDING proposal when the user asks to change it (e.g. 'giảm còn 30 thùng', 'giảm giá 30% thôi'). Creates a NEW pending proposal and marks the old one superseded; the manager must still approve. Only PENDING purchase orders (sku_qty: new TOTAL qty per SKU, or sku_add: extra qty to add, e.g. 'đặt thêm 50'; a SKU of the same supplier not yet in the order is added) and markdowns (markdown_pct: 0.3 = 30%).",
       {"proposal_id": {"type": "integer"},
        "sku_qty": {"type": "array", "description": "purchase orders: new quantity per SKU",
                    "items": {"type": "object", "properties": {"sku": {"type": "string"}, "qty": {"type": "integer"}},
                              "required": ["sku", "qty"]}},
+       "sku_add": {"type": "array", "description": "purchase orders: quantity to ADD per SKU",
+                   "items": {"type": "object", "properties": {"sku": {"type": "string"}, "qty": {"type": "integer"}},
+                             "required": ["sku", "qty"]}},
        "markdown_pct": {"type": "number", "description": "markdowns: new discount, 0.3 = 30%"}}, ["proposal_id"])
 def _revise(ctx: ToolContext, proposal_id: int, sku_qty: list[dict] | None = None,
-            markdown_pct: float | None = None) -> ToolOutput:
+            markdown_pct: float | None = None, sku_add: list[dict] | None = None) -> ToolOutput:
     if ctx.user.role != "manager":  # giong PATCH /proposals: nhan vien khong duoc doi noi dung de xuat
         return ToolOutput({"error": "Chỉ Store Manager được sửa đề xuất. Hãy báo Store Manager để tự sửa hoặc từ chối."})
     try:
         p = builders.revise(ctx.db, int(proposal_id), "agent", {str(x["sku"]): int(x["qty"]) for x in sku_qty or []},
-                            markdown_pct, ctx.chat_session_id)
+                            markdown_pct, ctx.chat_session_id,
+                            sku_add={str(x["sku"]): int(x["qty"]) for x in sku_add or []})
     except (builders.ReviseError, KeyError, TypeError, ValueError) as e:
         ctx.db.rollback()
         return ToolOutput({"error": str(e)})
