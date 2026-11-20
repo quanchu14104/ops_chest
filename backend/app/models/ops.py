@@ -65,6 +65,8 @@ class DemandHypothesis(Base):
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE", index=True)  # ACTIVE / EVALUATED / CANCELLED
     baseline_total: Mapped[float] = mapped_column(Float)  # du bao KHONG co gia thuyet, de cham dung/sai ve sau
+    # Mat hang chot luc duyet (cung tap da tinh baseline_total); NULL = ban ghi cu, cham theo pham vi hien tai
+    scope_product_ids: Mapped[list | None] = mapped_column(JSON)
     proposal_id: Mapped[int | None] = mapped_column(ForeignKey("proposals.id"))
     created_by: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime)

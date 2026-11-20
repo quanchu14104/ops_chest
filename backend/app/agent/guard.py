@@ -15,18 +15,30 @@ FALSE_EXEC = re.compile(
     r"|(?:^|[.!\n]\s*)(?:đã|vừa)\s+(?:gửi (?:đơn|email|mail)|đặt hàng|đặt đơn|giảm giá|ghi hủy|ngừng nhập|trả hàng|duyệt)",
     re.I)
 NUM = re.compile(r"\d{1,3}(?:[.,]\d{3})+|\d{4,}")
+# So trong nguon: dang co dau nghin ("1.250.000") hoac day chu so tron ("1250000")
+SRC_NUM = re.compile(r"\d{1,3}(?:[.,]\d{3})+(?!\d)|\d+")
 
 
 def _norm(s: str) -> str:
     return re.sub(r"[.,\s]", "", s)
 
 
+def source_values(source_texts: list[str]) -> set[int]:
+    """Tap GIA TRI so co trong nguon. Khong noi ca nguon thanh mot chuoi chu so roi tim chuoi con: lam vay thi
+    "[12, 345]" thanh "12345", va so bia nao trung mot doan chu so bat ky cung duoc coi la co can cu."""
+    out: set[int] = set()
+    for t in source_texts:
+        out.update(int(_norm(m)) for m in SRC_NUM.findall(t))
+        out.update(int(m) for m in re.findall(r"\d+", t))  # tung day so rieng (JSON gon "[12,345]" la hai so)
+    return out
+
+
 def grounded(answer: str, source_texts: list[str]) -> tuple[bool, list[str]]:
-    blob = _norm(" ".join(source_texts))
+    values = source_values(source_texts)
     missing = []
     for m in NUM.findall(answer):
         n = _norm(m)
-        if len(n) >= 4 and n not in blob and not re.fullmatch(r"20\d\d", n):
+        if len(n) >= 4 and int(n) not in values and not re.fullmatch(r"20\d\d", n):
             missing.append(m)
     return not missing, missing
 

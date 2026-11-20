@@ -16,7 +16,8 @@ const BADGE: Record<string, string> = { REQUESTED: "PENDING", CONFIRMED: "APPROV
 function ReturnRow({ r }: { r: SupplierReturn }) {
   const qc = useQueryClient();
   const isManager = getUser()?.role === "manager";
-  const [mode, setMode] = useState<"" | "pickup" | "refuse">("");
+  const [mode, setMode] = useState<"" | "pickup" | "refuse" | "credit">("");
+  const [amount, setAmount] = useState("");
   const [picked, setPicked] = useState<Record<number, string>>({});
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -43,7 +44,7 @@ function ReturnRow({ r }: { r: SupplierReturn }) {
           {isManager && r.status === "REQUESTED" && <button className="sm" disabled={act.isPending} onClick={() => act.mutate({ path: "confirm", body: {} })}>NCC xác nhận</button>}
           {isManager && open && <button className="sm" onClick={() => setMode(mode === "pickup" ? "" : "pickup")}>NCC đã lấy hàng</button>}
           {isManager && open && <button className="sm danger" onClick={() => setMode(mode === "refuse" ? "" : "refuse")}>NCC từ chối</button>}
-          {isManager && r.status === "PICKED_UP" && <button className="sm" disabled={act.isPending} onClick={() => act.mutate({ path: "credited", body: {} })}>Đã nhận tiền hoàn</button>}
+          {isManager && r.status === "PICKED_UP" && <button className="sm" onClick={() => { setAmount(String(r.credit_value ?? r.est_credit)); setMode(mode === "credit" ? "" : "credit"); }}>Đã nhận tiền hoàn</button>}
         </td>
       </tr>
       {mode === "pickup" && (
@@ -74,6 +75,20 @@ function ReturnRow({ r }: { r: SupplierReturn }) {
               </button>
             </div>
             <div className="small muted">Hệ thống sẽ xét lại phương án giảm giá cho các lô này.</div>
+          </td>
+        </tr>
+      )}
+      {mode === "credit" && (
+        <tr>
+          <td colSpan={7}>
+            <div className="row">
+              <span className="small secondary" style={{ flex: 1 }}>Số tiền NCC hoàn thực tế (ghi lúc lấy hàng: {money(r.credit_value ?? 0)}). Nếu khác, KPI được điều chỉnh theo số thực nhận.</span>
+              <input className="qty" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Số tiền NCC hoàn thực tế" />
+              <button className="sm primary" disabled={act.isPending || amount.trim() === "" || Number(amount) < 0}
+                onClick={() => act.mutate({ path: "credited", body: { amount: Math.round(Number(amount)) } })}>
+                Xác nhận đã nhận
+              </button>
+            </div>
           </td>
         </tr>
       )}

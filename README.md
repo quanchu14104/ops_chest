@@ -14,7 +14,7 @@ Agent dạng chatbot (chat là giao diện chính, dashboard chỉ để tham kh
 > Đây là đồ án/demo.
 > - **Nhu cầu là dữ liệu thật** của bộ [FreshRetailNet-50K](https://huggingface.co/datasets/Dingdong-Inc/FreshRetailNet-50K) (Dingdong, giấy phép CC BY 4.0). Cửa hàng OC là điểm bán số 18 của FRN: 164 mặt hàng tươi, 90 ngày lịch sử, từ 28/03 đến 25/06/2024.
 > - **Phần còn lại vẫn là giả định có ghi chú:** tên hàng (FRN chỉ có mã số), giá, giá vốn, hạn sử dụng, nhà cung cấp, và phần vận hành (lô, đơn, sổ sách).
-> - Dự báo cho hàng tươi dùng mô hình **LightGBM huấn luyện trên Kaggle** với các điểm FRN khác. Mặt hàng nào dùng LightGBM, mặt hàng nào giữ EWMA được chọn **theo lãi trong backtest**, không theo sai số dự báo. Ngoài mẫu, dùng dự báo điểm của LightGBM với độ bất định của EWMA lãi hơn engine EWMA +0,8% (trung vị) ở 78% số điểm FRN giữ lại. Xem [docs/ml-frn.md](docs/ml-frn.md), mục 5.6–5.7.
+> - Dự báo cho hàng tươi dùng mô hình **LightGBM huấn luyện trên Kaggle** với các điểm FRN khác. Mặt hàng nào dùng LightGBM, mặt hàng nào giữ EWMA được chọn **theo lãi trong backtest**, không theo sai số dự báo. Ngoài mẫu, dùng dự báo điểm của LightGBM với độ bất định của EWMA lãi hơn engine EWMA +0,8% (trung vị) và thắng ở 76% số điểm FRN giữ lại (chạy lại 12/11/2026). Xem [docs/ml-frn.md](docs/ml-frn.md), mục 5.6–5.7.
 > - Thế giới giả lập cũ (263 SKU, 365 ngày) chỉ còn dùng cho bộ test quy tắc nghiệp vụ (`--source synthetic`).
 > - Tên nhà cung cấp và email đều là hư cấu (`*.test`). Mọi email đều rơi vào hộp thư sandbox Mailpit, không gửi ra Internet.
 
@@ -61,7 +61,7 @@ docker run -p 8025:8025 -p 1025:1025 axllent/mailpit
 React (Vite, Recharts, TanStack Query)
    │ REST + SSE (stream chat)
 FastAPI
- ├─ agent/      LLM client OpenAI-compatible, 26 tool (18 đọc, 8 tạo đề xuất), vòng lặp tự viết
+ ├─ agent/      LLM client OpenAI-compatible, 31 tool (22 đọc, 9 tạo đề xuất), vòng lặp tự viết
  ├─ engines/    dự báo, đặt hàng (newsvendor/order-up-to + trần HSD), rủi ro hết hạn, xử lý cận date,
  │              ABC-XYZ, KPI. Thuần Python, tất định, có unit test
  ├─ services/   đọc DB → gọi engine (dùng chung cho API, agent, job)

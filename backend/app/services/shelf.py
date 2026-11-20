@@ -60,10 +60,11 @@ def confirm_pull(db: Session, entries: list[dict], actor: str) -> dict:
         lot.pulled_date = t
         done.append({"lot_id": lot.id, "sku": lot.product.sku, "pulled_qty": q, "book_qty": lot.qty_remaining})
     audit.log(db, actor, "LOTS_PULLED", "lot", ",".join(str(x["lot_id"]) for x in done), {"lots": done})
-    # De xuat ghi huy cu (lap theo so tren so truoc khi go) khong con dung so: thay bang de xuat moi
+    # De xuat ghi huy HET HAN cu (lap theo so tren so truoc khi go) khong con dung so: thay bang de xuat moi.
+    # Bao huy vo/hong cua nhan vien (khong dong lo) giu nguyen: thay ca no thi mat ly do huy, phan do bi ghi thanh hao hut
     ids = {x["lot_id"] for x in done}
     for p in db.scalars(select(Proposal).where(Proposal.type == "DISPOSE", Proposal.status.in_(["PENDING", "FAILED"]))):
-        if any(it["lot_id"] in ids for it in p.payload.get("items", [])):
+        if any(it["lot_id"] in ids and it.get("close_lot") for it in p.payload.get("items", [])):
             p.status = "SUPERSEDED"
             p.decision_note = "Được thay bằng đề xuất mới theo số thực gỡ khỏi kệ."
             audit.log(db, actor, "PROPOSAL_SUPERSEDED", "proposal", p.id, {"reason": "pulled"})

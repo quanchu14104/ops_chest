@@ -43,7 +43,9 @@ def acceptance_stats(db: Session) -> dict:
     for p in edited:
         for e in p.sm_edits:
             for c in e["changes"]:
-                if c["field"].endswith(".qty") and isinstance(c["from"], (int, float)) and c["from"]:
+                # ban ghi cu co the da luu chuoi: bo qua thay vi lam sap /dashboard
+                if c["field"].endswith(".qty") and isinstance(c["from"], (int, float)) and c["from"] \
+                        and isinstance(c["to"], (int, float)):
                     qty_changes.append(abs(c["to"] - c["from"]) / c["from"])
     by_type: dict[str, dict] = {}
     for p in decided:

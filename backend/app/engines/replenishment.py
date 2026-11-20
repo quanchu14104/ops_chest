@@ -123,6 +123,8 @@ def newsvendor_service_level(unit_cost: float, unit_price: float, salvage: float
     return min(0.98, max(0.3, under / (under + over)))
 
 
+CAP_WINDOW = 90  # so ngay toi da xet trong tran HSD
+
 SERVICE_FLOORS = {"traffic": 0.95, "A": 0.90, "other": 0.50}
 
 
@@ -193,7 +195,7 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
     raw = unmet + safety - leftover
 
     # 3) Tran HSD: luong lo moi co the ban duoc truoc new_expiry
-    window = min(90, max(1, (new_expiry - arrival).days + 1))  # >90 ngay thi tran HSD khong con rang buoc
+    window = min(CAP_WINDOW, max(1, (new_expiry - arrival).days + 1))  # >90 ngay thi tran HSD khong con rang buoc
     demand_window = sum(demand_at(arrival + timedelta(days=k)) for k in range(window))
     lots_win = [list(x) for x in lots]
     served_win, _, _ = _simulate_fefo(lots_win, arrival, window, demand_at)
@@ -236,6 +238,12 @@ def compute_order(inp: ReplenishmentInput) -> ReplenishmentResult:
         capped_by_capacity=capped_capacity,
         service_floor=floor,
     )
+
+
+def forecast_horizon(lead: int, review_period: int, sellable_days: int) -> int:
+    """So ngay du bao can cho mot lan dat (tinh tu hom nay): toi het chu ky phu VA het cua so tran HSD cua lo moi.
+    Ngan hon thi Forecast.at phai noi suy phan duoi cua cua so tran HSD."""
+    return lead + max(review_period, min(sellable_days, CAP_WINDOW)) + 2
 
 
 def next_delivery(order_day: date, lead_time_days: int, delivery_weekdays: list[int] | None = None,

@@ -12,7 +12,7 @@ export type AskDetail = { text: string; handled: boolean };
 type Edits = { lines?: { product_id: number; qty: number }[]; items?: Record<string, unknown>[]; note?: string; min_order_ack?: boolean };
 type MinOrder = {
   shortfall: number;
-  top_up: { lines: { product_id: number; sku: string; name: string; add_qty: number; line_value: number; days_cover_before: number }[]; added_value: number; reaches_min: boolean };
+  top_up: { lines: { product_id: number; sku: string; name: string; add_qty: number; unit_cost: number; line_value: number; days_cover_before: number }[]; added_value: number; reaches_min: boolean };
   defer: { feasible: boolean; at_risk: string[] };
 };
 
@@ -87,6 +87,14 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
   const pl = p.payload;
   const warnings = (p.evidence?.warnings as string[] | undefined) ?? [];
   const editable = canDecide && !approve.isPending;
+  // Dong bu don cho mat hang chua co trong don: phai hien ra (va tinh vao tong) thi SM moi thay minh duyet gi
+  const poLines = (p.type === "PURCHASE_ORDER" ? pl.lines : []) as { product_id: number; qty: number; unit_cost: number }[];
+  const topUpNew = p.type === "PURCHASE_ORDER" && pl.min_order
+    ? (pl.min_order as MinOrder).top_up.lines
+        .filter((t) => !poLines.some((l) => l.product_id === t.product_id) && qty[t.product_id] !== undefined)
+    : [];
+  const poTotal = poLines.reduce((s, l) => s + (qty[l.product_id] ?? l.qty) * l.unit_cost, 0)
+    + topUpNew.reduce((s, t) => s + (qty[t.product_id] ?? 0) * t.unit_cost, 0);
 
   return (
     <div className={`card proposal st-${p.status}`}>
@@ -173,7 +181,37 @@ export default function ProposalCard({ p: initial, compact = false }: { p: Propo
                   </tr>
                 );
               })}
+              {topUpNew.map((t) => {
+                const q = qty[t.product_id] ?? 0;
+                return (
+                  <tr key={`new-${t.product_id}`}>
+                    <td>{t.sku}</td>
+                    <td>{t.name}<span className="badge accent" style={{ marginLeft: 6 }} title="Dòng thêm từ phương án bù đơn tối thiểu">bù đơn</span></td>
+                    <td>—</td>
+                    <td className="num">—</td>
+                    <td className="num">—</td>
+                    <td className="num muted">0</td>
+                    <td className="num">
+                      {editable ? (
+                        <input className="qty edited" type="number" min={0} value={q} aria-label={`Số lượng ${t.name}`}
+                          onChange={(e) => setQty({ ...qty, [t.product_id]: Math.max(0, Number(e.target.value)) })} />
+                      ) : (
+                        <span className="edited">{num(q)}</span>
+                      )}
+                    </td>
+                    <td className="num">{money(q * t.unit_cost)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
+            {Object.keys(qty).length > 0 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={7} className="num"><b>Tổng sau khi sửa</b></td>
+                  <td className="num"><b>{money(poTotal)}</b></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
           {pl.min_order && (
             <MinOrderPanel mo={pl.min_order as MinOrder} lines={pl.lines} editable={editable} ack={ack ?? !!pl.min_order_ack} setAck={setAck}

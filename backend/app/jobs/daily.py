@@ -18,7 +18,7 @@ from app.services import hypotheses, learning, snapshots
 from app.services.replenish import suppliers_due
 
 log = logging.getLogger(__name__)
-JOB = "job"
+JOB = builders.SCAN_ACTOR  # "job"
 
 
 def _ref(p, created: bool) -> dict:

@@ -39,7 +39,10 @@ class Lot(Base):
     # Ngay cuoi cung con duoc ban
     expiry_date: Mapped[date] = mapped_column(Date, index=True)
     unit_cost: Mapped[int] = mapped_column(Integer)
-    markdown_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    markdown_pct: Mapped[float] = mapped_column(Float, default=0.0)  # giam ca ngay (tem dan tu dau ngay)
+    # Giam gio vang: chi ap tu gio giam gia cua nhom hang trong NGAY BAN CUOI, tach rieng de muc giam ca ngay da dan
+    # tu truoc van giu nguyen tu sang den chieu ngay cuoi
+    evening_markdown_pct: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
     po_line_id: Mapped[int | None] = mapped_column(ForeignKey("po_lines.id"))
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     # So nhan vien thuc go khoi ke (co the khac so tren so) va ngay go

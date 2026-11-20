@@ -79,14 +79,12 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool, so
         lots = sorted((l for l in lots_by_pid.get(p.id, []) if l.sell_by >= d), key=lambda l: (l.expiry_date, l.id))
         a = {"sold": 0, "revenue": 0.0, "cogs": 0.0, "md_loss": 0.0, "discounted": 0, "weighted": 0.0, "evening": 0}
 
-        def all_day_pct(l: Lot) -> float:
-            return l.markdown_pct if l.sell_by > d else 0.0
-
+        # Giam ca ngay giu ca ngay ban cuoi (nhu StoreSim); gio vang la muc rieng, chi ap sau gio giam gia
         for lot in lots:
             take = min(lot.qty_remaining, need)
             if take <= 0:
                 continue
-            pct = all_day_pct(lot)
+            pct = lot.markdown_pct
             _sell(lot, take, p.unit_price, pct, a)
             need -= take
             if pct > 0:
@@ -94,7 +92,7 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool, so
                 a["weighted"] += take * pct
         lost = need
         expected = source.expected(spec, d)
-        marked = [l for l in lots if all_day_pct(l) > 0 and l.qty_remaining > 0]
+        marked = [l for l in lots if l.markdown_pct > 0 and l.qty_remaining > 0]
         if marked:
             top = max(l.markdown_pct for l in marked)
             extra = _poisson(_rng(SEED, "md", p.sku, d.toordinal()),
@@ -106,9 +104,12 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool, so
                     a["discounted"] += take
                     a["weighted"] += take * lot.markdown_pct
                     extra -= take
-        evening = [l for l in lots if l.sell_by == d and l.markdown_pct > 0 and l.qty_remaining > 0]
+        def evening_pct(l: Lot) -> float:  # lo da giam ca ngay ma khong co gio vang: buoi toi van ban o muc do
+            return max(l.evening_markdown_pct, l.markdown_pct)
+
+        evening = [l for l in lots if l.sell_by == d and evening_pct(l) > 0 and l.qty_remaining > 0]
         if evening:
-            top = max(l.markdown_pct for l in evening)
+            top = max(evening_pct(l) for l in evening)
             share = world.share_after(p.category, policies.for_category(pol, p.category)["markdown_hour"])
             rebate = (min(share * (a["sold"] - a["discounted"]), sum(l.qty_remaining for l in evening))
                       * p.unit_price * top)  # khach sau gio giam gia von tra gia goc cung duoc huong gia giam
@@ -119,7 +120,7 @@ def simulate_day(db: Session, d: date, specs: dict, realize_hypotheses: bool, so
             for lot in evening:
                 take = min(lot.qty_remaining, extra)
                 if take > 0:
-                    _sell(lot, take, p.unit_price, lot.markdown_pct, a)
+                    _sell(lot, take, p.unit_price, evening_pct(lot), a)
                     a["evening"] += take
                     extra -= take
         if a["sold"] or lost:

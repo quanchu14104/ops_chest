@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app import audit
 from app.clock import today
-from app.engines.forecast import hypothesis_verdict
+from app.engines.disposition import ELASTICITY
+from app.engines.forecast import baseline_demand, hypothesis_verdict
 from app.models import DailySales, DemandHypothesis, Product
 from app.services.history import forecast_for
 
@@ -81,23 +82,32 @@ def preview(db: Session, products: list[Product], factor: float, start: date, en
 
 
 def evaluate_finished(db: Session) -> list[dict]:
-    """Cham cac gia thuyet da het han. Dung luong ban thuc te: cua hang that khong biet nhu cau bi hut."""
+    """Cham cac gia thuyet da het han. Cua hang that khong biet nhu cau bi hut, nen dung luong ban thuc te, quy ve
+    CUNG thuoc do voi du bao nen: chuoi `demand` (bo ban gio vang, chia phan ban giam gia cho he so kich cau).
+    So qty_sold tho voi du bao da khu giam gia thi ty le bi thoi len va gia thuyet "tang" de duoc cham Dung."""
     done = []
     for x in db.scalars(select(DemandHypothesis).where(DemandHypothesis.status == "ACTIVE",
                                                        DemandHypothesis.end_date < today())):
-        # Pham vi da chot luc duyet: so khop chinh xac, tim gan dung co the raise lam hong job sang
-        in_scope = (Product.category == x.category, Product.status == "ACTIVE") if x.category else (Product.sku == x.sku,)
-        ids = list(db.scalars(select(Product.id).where(*in_scope)))
-        actual, stockouts = db.execute(
-            select(func.coalesce(func.sum(DailySales.qty_sold), 0),
-                   func.coalesce(func.sum(case((DailySales.stockout.is_(True), 1), else_=0)), 0))
+        if x.scope_product_ids is not None:
+            ids = list(x.scope_product_ids)
+        else:  # ban ghi truoc khi chot pham vi: so khop chinh xac, tim gan dung co the raise lam hong job sang
+            in_scope = (Product.category == x.category, Product.status == "ACTIVE") if x.category else (Product.sku == x.sku,)
+            ids = list(db.scalars(select(Product.id).where(*in_scope)))
+        rows = db.execute(
+            select(DailySales.qty_sold, DailySales.discounted_qty, DailySales.discount_pct, DailySales.evening_qty,
+                   DailySales.stockout, Product.freshness_class)
+            .join(Product, Product.id == DailySales.product_id)
             .where(DailySales.product_id.in_(ids), DailySales.date.between(x.start_date, x.end_date))
-        ).one()
-        ratio = float(actual) / x.baseline_total if x.baseline_total > 0 else 0.0
+        ).all()
+        sold = sum(float(q) for q, *_ in rows)
+        actual = sum(baseline_demand(float(q), float(disc or 0), float(pct or 0), float(ev or 0), ELASTICITY[fc])
+                     for q, disc, pct, ev, _, fc in rows)
+        stockouts = sum(1 for *_, so, _ in rows if so)
+        ratio = actual / x.baseline_total if x.baseline_total > 0 else 0.0
         sku_days = len(ids) * ((x.end_date - x.start_date).days + 1)
-        verdict = hypothesis_verdict(x.factor, ratio, supply_limited=int(stockouts) >= SUPPLY_LIMITED_SHARE * sku_days > 0)
-        x.result = {"actual_total": int(actual), "baseline_total": x.baseline_total, "ratio": round(ratio, 3),
-                    "verdict": verdict, "stockout_sku_days": int(stockouts)}
+        verdict = hypothesis_verdict(x.factor, ratio, supply_limited=stockouts >= SUPPLY_LIMITED_SHARE * sku_days > 0)
+        x.result = {"actual_total": round(actual, 1), "sold_total": int(sold), "baseline_total": x.baseline_total,
+                    "ratio": round(ratio, 3), "verdict": verdict, "stockout_sku_days": stockouts}
         x.status = "EVALUATED"
         audit.log(db, "system", "HYPOTHESIS_EVALUATED", "demand_hypothesis", x.id, x.result)
         done.append(view(x))

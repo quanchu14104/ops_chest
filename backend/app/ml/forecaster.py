@@ -24,6 +24,9 @@ GATE_FILE = "decision_gate.json"
 Z90 = 1.2815515655446004
 METHOD = "lightgbm_frn"
 TIERS = ("nho", "lon")
+# Dac trung ewma_h/ewma_sigma luc huan luyen: engine EWMA chay tren TOAN BO lich su den moc (dung lookback 56 ngay
+# cua forecast_demand). Luc chay phai dua du 56 ngay, khong cat con WINDOW=28, neu khong dac trung bi lech.
+EWMA_LOOKBACK = 56
 
 
 # ---- bo chon theo lai (decision_gate.json, tao boi `python -m app.sim.backtest --frn`)
@@ -135,8 +138,8 @@ class MlForecaster:
             asymmetric = self.asymmetric()
         start = start or history_end + timedelta(days=1)
         holiday_of = holiday_of or (lambda d: d.weekday() >= 5)
-        y = [float(x) for x in history[-WINDOW:]]
-        s = [bool(x) for x in (stockout or [False] * len(history))[-WINDOW:]]
+        y = [float(x) for x in history[-EWMA_LOOKBACK:]]
+        s = [bool(x) for x in (stockout or [False] * len(history))[-EWMA_LOOKBACK:]]
         key = (self.prefix, history_end, tuple(statics), tuple(y), tuple(s))
         hit = self._cache.get(key)
         if hit is None:

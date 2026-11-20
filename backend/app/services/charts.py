@@ -5,6 +5,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.engines.expiry import BUCKET_ORDER
 from app.fmt import dmy
 from app.services import inventory, reports
 
@@ -66,7 +67,7 @@ def build_chart(db: Session, metric: str, start: date | None = None, end: date |
                     data=[{"category": c["category"], "value": c["value"]} for c in s["by_category"]])
     elif metric == "expiry_risk":
         e = inventory.expiring_lots(db, days=7, category=category, with_options=False)
-        order = ["Đã quá hạn", "Hết hạn hôm nay", "1-3 ngày", "4-7 ngày"]
+        order = list(BUCKET_ORDER)  # cung bo nhan voi inventory.expiring_lots: lech nhan thi cot qua han bi day xuong cuoi
         data = sorted(e["summary"], key=lambda x: order.index(x["bucket"]) if x["bucket"] in order else 9)
         spec.update(type="bar", title="Giá trị hàng có nguy cơ hủy (7 ngày tới)", x_key="bucket", unit="VND",
                     period=f"tại {dmy(e['as_of'])}", series=[{"key": "value_at_risk", "label": "Giá vốn dự kiến hủy"}],

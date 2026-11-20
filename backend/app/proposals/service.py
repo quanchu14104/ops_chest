@@ -47,6 +47,24 @@ def _check_open(db: Session, p: Proposal, allow_failed: bool = False) -> None:
         raise ProposalError(409, "Đề xuất đã hết hiệu lực (quá hạn chốt). Hãy tạo đề xuất mới.")
 
 
+def _num(d: dict, key: str, kind: type):
+    try:
+        v = kind(d[key])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise ProposalError(422, f"Giá trị '{key}' không hợp lệ: {d.get(key)!r}") from None
+    if kind is float and v != v:  # NaN
+        raise ProposalError(422, f"Giá trị '{key}' không hợp lệ")
+    return v
+
+
+def _bool(v) -> bool:
+    if isinstance(v, bool):
+        return v
+    if v in (0, 1, "true", "false"):
+        return v in (1, "true")
+    raise ProposalError(422, f"Giá trị 'include' không hợp lệ: {v!r}")
+
+
 def apply_edits(db: Session, p: Proposal, edits: dict, user: User) -> list[dict]:
     """Chi cho sua cac truong an toan. Ghi lai diff de do do tin cay cua agent."""
     payload = copy.deepcopy(p.payload)
@@ -54,8 +72,8 @@ def apply_edits(db: Session, p: Proposal, edits: dict, user: User) -> list[dict]
     if p.type == "PURCHASE_ORDER":
         by_pid = {l["product_id"]: l for l in payload["lines"]}
         for e in edits.get("lines", []):
-            pid = int(e["product_id"])
-            qty = int(e["qty"])
+            pid = _num(e, "product_id", int)
+            qty = _num(e, "qty", int)
             if qty < 0:
                 raise ProposalError(422, "Số lượng không được âm")
             if pid in by_pid:
@@ -87,21 +105,25 @@ def apply_edits(db: Session, p: Proposal, edits: dict, user: User) -> list[dict]
     elif p.type in ("MARKDOWN", "RETURN", "DISPOSE"):
         by_lot = {i["lot_id"]: i for i in payload["items"]}
         for e in edits.get("items", []):
-            it = by_lot.get(int(e["lot_id"]))
+            it = by_lot.get(_num(e, "lot_id", int))
             if not it:
                 raise ProposalError(422, f"Lô {e['lot_id']} không có trong đề xuất")
-            for field in ("qty", "markdown_pct", "include"):
-                if field in e and e[field] != it.get(field):
-                    if field == "qty" and int(e[field]) < 0:
-                        raise ProposalError(422, "Số lượng không được âm")
-                    if field == "markdown_pct" and not 0 < float(e[field]) < 0.95:
-                        raise ProposalError(422, "Mức giảm giá phải trong khoảng 0–95%")
-                    if field == "markdown_pct" and it.get("max_markdown_pct") is not None \
-                            and float(e[field]) > it["max_markdown_pct"] + 1e-9:
-                        raise ProposalError(422, f"Mức giảm vượt trần {it['max_markdown_pct']:.0%} của nhóm hàng.")
-                    diffs.append({"field": f"items[{it['sku']}#{it['lot_id']}].{field}", "from": it.get(field),
-                                  "to": e[field]})
-                    it[field] = e[field]
+            # Ep kieu truoc khi luu: gia tri tho (vd chuoi "5") lot vao payload/sm_edits lam hong thuc thi va thong ke
+            for field, kind in (("qty", int), ("markdown_pct", float), ("include", bool)):
+                if field not in e:
+                    continue
+                val = _bool(e[field]) if kind is bool else _num(e, field, kind)
+                if val == it.get(field):
+                    continue
+                if field == "qty" and val < 0:
+                    raise ProposalError(422, "Số lượng không được âm")
+                if field == "markdown_pct" and not 0 < val < 0.95:
+                    raise ProposalError(422, "Mức giảm giá phải trong khoảng 0–95%")
+                if field == "markdown_pct" and it.get("max_markdown_pct") is not None \
+                        and val > it["max_markdown_pct"] + 1e-9:
+                    raise ProposalError(422, f"Mức giảm vượt trần {it['max_markdown_pct']:.0%} của nhóm hàng.")
+                diffs.append({"field": f"items[{it['sku']}#{it['lot_id']}].{field}", "from": it.get(field), "to": val})
+                it[field] = val
         if p.type == "RETURN":
             payload["est_credit"] = int(sum(int(i["qty"]) * i["unit_cost"] * payload["credit_pct"] for i in payload["items"]))
     elif edits:

@@ -10,7 +10,7 @@ type Opt = { action: string; label: string; delta_vs_keep: number; feasible: boo
 type LotRow = {
   lot_id: number; sku: string; name: string; category: string; qty: number; expiry_date: string; sell_by: string; days_left: number;
   bucket: string; status: string; expected_sold: number; expected_waste: number; value_at_risk: number; supplier: string;
-  markdown_pct: number; options: Opt[];
+  markdown_pct: number; evening_markdown_pct?: number; options: Opt[];
 };
 type Resp = { as_of: string; lots: LotRow[]; total_value_at_risk: number; summary: { bucket: string; lots: number; value_at_risk: number }[] };
 
@@ -149,6 +149,7 @@ export default function Expiring() {
                       <td>
                         {l.name} <span className="muted small">{l.sku} · lô #{l.lot_id}</span>
                         {l.markdown_pct > 0 && <span className="badge" style={{ marginLeft: 6 }}>đang giảm {Math.round(l.markdown_pct * 100)}%</span>}
+                        {(l.evening_markdown_pct ?? 0) > l.markdown_pct && <span className="badge" style={{ marginLeft: 6 }}>giờ vàng {Math.round((l.evening_markdown_pct ?? 0) * 100)}%</span>}
                       </td>
                       <td>{dateVi(l.expiry_date)}{l.sell_by !== l.expiry_date && <div className="muted small">bán đến {dateVi(l.sell_by)}</div>}</td>
                       <td>{l.bucket}</td>
