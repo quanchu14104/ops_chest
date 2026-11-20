@@ -1,0 +1,2266 @@
+<title>Sổ tay Ops Chest</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Bố cục: cột mục lục dính bên trái như biển chỉ lối đi trong cửa hàng, cột đọc bên phải;
+   sơ đồ vẽ tay nằm trong khung cuộn ngang riêng khi màn hình hẹp. */
+:root {
+  --bg: #F3F6F4;
+  --surface: #FFFFFF;
+  --surface-2: #E7EEEA;
+  --fg: #17232A;
+  --muted: #55646B;
+  --line: #C4D0CA;
+  --accent: #0D6B59;
+  --accent-soft: #D4ECE3;
+  --tag: #F2C230;
+  --tag-ink: #3A2D00;
+  --danger: #B63E2A;
+  --danger-soft: #F8E0DB;
+  --pos: #007D66;
+  --neg: #C0622F;
+  --display: "Be Vietnam Pro", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F171B; --surface: #162127; --surface-2: #1E2B32; --fg: #E3EBE7; --muted: #98A8A1;
+    --line: #34454D; --accent: #4CC3A5; --accent-soft: #163A32; --tag: #E8B923; --tag-ink: #231B00;
+    --danger: #EE7B67; --danger-soft: #3C201B; --pos: #2FA488; --neg: #D57A45; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F171B; --surface: #162127; --surface-2: #1E2B32; --fg: #E3EBE7; --muted: #98A8A1;
+  --line: #34454D; --accent: #4CC3A5; --accent-soft: #163A32; --tag: #E8B923; --tag-ink: #231B00;
+  --danger: #EE7B67; --danger-soft: #3C201B; --pos: #2FA488; --neg: #D57A45; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body);
+  font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 1160px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+.layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; align-items: start; }
+@media (max-width: 920px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+
+/* Mục lục */
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); font-size: 14px; }
+.toc p { margin: 0 0 10px; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc li { counter-increment: t; }
+.toc a { display: grid; grid-template-columns: 26px 1fr; padding: 5px 8px; border-radius: 6px; color: var(--fg); text-decoration: none; }
+.toc a::before { content: counter(t); font: 500 12px/1.9 var(--mono); color: var(--muted); }
+.toc a:hover, .toc a:focus-visible { background: var(--surface-2); outline: none; }
+@media (max-width: 920px) {
+  .toc { position: static; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .toc ol { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+}
+
+/* Chữ */
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(2.1rem, 4.6vw, 3.3rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.45rem, 2.6vw, 1.85rem); font-weight: 700; }
+h3 { font-size: 1.15rem; font-weight: 700; margin-top: 8px; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: .86em; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+strong { font-weight: 600; }
+.eyebrow { font: 500 12px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+main { display: grid; gap: 72px; min-width: 0; }
+section { display: grid; gap: 18px; min-width: 0; scroll-margin-top: 20px; }
+section > header { display: grid; gap: 6px; }
+.stack { display: grid; gap: 14px; }
+ul.plain, ol.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 8px; max-width: 70ch; }
+
+/* Mở đầu */
+.hero { display: grid; gap: 20px; padding-bottom: 8px; }
+.hero .lead { font-size: 1.12rem; color: var(--fg); max-width: 62ch; }
+.rules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 6px; }
+@media (max-width: 720px) { .rules { grid-template-columns: minmax(0, 1fr); } }
+.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 6px; align-content: start; }
+.rule b { font: 700 1.05rem/1.3 var(--display); }
+.rule span { font-size: 14.5px; color: var(--muted); }
+.rule.r3 { background: var(--tag); border-color: var(--tag); }
+.rule.r3 b, .rule.r3 span { color: var(--tag-ink); }
+
+/* Ẩn dụ */
+.meta-box { background: var(--surface-2); border-radius: 10px; padding: 14px 18px; display: grid; gap: 4px; max-width: 74ch; }
+.meta-box .eyebrow { color: var(--accent); }
+
+/* Dàn nhân vật */
+.cast { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1080px) { .cast { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .cast { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.card h3 { margin: 0; font-size: 1.05rem; }
+.card .path { font: 500 12px/1.4 var(--mono); color: var(--accent); overflow-wrap: anywhere; }
+.card .row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; font-size: 14px; line-height: 1.5; }
+.chip { font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 0; text-align: center; border-radius: 4px; height: fit-content; margin-top: 2px; }
+.chip.do { background: var(--accent-soft); color: var(--accent); }
+.chip.no { background: var(--danger-soft); color: var(--danger); }
+.card.key { border-color: var(--accent); }
+
+/* Sơ đồ */
+figure { margin: 0; display: grid; gap: 10px; min-width: 0; }
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; overflow-x: auto; }
+svg.dg { display: block; width: 100%; min-width: 680px; height: auto; color: var(--fg); font-family: var(--body); }
+figcaption { font-size: 14px; color: var(--muted); max-width: 74ch; }
+.dg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.dg .box-a { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.dg .box-t { fill: var(--tag); stroke: var(--tag); stroke-width: 1.5; }
+.dg .box-d { fill: var(--danger-soft); stroke: var(--danger); stroke-width: 1.5; }
+.dg .box-q { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.dg .t { fill: var(--fg); font-size: 14px; font-weight: 600; }
+.dg .s { fill: var(--muted); font-size: 12px; }
+.dg .on-t { fill: var(--tag-ink); }
+.dg .lbl { fill: var(--muted); font-size: 12px; }
+.dg .lbl-a { fill: var(--accent); font-size: 12px; font-weight: 500; }
+.dg .lbl-d { fill: var(--danger); font-size: 12px; font-weight: 600; }
+.dg .m { font-family: var(--mono); }
+.dg .e { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+.dg .e-a { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+.dg .e-d { stroke: var(--danger); stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; }
+.dg .e-dash { stroke-dasharray: 5 4; }
+.dg .ah { fill: var(--muted); }
+.dg .ah-a { fill: var(--accent); }
+.dg .ah-d { fill: var(--danger); }
+.dg .x { stroke: var(--danger); stroke-width: 2.6; stroke-linecap: round; }
+
+/* Dòng thời gian một ngày */
+.day { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.slot { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 16px; padding: 14px 18px; border-top: 1px solid var(--line); }
+.slot:first-child { border-top: 0; }
+.slot time { font: 600 15px/1.5 var(--mono); color: var(--accent); }
+.slot .who { font: 600 11px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.slot h3 { margin: 0 0 4px; font-size: 1.02rem; }
+.slot p { font-size: 15px; }
+.slot.job time { color: var(--fg); }
+.slot.job { background: var(--surface-2); }
+@media (max-width: 560px) { .slot { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+
+/* Thác số đặt hàng */
+.wf { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.wf-row { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) 68px; gap: 14px; align-items: center; padding: 11px 16px; border-top: 1px solid var(--line); font-size: 14.5px; }
+.wf-row:first-child { border-top: 0; }
+.wf-row .v { font: 600 14px/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.wf-row .v small { display: block; font: 400 11px/1.4 var(--mono); color: var(--muted); margin-top: 3px; }
+.track { position: relative; height: 18px; background: var(--surface-2); border-radius: 3px; }
+.track span { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.b-base { background: var(--line); }
+.b-main { background: var(--accent); }
+.b-plus { background: var(--accent); opacity: .55; }
+.b-cut { background: repeating-linear-gradient(135deg, var(--danger) 0 3px, transparent 3px 7px); border: 1px solid var(--danger); }
+.b-final { background: var(--tag); }
+.cap { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--danger); }
+.wf-row.total { background: var(--surface-2); font-weight: 600; }
+@media (max-width: 600px) {
+  .wf-row { grid-template-columns: minmax(0, 1fr) 60px; }
+  .wf-row .track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* So sánh phương án cận date */
+.opts { display: grid; gap: 8px; }
+.opt { display: grid; grid-template-columns: 150px minmax(0, 1fr) 92px; gap: 12px; align-items: center; font-size: 14.5px; }
+.opt .bar { height: 22px; background: var(--line); border-radius: 3px; }
+.opt.best .bar { background: var(--accent); }
+.opt.best { font-weight: 600; }
+.opt .v { font: 600 14px/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .opt { grid-template-columns: minmax(0, 1fr) 84px; } .opt .bar { grid-column: 1 / -1; grid-row: 2; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 12px; min-width: 0; }
+.panel .note { font-size: 13.5px; color: var(--muted); }
+
+/* Bảng */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+thead th { border-top: 0; font: 600 12px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.abc { display: grid; grid-template-columns: 54px repeat(3, minmax(0, 1fr)); gap: 4px; max-width: 520px; }
+.abc div { padding: 10px; border-radius: 6px; font-size: 13.5px; line-height: 1.35; background: var(--surface); border: 1px solid var(--line); }
+.abc .h { background: transparent; border: 0; font: 600 12px/1.3 var(--mono); color: var(--muted); display: grid; place-items: center; text-align: center; }
+.abc b { display: block; font: 600 16px/1.2 var(--mono); }
+.abc .warn { background: var(--danger-soft); border-color: var(--danger); }
+.abc .strong { background: var(--accent-soft); border-color: var(--accent); }
+
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 700px) { .two { grid-template-columns: minmax(0, 1fr); } }
+.two .panel h3 { margin: 0; }
+.panel.real { border-color: var(--accent); }
+
+/* Lộ trình đọc code */
+.path-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); counter-reset: s; overflow: hidden; }
+.path-list li { counter-increment: s; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; padding: 13px 16px; border-top: 1px solid var(--line); }
+.path-list li:first-child { border-top: 0; }
+.path-list li::before { content: counter(s); font: 700 15px/1.6 var(--mono); color: var(--accent); }
+.path-list .f { font: 500 13.5px/1.5 var(--mono); overflow-wrap: anywhere; }
+.path-list p { font-size: 14.5px; color: var(--muted); }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font: 13.5px/1.7 var(--mono); }
+pre .c { color: var(--muted); }
+
+/* Câu hỏi */
+.quiz { display: grid; gap: 8px; }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0 16px; }
+summary { cursor: pointer; padding: 13px 0; font-weight: 600; list-style: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; font: 600 16px/1.5 var(--mono); color: var(--accent); }
+details[open] summary::before { content: "−"; }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+details > div { padding: 0 0 14px 30px; font-size: 15px; display: grid; gap: 8px; }
+
+.toc a.toc-lead { display: block; margin-bottom: 16px; padding: 7px 10px; background: var(--surface-2); font-weight: 600; }
+.toc a.toc-lead::before { content: none; }
+/* Mục lục nhiều nhóm */
+.toc { counter-reset: t; }
+.toc p + ol, .toc ol + p { margin-top: 0; }
+.toc ol + p { margin-top: 16px; }
+
+/* Ngăn cách phần vận hành và phần kỹ thuật */
+.part-break { display: grid; gap: 8px; padding: 22px 0 0; border-top: 2px solid var(--fg); }
+.part-break h2 { font-size: clamp(1.7rem, 3.2vw, 2.3rem); font-weight: 800; }
+
+/* Biểu đồ cột ngang một chuỗi */
+.chart { display: grid; gap: 12px; }
+.chart h4 { margin: 0; font: 600 15px/1.35 var(--body); }
+.chart .sub { font-size: 13px; color: var(--muted); margin-top: -8px; }
+.bars { display: grid; gap: 6px; }
+.bars .r { display: grid; grid-template-columns: 190px minmax(0, 1fr) 72px; gap: 12px; align-items: center; font-size: 14px; }
+.bars .trk { height: 20px; position: relative; }
+.bars .bar { position: absolute; top: 0; bottom: 0; left: 0; background: var(--line); border-radius: 0 4px 4px 0; }
+.bars .bar.hl { background: var(--pos); }
+.bars .v { font: 600 13.5px/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.bars .r:hover .bar { filter: brightness(.92); }
+@media (max-width: 560px) { .bars .r { grid-template-columns: minmax(0, 1fr) 64px; } .bars .trk { grid-column: 1 / -1; grid-row: 2; } }
+
+/* Biểu đồ phân kỳ quanh 0 */
+.div .trk { height: 22px; position: relative; }
+.div .trk::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 1px; background: var(--muted); }
+.div .bar { position: absolute; top: 0; bottom: 0; }
+.div .bar.pos { background: var(--pos); border-radius: 0 4px 4px 0; }
+.div .bar.neg { background: var(--neg); border-radius: 4px 0 0 4px; }
+.axis-note { display: grid; grid-template-columns: 190px minmax(0, 1fr) 72px; gap: 12px; font: 12px/1.3 var(--mono); color: var(--muted); }
+.axis-note > span:nth-child(2) { display: flex; justify-content: space-between; }
+@media (max-width: 560px) { .axis-note { grid-template-columns: minmax(0, 1fr); } .axis-note > span:first-child, .axis-note > span:last-child { display: none; } }
+.charts-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 980px) { .charts-two { grid-template-columns: minmax(0, 1fr); } }
+
+/* Nhóm đặc trưng */
+.feat { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .feat { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .feat { grid-template-columns: minmax(0, 1fr); } }
+.feat div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.feat b { font: 600 14.5px/1.3 var(--display); }
+.feat code { font-size: 12px; }
+.feat span { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+
+/* Thuật ngữ */
+dl.terms { margin: 0; display: grid; grid-template-columns: 170px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+dl.terms dt, dl.terms dd { margin: 0; padding: 11px 16px; border-top: 1px solid var(--line); font-size: 14.5px; }
+dl.terms dt { font-weight: 600; }
+dl.terms dt:first-of-type, dl.terms dd:first-of-type { border-top: 0; }
+@media (max-width: 600px) { dl.terms { grid-template-columns: minmax(0, 1fr); } dl.terms dd { border-top: 0; padding-top: 0; } }
+
+/* Ô chi tiết kỹ thuật thu gọn */
+details.deep { background: var(--surface-2); border-color: transparent; }
+details.deep summary { font: 500 14px/1.5 var(--body); color: var(--muted); }
+details.deep summary::before { content: "›"; }
+details.deep[open] summary::before { content: "⌄"; }
+details.deep > div { font-size: 14.5px; }
+
+/* Từ điển nhanh */
+.words { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 1080px) { .words { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .words { grid-template-columns: minmax(0, 1fr); } }
+.words div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.words b { font: 700 15px/1.3 var(--display); }
+.words span { font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+
+/* Luồng các bước của một nghiệp vụ */
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.flow .st { background: var(--surface-2); border-radius: 6px; padding: 4px 10px; font-size: 13.5px; line-height: 1.4; }
+.flow .st.key { background: var(--tag); color: var(--tag-ink); }
+.flow .ar { color: var(--muted); font-size: 13px; }
+.biz { display: grid; gap: 12px; }
+.biz .panel h3 { margin: 0; }
+.biz .like { font-size: 14.5px; color: var(--muted); }
+.biz .like b { color: var(--accent); font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-right: 6px; }
+
+/* Thẻ quyết định thiết kế */
+.decs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .decs { grid-template-columns: minmax(0, 1fr); } }
+.card.dec .row { grid-template-columns: 64px minmax(0, 1fr); }
+.chip.alt { background: var(--surface-2); color: var(--muted); }
+.chip.why { background: var(--accent-soft); color: var(--accent); }
+.chip.cost { background: var(--danger-soft); color: var(--danger); }
+
+footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+  <div class="layout">
+    <nav class="toc" aria-label="Mục lục">
+      <a class="toc-lead" href="#tu-can-biet">Từ cần biết trước khi đọc</a>
+      <p>Vận hành</p>
+      <ol>
+        <li><a href="#nhan-vat">Dàn nhân vật</a></li>
+        <li><a href="#cac-tang">Bản đồ các tầng</a></li>
+        <li><a href="#hai-con-duong">Hai con đường</a></li>
+        <li><a href="#chat">Một câu chat đi đâu</a></li>
+        <li><a href="#to-trinh">Vòng đời tờ trình</a></li>
+        <li><a href="#mot-ngay">Một ngày ở cửa hàng</a></li>
+        <li><a href="#ke-toan">Phòng kế toán</a></li>
+        <li><a href="#lo-hang">Vòng đời lô hàng</a></li>
+        <li><a href="#nghiep-vu-phu">Tám nghiệp vụ phụ</a></li>
+        <li><a href="#so-sach">Sổ sách bên dưới</a></li>
+        <li><a href="#kpi">KPI tính thế nào</a></li>
+        <li><a href="#san-tap">Sân tập và dữ liệu</a></li>
+      </ol>
+      <p>Kỹ thuật</p>
+      <ol>
+        <li><a href="#nen-tang">Dựng bằng gì</a></li>
+        <li><a href="#agent">Trợ lý lắp ráp ra sao</a></li>
+        <li><a href="#hoc-may">Học máy dễ hiểu</a></li>
+        <li><a href="#danh-gia">Bốn kỳ thi</a></li>
+        <li><a href="#noi-kiosk">Nối sang kiosk</a></li>
+      </ol>
+      <p>Quyết định</p>
+      <ol>
+        <li><a href="#vi-sao">Vì sao thiết kế như vậy</a></li>
+      </ol>
+      <p>Tự học</p>
+      <ol>
+        <li><a href="#chay">Chạy và sửa lỗi</a></li>
+        <li><a href="#doc-code">Lộ trình đọc code</a></li>
+        <li><a href="#kiem-tra">Tự kiểm tra</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <div class="hero">
+        <div class="eyebrow">Sổ tay vận hành · theo mã nguồn ngày 12/11/2026</div>
+        <h1>Ops Chest vận hành thế nào</h1>
+        <p class="lead">Hãy hình dung một cửa hàng tiện lợi thuê thêm một trợ lý rất giỏi ăn nói. Trợ lý đọc được mọi sổ sách và soạn được tờ trình, nhưng không giữ con dấu, không cầm chìa khoá két, và không tự bấm máy tính. Con số do phòng kế toán tính theo công thức cố định. Việc có hậu quả thật (đặt hàng, đổi giá, ghi hủy) chỉ xảy ra khi Store Manager ký.</p>
+        <div class="rules">
+          <div class="rule"><b>Trợ lý nói</b><span>LLM hiểu câu hỏi, chọn công cụ, tóm tắt kết quả và soạn tờ trình. Nó không tự tính con số nào.</span></div>
+          <div class="rule"><b>Engine tính</b><span>Dự báo, số lượng đặt, phương án cận date do code Python tính. Cùng đầu vào thì luôn ra cùng kết quả.</span></div>
+          <div class="rule r3"><b>Store Manager quyết</b><span>Tờ trình chỉ là một bản ghi "chờ ký". Đặt hàng, đổi giá, ghi hủy, trả NCC chỉ xảy ra khi Store Manager bấm Duyệt.</span></div>
+        </div>
+        <p>Ba câu trên là toàn bộ triết lý của hệ thống. Các phần dưới chỉ giải thích từng câu được thực hiện bằng code như thế nào.</p>
+      </div>
+
+      <section id="tu-can-biet">
+        <header><div class="eyebrow">Trước khi đọc</div><h2>Hai mươi bốn từ cần biết</h2></header>
+        <p>Trang dùng các từ dưới đây từ rất sớm. Đọc lướt một lần; gặp lại mà quên thì quay về đây. Số trong ngoặc là phần giải thích kỹ hơn.</p>
+        <div class="words">
+          <div><b>Store Manager (SM)</b><span>Cửa hàng trưởng. Người duy nhất được bấm Duyệt trên màn hình. "Ký" trong trang nghĩa là bấm Duyệt.</span></div>
+          <div><b>Nhân viên</b><span>Xem, chat, nhận hàng, kiểm kê, gỡ hàng khỏi kệ. Không được duyệt.</span></div>
+          <div><b>Nhà cung cấp (NCC)</b><span>Đại lý, nhà phân phối mà cửa hàng nhập hàng. Demo có 7 NCC hư cấu.</span></div>
+          <div><b>Hạn sử dụng (HSD)</b><span>Ngày in trên bao bì. Quá ngày này không được bán.</span></div>
+          <div><b>Cận date</b><span>Hàng sắp hết hạn, ví dụ hộp sữa còn 2 ngày. Phải chọn: giữ, giảm giá, trả NCC hay để hủy. (7.3)</span></div>
+          <div><b>Ghi hủy</b><span>Xoá hàng hỏng hoặc quá hạn khỏi sổ, tính thành chi phí. Luôn kèm lý do.</span></div>
+          <div><b>Lô</b><span>Một lần nhận hàng của một món, có HSD riêng. Cùng một món có thể có nhiều lô khác hạn. (Phần 8)</span></div>
+          <div><b>FEFO</b><span>Hết hạn trước, bán trước: hộp sữa gần hết hạn xếp ngoài cùng tủ. (Phần 8)</span></div>
+          <div><b>Tờ trình (đề xuất)</b><span>Một việc hệ thống muốn làm, nằm chờ SM duyệt. Giao diện gọi là "đề xuất", code gọi là Proposal. Chưa duyệt thì chưa có gì xảy ra. (Phần 5)</span></div>
+          <div><b>Người thừa hành</b><span>Phần code duy nhất làm thay đổi sổ sách và gửi email, chỉ chạy sau khi SM duyệt. (Phần 3)</span></div>
+          <div><b>LLM</b><span>Chuyên gia ngôn ngữ thuê ngoài qua Internet, kiểu ChatGPT. Đọc và viết giỏi, nhưng chỉ biết những gì được đưa cho đọc.</span></div>
+          <div><b>Công cụ (của LLM)</b><span>Một hàm Python mà LLM được phép <em>xin</em> chạy. LLM chỉ gửi tên hàm và tham số; code của Ops Chest mới chạy thật. (Phần 3, 14)</span></div>
+          <div><b>Token</b><span>Đơn vị tính cước của LLM, cỡ một mẩu từ. Gửi càng nhiều chữ càng tốn tiền và càng chậm. (Phần 14)</span></div>
+          <div><b>Engine</b><span>Phần code Python tính các con số: dự báo, số lượng đặt, phương án cận date. Cùng đầu vào luôn ra cùng kết quả. (Phần 7)</span></div>
+          <div><b>Dự báo</b><span>Đoán mỗi món sẽ bán bao nhiêu trong những ngày tới.</span></div>
+          <div><b>EWMA</b><span>Cách dự báo cũ: trung bình các ngày gần đây, ngày càng gần càng được tính nặng, có biết thứ Bảy khác thứ Hai. (7.1)</span></div>
+          <div><b>LightGBM</b><span>Mô hình học máy dự báo nhu cầu, học từ dữ liệu của hàng trăm cửa hàng khác. (Phần 15)</span></div>
+          <div><b>Mức phục vụ</b><span>Tỷ lệ số ngày không hết hàng mà cửa hàng nhắm tới. 95% nghĩa là chấp nhận hết hàng khoảng 5 ngày trong 100. (7.2)</span></div>
+          <div><b>Tồn an toàn</b><span>Hàng để dư, phòng ngày bán nhiều hơn dự báo. Mức phục vụ càng cao, tồn an toàn càng lớn. (7.2)</span></div>
+          <div><b>Hàng kéo khách</b><span>Món khách đến cửa hàng vì nó, như nước suối, mì gói. Lãi thấp nhưng thiếu là khách bỏ đi.</span></div>
+          <div><b>ABC-XYZ</b><span>Cách xếp hạng món: A/B/C theo lãi đóng góp, X/Y/Z theo độ đều khi bán. (7.4)</span></div>
+          <div><b>FRN</b><span>FreshRetailNet-50K: số liệu bán hàng thật của một chuỗi bán đồ tươi online ở Trung Quốc. Nguồn nhu cầu của demo. (Phần 12)</span></div>
+          <div><b>Backtest</b><span>Chạy thử trên dữ liệu quá khứ: hai cửa hàng sinh đôi, một làm theo kinh nghiệm, một làm theo hệ thống, rồi so lãi. (Phần 12, 16)</span></div>
+          <div><b>WAPE</b><span>Dự báo lệch bao nhiêu phần trăm so với số bán thật, tính gộp. Thấp hơn là tốt. (Phần 16)</span></div>
+        </div>
+        <p>Thêm một từ nữa: <strong>POS</strong> là máy tính tiền ở quầy. Nó biết bán món gì nhưng không biết HSD của từng hộp. Demo chưa nối với POS thật.</p>
+      </section>
+
+      <section id="nhan-vat">
+        <header><div class="eyebrow">Phần 1</div><h2>Dàn nhân vật</h2></header>
+        <p>Mỗi thư mục trong <code>backend/app/</code> đóng một vai trong cửa hàng. Khi gặp lỗi, hỏi "việc này của nhân vật nào?" là biết mở file nào.</p>
+        <div class="cast">
+          <article class="card">
+            <h3>Mặt tiền cửa hàng</h3><div class="path">frontend/src/</div>
+            <div class="row"><span class="chip do">Làm</span><span>Trang chat, bản tin đầu ngày, hộp duyệt, các trang dữ liệu. Vẽ bảng và biểu đồ từ dữ liệu backend gửi về.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Tính toán nghiệp vụ. Mọi con số đến từ API.</span></div>
+          </article>
+          <article class="card key">
+            <h3>Trợ lý biết nói</h3><div class="path">agent/orchestrator.py · tools.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>Nhận câu hỏi, hỏi LLM nên dùng công cụ nào, chạy công cụ, tóm tắt. Có 31 công cụ: 22 loại đọc, 9 loại đề xuất.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Duyệt, gửi email, sửa sổ. Không có công cụ nào làm được việc đó.</span></div>
+          </article>
+          <article class="card">
+            <h3>Người soát bài</h3><div class="path">agent/guard.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>Đối chiếu mọi con số từ 1.000 trở lên trong câu trả lời với kết quả công cụ. Bắt câu kiểu "em đã duyệt đơn".</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Chặn câu trả lời. Nó chỉ gắn cảnh báo để người dùng tự kiểm.</span></div>
+          </article>
+          <article class="card">
+            <h3>Thủ kho</h3><div class="path">services/</div>
+            <div class="row"><span class="chip do">Làm</span><span>Đọc cơ sở dữ liệu, gom lịch sử bán, lô hàng, đơn đang về thành số liệu sạch rồi đưa cho kế toán. Chat, trang web và job dùng chung.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Tự nghĩ ra công thức. Công thức nằm ở kế toán.</span></div>
+          </article>
+          <article class="card key">
+            <h3>Kế toán</h3><div class="path">engines/</div>
+            <div class="row"><span class="chip do">Làm</span><span>Dự báo, số lượng đặt, rủi ro hết hạn, phương án cận date, ABC-XYZ, KPI. Thuần Python, có unit test.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Giữ sổ hay gọi LLM. "Kế toán" ở đây chỉ tính toán; sổ sách nằm trong cơ sở dữ liệu (Phần 10).</span></div>
+          </article>
+          <article class="card">
+            <h3>Chuyên gia dự báo</h3><div class="path">ml/forecaster.py · engines/forecast_router.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>Mô hình LightGBM học ở 848 điểm bán FRN khác. Bộ định tuyến chọn mặt hàng nào dùng nó.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Quyết định số lượng đặt. Nó chỉ đưa dự báo cho kế toán.</span></div>
+          </article>
+          <article class="card">
+            <h3>Khay tờ trình</h3><div class="path">proposals/builders.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>Đóng gói kết quả của kế toán thành đề xuất <code>PENDING</code>, kèm lý do và bằng chứng. Chống tạo trùng.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Gây hậu quả thật. Tờ trình nằm trong khay thì chưa có gì xảy ra.</span></div>
+          </article>
+          <article class="card">
+            <h3>Bàn ký</h3><div class="path">proposals/service.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>Duyệt, sửa, từ chối. Kiểm tra người bấm có vai trò manager, tờ trình còn hạn, phần sửa hợp lệ.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Cho nhân viên duyệt. Nhân viên gọi API duyệt nhận lỗi 403.</span></div>
+          </article>
+          <article class="card key">
+            <h3>Người thừa hành</h3><div class="path">proposals/executor.py · notify/</div>
+            <div class="row"><span class="chip do">Làm</span><span>Thực thi tờ trình đã ký: tạo đơn, đổi giá, ghi hủy, trả NCC. Ghi sổ trước, gửi email kèm PDF sau cùng.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Nhận lệnh từ ai khác ngoài bàn ký.</span></div>
+          </article>
+          <article class="card">
+            <h3>Chuông hẹn giờ</h3><div class="path">jobs/daily.py · scheduler.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>06:30 quét sáng, 17:00 giờ vàng, 22:00 lập danh sách rút kệ. Chuẩn bị sẵn tờ trình cho buổi sáng.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Duyệt hay thực thi. Job chỉ gọi khay tờ trình.</span></div>
+          </article>
+          <article class="card">
+            <h3>Sổ nhật ký</h3><div class="path">audit.py → bảng audit_log</div>
+            <div class="row"><span class="chip do">Làm</span><span>Ghi mọi bước: ai tạo, ai sửa, ai duyệt, thực thi ra sao, mỗi lượt chat tốn bao nhiêu token.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Bị sửa từ giao diện. Trang Nhật ký chỉ đọc.</span></div>
+          </article>
+          <article class="card">
+            <h3>Sân tập</h3><div class="path">sim/ · clock.py</div>
+            <div class="row"><span class="chip do">Làm</span><span>Nạp nhu cầu thật của FRN, tua nhanh ngày, chạy backtest A/B. Đồng hồ của cả hệ thống vặn được.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Duyệt thay Store Manager khi tua nhanh.</span></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="cac-tang">
+        <header><div class="eyebrow">Phần 2</div><h2>Bản đồ các tầng</h2></header>
+        <p>Đi từ trên xuống: người dùng chạm vào giao diện, giao diện gọi API, API giao việc cho một trong ba "khách hàng" của thủ kho. Cả ba đều xin số liệu từ cùng một chỗ.</p>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 430" role="img" aria-label="Kiến trúc nhiều tầng: giao diện, API, ba nơi dùng dịch vụ (trợ lý, các trang, job), tầng services, rồi engines và cơ sở dữ liệu. Engines không chạm cơ sở dữ liệu.">
+              <defs>
+                <marker id="aA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="40" y="10" width="800" height="48" rx="10"/>
+              <text class="t" x="440" y="31" text-anchor="middle">Giao diện React</text>
+              <text class="s" x="440" y="49" text-anchor="middle">chat · bản tin đầu ngày · hộp duyệt · các trang dữ liệu</text>
+              <line class="e" x1="440" y1="58" x2="440" y2="86" marker-end="url(#aA)"/>
+              <text class="lbl" x="450" y="77">HTTP + stream</text>
+
+              <rect class="box" x="40" y="88" width="800" height="48" rx="10"/>
+              <text class="t" x="440" y="109" text-anchor="middle">API FastAPI</text>
+              <text class="s" x="440" y="127" text-anchor="middle">cửa vào duy nhất · kiểm tra đăng nhập và vai trò</text>
+
+              <line class="e" x1="165" y1="136" x2="165" y2="170" marker-end="url(#aA)"/>
+              <line class="e" x1="440" y1="136" x2="440" y2="170" marker-end="url(#aA)"/>
+              <line class="e" x1="715" y1="136" x2="715" y2="170" marker-end="url(#aA)"/>
+              <text class="lbl" x="175" y="158">chat</text>
+              <text class="lbl" x="450" y="158">trang, form</text>
+              <text class="lbl" x="725" y="158">nút "Quét &amp; tạo đề xuất"</text>
+
+              <rect class="box" x="40" y="172" width="250" height="62" rx="10"/>
+              <text class="t" x="165" y="198" text-anchor="middle">agent/ · Trợ lý</text>
+              <text class="s" x="165" y="218" text-anchor="middle">hỏi LLM nên gọi công cụ nào</text>
+              <rect class="box" x="315" y="172" width="250" height="62" rx="10"/>
+              <text class="t" x="440" y="198" text-anchor="middle">api/routes · Các trang</text>
+              <text class="s" x="440" y="218" text-anchor="middle">đọc bảng, nhận hàng, kiểm kê</text>
+              <rect class="box" x="590" y="172" width="250" height="62" rx="10"/>
+              <text class="t" x="715" y="198" text-anchor="middle">jobs/ · Chuông hẹn giờ</text>
+              <text class="s" x="715" y="218" text-anchor="middle">tự chạy 06:30 · 17:00 · 22:00</text>
+
+              <line class="e" x1="165" y1="234" x2="165" y2="268" marker-end="url(#aA)"/>
+              <line class="e" x1="440" y1="234" x2="440" y2="268" marker-end="url(#aA)"/>
+              <line class="e" x1="715" y1="234" x2="715" y2="268" marker-end="url(#aA)"/>
+              <text class="lbl" x="450" y="256">gọi cùng các hàm</text>
+
+              <rect class="box" x="40" y="270" width="800" height="50" rx="10"/>
+              <text class="t" x="440" y="292" text-anchor="middle">services/ · Thủ kho</text>
+              <text class="s" x="440" y="310" text-anchor="middle">đọc sổ sách trong DB, gom thành số liệu sạch, đưa cho kế toán</text>
+
+              <line class="e" x1="280" y1="322" x2="280" y2="358" marker-start="url(#aA)" marker-end="url(#aA)"/>
+              <text class="lbl" x="290" y="345">số liệu vào, kết quả ra</text>
+              <line class="e" x1="720" y1="322" x2="720" y2="358" marker-start="url(#aA)" marker-end="url(#aA)"/>
+              <text class="lbl" x="730" y="345">đọc / ghi</text>
+
+              <rect class="box-a" x="40" y="360" width="480" height="56" rx="10"/>
+              <text class="t" x="280" y="384" text-anchor="middle">engines/ + ml/ · Kế toán</text>
+              <text class="s" x="280" y="403" text-anchor="middle">dự báo, số đặt, rủi ro hết hạn, ABC-XYZ · chỉ tính toán</text>
+              <rect class="box" x="600" y="360" width="240" height="56" rx="10"/>
+              <text class="t" x="720" y="384" text-anchor="middle">Cơ sở dữ liệu · Sổ sách</text>
+              <text class="s" x="720" y="403" text-anchor="middle">lô, đơn, tờ trình, nhật ký</text>
+
+              <line class="e-d" x1="522" y1="392" x2="598" y2="392"/>
+              <line class="x" x1="553" y1="385" x2="567" y2="399"/>
+              <line class="x" x1="567" y1="385" x2="553" y2="399"/>
+              <text class="lbl-d" x="560" y="379" text-anchor="middle">không chạm</text>
+            </svg>
+          </div>
+          <figcaption>Ba nơi dùng (trợ lý, các trang, chuông hẹn giờ) gọi cùng một tầng services. Vì vậy con số trong chat, trên trang Cận date và trong bản tin sáng luôn khớp nhau.</figcaption>
+        </figure>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Kế toán ngồi ở phòng trong và không bao giờ xuống kho. Thủ kho mang lên một tờ giấy ghi sẵn số liệu (trong code là các dataclass như <code>ReplenishmentInput</code>), kế toán tính xong thì trả lại tờ kết quả. Nhờ vậy muốn kiểm tra công thức chỉ cần đưa vài con số vào, không phải dựng cả cơ sở dữ liệu.</p>
+        </div>
+      </section>
+
+      <section id="hai-con-duong">
+        <header><div class="eyebrow">Phần 3</div><h2>Hai con đường của một hành động</h2></header>
+        <p>Đây là phần quan trọng nhất khi bảo vệ. Nguyên tắc "luôn có con người trong vòng quyết định" (tiếng Anh: human-in-the-loop, viết tắt HITL) được bảo đảm bằng cách nối dây trong code, không dựa vào việc dặn LLM ngoan.</p>
+        <div class="panel">
+          <h3>Trước hết: LLM "dùng công cụ" nghĩa là gì?</h3>
+          <p>LLM không tự chạy được gì cả; nó chỉ viết ra chữ. Khi cần số liệu hay muốn làm một việc, nó viết một <strong>phiếu yêu cầu</strong> gồm tên hàm và tham số, ví dụ <code>get_expiring_lots(days=3)</code> nghĩa là "cho tôi xem các lô hết hạn trong 3 ngày". Code của Ops Chest nhận phiếu, tra xem tên hàm có trong danh sách được phép không, rồi mới chạy hàm đó và đưa kết quả lại cho LLM đọc.</p>
+          <p>Danh sách hàm được phép gọi là <strong>danh bạ công cụ</strong>. Nó chỉ có hai loại: hàm <strong>đọc</strong> (xem số liệu) và hàm <strong>đề xuất</strong> (tạo một tờ trình chờ duyệt). Không có hàm nào duyệt, gửi email hay sửa sổ. Vì vậy LLM có muốn làm việc đó, phiếu yêu cầu cũng không có chỗ nào để gửi tới.</p>
+        </div>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 320" role="img" aria-label="Trợ lý, chuông hẹn giờ và nhân viên chỉ tạo được tờ trình chờ ký. Trợ lý không có đường tới người thừa hành. Chỉ khi Store Manager bấm Duyệt, người thừa hành mới chạy.">
+              <defs>
+                <marker id="aB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                <marker id="aBa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="20" y="20" width="220" height="56" rx="10"/>
+              <text class="t" x="130" y="43" text-anchor="middle">Trợ lý LLM</text>
+              <text class="s" x="130" y="63" text-anchor="middle">9 công cụ loại "đề xuất"</text>
+              <rect class="box" x="20" y="132" width="220" height="56" rx="10"/>
+              <text class="t" x="130" y="155" text-anchor="middle">Chuông hẹn giờ</text>
+              <text class="s" x="130" y="175" text-anchor="middle">quét 06:30 · giờ vàng 17:00</text>
+              <rect class="box" x="20" y="244" width="220" height="56" rx="10"/>
+              <text class="t" x="130" y="267" text-anchor="middle">Nhân viên</text>
+              <text class="s" x="130" y="287" text-anchor="middle">kiểm kê · kiểm date · báo hủy</text>
+
+              <line class="e" x1="240" y1="62" x2="318" y2="128" marker-end="url(#aB)"/>
+              <line class="e" x1="240" y1="160" x2="318" y2="160" marker-end="url(#aB)"/>
+              <line class="e" x1="240" y1="272" x2="318" y2="192" marker-end="url(#aB)"/>
+              <text class="lbl m" x="279" y="152" text-anchor="middle">builders</text>
+
+              <rect class="box-t" x="320" y="110" width="210" height="100" rx="10"/>
+              <text class="t on-t" x="425" y="144" text-anchor="middle">Tờ trình chờ ký</text>
+              <text class="s on-t m" x="425" y="165" text-anchor="middle">PENDING</text>
+              <text class="s on-t" x="425" y="184" text-anchor="middle">chưa có gì xảy ra</text>
+
+              <line class="e-d" x1="240" y1="40" x2="540" y2="40"/>
+              <line class="x" x1="548" y1="33" x2="562" y2="47"/>
+              <line class="x" x1="562" y1="33" x2="548" y2="47"/>
+              <text class="lbl-d" x="392" y="30" text-anchor="middle">không có công cụ nào thực thi</text>
+
+              <rect class="box-a" x="600" y="20" width="260" height="60" rx="10"/>
+              <text class="t" x="730" y="44" text-anchor="middle">Người thừa hành</text>
+              <text class="s" x="730" y="64" text-anchor="middle">executor: ghi sổ trước, email sau</text>
+
+              <rect class="box" x="600" y="130" width="260" height="60" rx="10"/>
+              <text class="t" x="730" y="154" text-anchor="middle">Store Manager bấm Duyệt</text>
+              <text class="s" x="730" y="174" text-anchor="middle">chỉ vai trò manager · sửa được số</text>
+              <line class="e-a" x1="730" y1="130" x2="730" y2="83" marker-end="url(#aBa)"/>
+              <text class="lbl-a" x="740" y="111">thực thi</text>
+
+              <line class="e" x1="530" y1="160" x2="598" y2="160" marker-end="url(#aB)"/>
+              <text class="lbl" x="564" y="152" text-anchor="middle">hộp duyệt</text>
+
+              <rect class="box-q" x="600" y="240" width="260" height="60" rx="10"/>
+              <text class="t" x="730" y="264" text-anchor="middle">Từ chối hoặc hết hạn</text>
+              <text class="s" x="730" y="284" text-anchor="middle">tờ trình đóng, không có tác dụng</text>
+              <line class="e" x1="530" y1="195" x2="598" y2="262" marker-end="url(#aB)"/>
+            </svg>
+          </div>
+          <figcaption>Mũi tên đỏ là đường không tồn tại: hộp đồ nghề của trợ lý không có công cụ nào chạm tới người thừa hành. Đường duy nhất tới đó đi qua chữ ký của Store Manager.</figcaption>
+        </figure>
+        <h3>Sáu chốt khoá trong code</h3>
+        <ul class="plain">
+          <li><strong>Hộp đồ nghề chỉ có hai ngăn.</strong> Mỗi công cụ của trợ lý khai báo loại <code>read</code> hoặc <code>propose</code>; file <code>tools.py</code> không import executor. Test <code>test_tool_registry_has_no_execution_tools</code> kiểm điều này.</li>
+          <li><strong>Đề xuất chỉ là một bản ghi.</strong> Các công cụ <code>propose_*</code> chỉ ghi một dòng <code>Proposal</code> trạng thái <code>PENDING</code>.</li>
+          <li><strong>Một cửa duyệt duy nhất.</strong> <code>POST /api/proposals/{id}/approve</code> đòi vai trò <code>manager</code> và kiểm tờ trình còn mở, còn hạn.</li>
+          <li><strong>Ghi sổ trước, gửi thư sau.</strong> Email lỗi thì toàn bộ thay đổi trong DB bị hoàn tác, tờ trình chuyển <code>FAILED</code> và có thể duyệt lại.</li>
+          <li><strong>Phần sửa được lưu.</strong> Số Store Manager sửa nằm trong <code>sm_edits</code>, dùng để đo độ tin cậy của trợ lý và học thói quen đặt hàng.</li>
+          <li><strong>Mọi bước có dấu vết.</strong> Tạo, sửa, duyệt, thực thi, thất bại đều ghi vào <code>audit_log</code>.</li>
+        </ul>
+        <p>Test <code>test_agent_can_only_propose_never_execute</code> còn cho một LLM giả cố tình gọi <code>approve_proposal</code> và <code>send_email</code>. Cả hai lần gọi đều nhận lỗi "không có công cụ tên này", tờ trình vẫn <code>PENDING</code>, không email nào được gửi.</p>
+        <p><strong>Ngoại lệ có chủ đích:</strong> nhận hàng và gỡ kệ là việc tay của nhân viên, ghi thẳng vào sổ qua form mà không cần tờ trình, vì đó là ghi lại sự việc đã xảy ra chứ không phải một quyết định. Trợ lý chỉ mở được form; người bấm xác nhận vẫn là nhân viên.</p>
+      </section>
+
+      <section id="chat">
+        <header><div class="eyebrow">Phần 4</div><h2>Một câu chat đi đâu</h2></header>
+        <p>Một lượt trả lời là một vòng lặp: LLM chọn công cụ, code chạy công cụ, kết quả quay lại cho LLM, cho tới khi LLM không cần gọi thêm. Vòng lặp này tự viết trong <code>orchestrator.run_turn</code>, không dùng framework.</p>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 300" role="img" aria-label="Vòng lặp chat: câu hỏi vào orchestrator, LLM quyết định gọi công cụ hay trả lời; nếu gọi công cụ thì code chạy công cụ, kết quả nối lại vào hội thoại và hỏi LLM lần nữa, tối đa 8 vòng; câu trả lời cuối qua người soát bài rồi hiện cho người dùng. Bảng và biểu đồ đi thẳng lên màn hình.">
+              <defs>
+                <marker id="aC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                <marker id="aCa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="20" y="30" width="160" height="56" rx="10"/>
+              <text class="t" x="100" y="53" text-anchor="middle">Bạn hỏi</text>
+              <text class="s" x="100" y="73" text-anchor="middle">"Lô nào sắp hết hạn?"</text>
+              <rect class="box" x="230" y="30" width="210" height="56" rx="10"/>
+              <text class="t" x="335" y="53" text-anchor="middle">Orchestrator</text>
+              <text class="s" x="335" y="73" text-anchor="middle">câu hỏi + lịch sử + 31 công cụ</text>
+              <rect class="box-a" x="490" y="30" width="170" height="56" rx="10"/>
+              <text class="t" x="575" y="53" text-anchor="middle">LLM quyết định</text>
+              <text class="s" x="575" y="73" text-anchor="middle">gọi công cụ hay trả lời?</text>
+              <rect class="box" x="710" y="30" width="150" height="56" rx="10"/>
+              <text class="t" x="785" y="53" text-anchor="middle">Người soát bài</text>
+              <text class="s" x="785" y="73" text-anchor="middle">số có căn cứ không?</text>
+
+              <rect class="box" x="490" y="200" width="170" height="56" rx="10"/>
+              <text class="t" x="575" y="223" text-anchor="middle">Chạy công cụ thật</text>
+              <text class="s" x="575" y="243" text-anchor="middle">services → engines</text>
+              <rect class="box" x="230" y="200" width="210" height="56" rx="10"/>
+              <text class="t" x="335" y="223" text-anchor="middle">Kết quả công cụ</text>
+              <text class="s" x="335" y="243" text-anchor="middle">JSON gọn + bảng, biểu đồ</text>
+              <rect class="box" x="710" y="200" width="150" height="56" rx="10"/>
+              <text class="t" x="785" y="223" text-anchor="middle">Hiện cho bạn</text>
+              <text class="s" x="785" y="243" text-anchor="middle">chữ chạy dần</text>
+
+              <line class="e" x1="180" y1="58" x2="228" y2="58" marker-end="url(#aC)"/>
+              <line class="e" x1="440" y1="58" x2="488" y2="58" marker-end="url(#aC)"/>
+              <line class="e" x1="660" y1="58" x2="708" y2="58" marker-end="url(#aC)"/>
+              <text class="lbl" x="684" y="50" text-anchor="middle">trả lời</text>
+              <line class="e" x1="575" y1="86" x2="575" y2="198" marker-end="url(#aC)"/>
+              <text class="lbl" x="585" y="146">gọi công cụ</text>
+              <line class="e" x1="490" y1="228" x2="442" y2="228" marker-end="url(#aC)"/>
+              <line class="e" x1="335" y1="200" x2="335" y2="88" marker-end="url(#aC)"/>
+              <text class="lbl" x="325" y="146" text-anchor="end">nối vào hội thoại</text>
+              <line class="e" x1="785" y1="86" x2="785" y2="198" marker-end="url(#aC)"/>
+
+              <text class="t" x="455" y="140" text-anchor="middle">tối đa 8 vòng</text>
+              <text class="s" x="455" y="158" text-anchor="middle">mỗi vòng hỏi LLM lại</text>
+
+              <path class="e-a e-dash" d="M335,256 V284 H785 V260" marker-end="url(#aCa)"/>
+              <text class="lbl-a" x="560" y="277" text-anchor="middle">bảng, biểu đồ đi thẳng lên màn hình</text>
+            </svg>
+          </div>
+          <figcaption>Vòng lặp chạy quanh hình chữ nhật ở giữa. Bảng và biểu đồ (widget) do code dựng từ chính dữ liệu công cụ rồi gửi thẳng lên màn hình, nên LLM không thể chép sai số trong bảng.</figcaption>
+        </figure>
+        <h3>Đi theo một câu hỏi cụ thể</h3>
+        <ol class="plain">
+          <li>Giao diện gửi <code>POST /api/chat/sessions/{id}/messages</code> và giữ kết nối để nhận chữ chạy dần (stream).</li>
+          <li>Hàm <code>run_turn</code> ghép ba thứ gửi cho LLM: prompt hệ thống (bản hướng dẫn cố định gửi kèm mỗi lần hỏi, xem Phần 14), 24 tin nhắn gần nhất, và danh bạ 31 công cụ. Prompt và danh bạ viết bằng tiếng Anh vì chữ Việt có dấu tốn khoảng gấp ba số token, nhưng trợ lý vẫn trả lời tiếng Việt.</li>
+          <li>LLM trả về yêu cầu gọi <code>get_expiring_lots(days=3)</code>.</li>
+          <li>Code chạy hàm đó: thủ kho đọc lô hàng, kế toán mô phỏng bán theo FEFO và chấm phương án xử lý. Kết quả gồm JSON gọn cho LLM và một widget bảng cho màn hình.</li>
+          <li>Nếu cần thêm số liệu, LLM gửi phiếu yêu cầu tiếp. Vòng lặp này chạy tối đa 8 lần cho một câu hỏi.</li>
+          <li>Khi đủ số liệu, LLM đọc JSON, viết hai ba câu tóm tắt. Người soát bài so số trong câu với kết quả công cụ; lệch thì hiện cảnh báo bên dưới câu trả lời.</li>
+          <li>Lượt chat được ghi vào nhật ký với thời gian, số token, công cụ đã gọi và số con số không có căn cứ.</li>
+        </ol>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Trợ lý giống người trực tổng đài: nghe câu hỏi, gọi đúng phòng ban, đọc lại câu trả lời của phòng đó. Người soát bài đứng phía sau, gạch dưới con số nào không có trong biên bản.</p>
+        </div>
+        <p><strong>Khi LLM hỏng hoặc hết hạn mức:</strong> bản tin đầu ngày được dựng bằng code (<code>services/briefing.py</code>), không qua LLM. Các nút gợi ý nhanh gọi <code>/api/chat/quick/{khoá}</code>, chạy thẳng công cụ đọc và hiện widget. Ứng dụng vẫn dùng được, chỉ mất phần trò chuyện. Nếu khai báo LLM phụ trong <code>.env</code>, trợ lý tự chuyển sang LLM phụ khi LLM chính lỗi trước khi kịp trả chữ nào.</p>
+      </section>
+
+      <section id="to-trinh">
+        <header><div class="eyebrow">Phần 5</div><h2>Vòng đời một tờ trình</h2></header>
+        <p>Mọi đề xuất (đơn đặt hàng, giảm giá, trả NCC, ghi hủy, ngừng nhập, giả thuyết nhu cầu, hệ số đặt hàng, điều chỉnh tồn) đều đi qua cùng một máy trạng thái.</p>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 300" role="img" aria-label="Trạng thái của đề xuất: được tạo thành PENDING; từ PENDING có thể hết hạn, bị từ chối, bị thay bằng bản sửa, hoặc được duyệt; sau khi duyệt thì thực thi thành công hoặc thất bại, thất bại thì duyệt lại được.">
+              <defs>
+                <marker id="aD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                <marker id="aDa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+                <marker id="aDd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-d" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="20" y="122" width="150" height="56" rx="10"/>
+              <text class="t" x="95" y="145" text-anchor="middle">Được tạo</text>
+              <text class="s" x="95" y="165" text-anchor="middle">agent · job · nhân viên</text>
+              <rect class="box-t" x="230" y="122" width="150" height="56" rx="10"/>
+              <text class="t on-t m" x="305" y="145" text-anchor="middle">PENDING</text>
+              <text class="s on-t" x="305" y="165" text-anchor="middle">chờ ký</text>
+              <rect class="box-a" x="470" y="122" width="150" height="56" rx="10"/>
+              <text class="t m" x="545" y="145" text-anchor="middle">APPROVED</text>
+              <text class="s" x="545" y="165" text-anchor="middle">đã ký</text>
+              <rect class="box-a" x="710" y="40" width="150" height="56" rx="10"/>
+              <text class="t m" x="785" y="63" text-anchor="middle">EXECUTED</text>
+              <text class="s" x="785" y="83" text-anchor="middle">đã thực thi</text>
+              <rect class="box-d" x="710" y="200" width="150" height="56" rx="10"/>
+              <text class="t m" x="785" y="223" text-anchor="middle">FAILED</text>
+              <text class="s" x="785" y="243" text-anchor="middle">lỗi, đã hoàn tác</text>
+              <rect class="box-q" x="230" y="18" width="150" height="52" rx="10"/>
+              <text class="t m" x="305" y="40" text-anchor="middle">EXPIRED</text>
+              <text class="s" x="305" y="59" text-anchor="middle">quá hạn chốt</text>
+              <rect class="box-q" x="120" y="236" width="150" height="52" rx="10"/>
+              <text class="t m" x="195" y="258" text-anchor="middle">REJECTED</text>
+              <text class="s" x="195" y="277" text-anchor="middle">từ chối, có lý do</text>
+              <rect class="box-q" x="310" y="236" width="160" height="52" rx="10"/>
+              <text class="t m" x="390" y="258" text-anchor="middle">SUPERSEDED</text>
+              <text class="s" x="390" y="277" text-anchor="middle">đã có bản sửa mới</text>
+
+              <line class="e" x1="170" y1="150" x2="228" y2="150" marker-end="url(#aD)"/>
+              <line class="e-a" x1="380" y1="150" x2="468" y2="150" marker-end="url(#aDa)"/>
+              <text class="lbl-a" x="424" y="142" text-anchor="middle">SM duyệt</text>
+              <line class="e-a" x1="620" y1="138" x2="708" y2="78" marker-end="url(#aDa)"/>
+              <text class="lbl" x="645" y="100" text-anchor="end">thừa hành chạy xong</text>
+              <line class="e" x1="620" y1="162" x2="708" y2="222" marker-end="url(#aD)"/>
+              <text class="lbl" x="640" y="215" text-anchor="end">lỗi → hoàn tác</text>
+              <path class="e" d="M710,248 C640,266 560,240 552,182" marker-end="url(#aD)"/>
+              <text class="lbl" x="632" y="286" text-anchor="middle">SM duyệt lại</text>
+              <line class="e" x1="305" y1="122" x2="305" y2="73" marker-end="url(#aD)"/>
+              <text class="lbl" x="315" y="102">quá hạn, hệ thống đóng</text>
+              <line class="e" x1="282" y1="178" x2="232" y2="234" marker-end="url(#aD)"/>
+              <text class="lbl" x="244" y="206" text-anchor="end">SM từ chối</text>
+              <line class="e" x1="330" y1="178" x2="372" y2="234" marker-end="url(#aD)"/>
+              <text class="lbl" x="362" y="204">trợ lý sửa</text>
+            </svg>
+          </div>
+          <figcaption>Mọi mũi tên đi vào APPROVED đều là Store Manager bấm Duyệt: lần đầu từ PENDING, hoặc duyệt lại sau khi thực thi thất bại. Các nhánh còn lại kết thúc mà không có gì thay đổi trong sổ.</figcaption>
+        </figure>
+        <ul class="plain">
+          <li><strong>Hạn chốt.</strong> Đơn đặt hàng, giảm giá, giả thuyết hết hiệu lực cuối ngày tạo (23:59:59), vì số liệu của hôm nay không còn đúng ngày mai. Tờ trình trả NCC giữ đến hạn cuối NCC còn nhận. Quá hạn thì thành <code>EXPIRED</code>; muốn làm thì tạo tờ trình mới.</li>
+          <li><strong>Chống trùng.</strong> Mỗi tờ trình có <code>dedupe_key</code>, ví dụ <code>PO:mã NCC:ngày</code>. Bấm "Quét &amp; tạo đề xuất ngay" nhiều lần không sinh thêm đơn. Việc Store Manager vừa từ chối trong ngày cũng không bị job nhắc lại.</li>
+          <li><strong>Hai cách sửa.</strong> Store Manager sửa số trực tiếp trên thẻ rồi bấm "Duyệt với chỉnh sửa" (phần sửa ghi vào <code>sm_edits</code>). Hoặc nói với trợ lý "giảm còn 30 thùng": trợ lý tạo tờ trình mới, bản cũ thành <code>SUPERSEDED</code>, và vẫn phải chờ ký.</li>
+          <li><strong>Từ chối phải có lý do</strong>, để đối chiếu về sau.</li>
+        </ul>
+      </section>
+
+      <section id="mot-ngay">
+        <header><div class="eyebrow">Phần 6</div><h2>Một ngày ở cửa hàng</h2></header>
+        <p>Dòng có nền xám là việc chuông hẹn giờ tự làm. Các dòng còn lại là việc của con người.</p>
+        <div class="day">
+          <div class="slot job">
+            <time>06:30</time>
+            <div><div class="who">Chuông sáng · run_morning</div><h3>Quét và chuẩn bị tờ trình</h3>
+              <p>Dọn dẹp trước:</p>
+              <ul class="plain">
+                <li>Đóng các tờ trình hôm qua không ai duyệt (Phần 5).</li>
+                <li>Chấm đúng hay sai các giả thuyết nhu cầu đã hết khoảng ngày (Phần 9, mục 5).</li>
+                <li>Ghi lại giá trị tồn kho cuối ngày hôm qua để tính KPI (Phần 11).</li>
+              </ul>
+              <p>Rồi soạn tờ trình mới, tất cả nằm chờ duyệt:</p>
+              <ul class="plain">
+                <li>Đơn đặt hàng cho mọi NCC đến lịch đặt hôm nay.</li>
+                <li>Giảm giá các lô còn 3 ngày; trả NCC những lô còn trả được; ghi hủy các lô đã quá ngày bán.</li>
+                <li>Hệ số đặt hàng, nếu thấy Store Manager hay sửa đơn theo cùng một chiều (Phần 9, mục 6).</li>
+              </ul>
+              <p><strong>Không làm:</strong> không duyệt, không gửi email, không đổi giá, không trừ kho.</p></div>
+          </div>
+          <div class="slot">
+            <time>Sáng</time>
+            <div><div class="who">Store Manager</div><h3>Đọc bản tin, duyệt việc</h3>
+              <p>Bản tin đầu ngày liệt kê tờ trình chờ duyệt, lô cận date, NCC đến lịch, đơn đang chờ giao, hàng hết. Duyệt đơn thì PDF đơn hàng được gửi tới NCC (trong demo là hộp thư Mailpit).</p></div>
+          </div>
+          <div class="slot">
+            <time>Trong ngày</time>
+            <div><div class="who">Nhân viên</div><h3>Nhận hàng, kiểm kê, kiểm date</h3>
+              <p>Nhận hàng phải nhập HSD cho từng lô, ghi số từ chối tại cửa và giá hoá đơn. Lô còn dưới 2/3 hạn dùng (ví dụ hạn 30 ngày mà chỉ còn dưới 20 ngày) bị chặn, chỉ Store Manager nhận được. Kiểm kê và kiểm date làm theo lịch, đếm mù (phiếu không hiện số trên sổ); chênh lệch thành tờ trình.</p></div>
+          </div>
+          <div class="slot job">
+            <time>17:00</time>
+            <div><div class="who">Chuông chiều · run_evening</div><h3>Giờ vàng</h3>
+              <p>Đề xuất giảm giá phần còn dư của các lô hết ngày bán hôm nay. Giờ bắt đầu giảm lấy theo khung bán đỉnh của từng nhóm hàng, không cố định 18h cho mọi nhóm.</p></div>
+          </div>
+          <div class="slot job">
+            <time>22:00</time>
+            <div><div class="who">Đóng cửa · run_closing</div><h3>Danh sách rút kệ</h3>
+              <p>Liệt kê các lô hết ngày bán. Job chỉ lập danh sách, không tự đổi trạng thái lô.</p></div>
+          </div>
+          <div class="slot">
+            <time>Sau 22:00</time>
+            <div><div class="who">Nhân viên, rồi Store Manager</div><h3>Gỡ kệ và ghi hủy</h3>
+              <p>Nhân viên gỡ hàng và ghi số thực gỡ. Bước này không chờ duyệt vì bán hàng quá hạn là vi phạm an toàn thực phẩm. Lô chuyển <code>PULLED</code>. Ngay khi nhân viên xác nhận, hệ thống tạo tờ trình ghi hủy theo số thực gỡ, và Store Manager duyệt tờ trình đó. Lô nào quá ngày bán mà chưa ai gỡ thì chuông 06:30 sáng hôm sau tạo tờ trình theo số trên sổ, kèm cảnh báo. Phần chênh giữa số gỡ và số trên sổ được ghi là hao hụt.</p></div>
+          </div>
+        </div>
+        <p>Trong demo, đồng hồ hệ thống đứng ở 26/06/2024. Nút "Tua nhanh" giả lập từng ngày: hàng về, khách mua theo nhu cầu thật của FRN, nhân viên nhận hàng và rút kệ. Nó không duyệt thay ai. Không ai duyệt đơn thì kệ trống dần, và đó chính là điều nó muốn cho thấy.</p>
+      </section>
+
+      <section id="ke-toan">
+        <header><div class="eyebrow">Phần 7</div><h2>Bên trong phòng kế toán</h2></header>
+        <p>Bốn việc tính toán chính. Mỗi việc là một file trong <code>engines/</code>, nhận số vào và trả số ra.</p>
+
+        <div class="stack">
+          <h3>7.1 Dự báo: ngày mai bán được bao nhiêu?</h3>
+          <p>Có hai cách đoán. <strong>EWMA</strong> là cách cũ, công thức viết tay: lấy trung bình các ngày gần đây, ngày càng gần càng được tính nặng, rồi điều chỉnh theo thứ trong tuần. <strong>LightGBM</strong> là mô hình học máy (Phần 15). Một <strong>bộ chọn</strong> quyết định món nào dùng cách nào.</p>
+          <figure>
+            <div class="fig">
+              <svg class="dg" viewBox="0 0 880 250" role="img" aria-label="Lịch sử bán 120 ngày, che ngày có sự kiện, rồi kiểm tra điều kiện. Đủ điều kiện thì LightGBM dự báo điểm với độ dao động lấy từ EWMA; không đủ thì dùng EWMA.">
+                <defs>
+                  <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                  <marker id="aGa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+                </defs>
+                <rect class="box" x="20" y="95" width="150" height="60" rx="10"/>
+                <text class="t" x="95" y="120" text-anchor="middle">Lịch sử bán</text>
+                <text class="s" x="95" y="140" text-anchor="middle">120 ngày gần nhất</text>
+                <rect class="box" x="200" y="95" width="165" height="60" rx="10"/>
+                <text class="t" x="282" y="120" text-anchor="middle">Che ngày sự kiện</text>
+                <text class="s" x="282" y="140" text-anchor="middle">theo giả thuyết đã duyệt</text>
+                <polygon class="box-a" points="395,125 480,68 565,125 480,182"/>
+                <text class="t" x="480" y="121" text-anchor="middle">Đủ điều kiện</text>
+                <text class="s" x="480" y="139" text-anchor="middle">dùng LightGBM?</text>
+                <rect class="box-a" x="620" y="20" width="240" height="60" rx="10"/>
+                <text class="t" x="740" y="44" text-anchor="middle">LightGBM: dự báo điểm</text>
+                <text class="s" x="740" y="64" text-anchor="middle">σ (độ dao động) lấy từ EWMA</text>
+                <rect class="box" x="620" y="170" width="240" height="60" rx="10"/>
+                <text class="t" x="740" y="194" text-anchor="middle">EWMA: engine cũ</text>
+                <text class="s" x="740" y="214" text-anchor="middle">mức nền × hệ số thứ trong tuần</text>
+                <line class="e" x1="170" y1="125" x2="198" y2="125" marker-end="url(#aG)"/>
+                <line class="e" x1="365" y1="125" x2="393" y2="125" marker-end="url(#aG)"/>
+                <path class="e-a" d="M480,68 V50 H618" marker-end="url(#aGa)"/>
+                <text class="lbl-a" x="550" y="42" text-anchor="middle">có</text>
+                <path class="e" d="M480,182 V200 H618" marker-end="url(#aG)"/>
+                <text class="lbl" x="550" y="194" text-anchor="middle">không</text>
+              </svg>
+            </div>
+            <figcaption>Bộ chọn (trong code: <code>forecast_router.py</code>, đọc file <code>decision_gate.json</code>) chọn cho từng mặt hàng. Hai nhánh trả cùng một kiểu kết quả <code>Forecast</code>, nên phần đặt hàng phía sau không cần biết ai đã dự báo. Sau cùng, hệ số của các giả thuyết đã duyệt được nhân vào.</figcaption>
+          </figure>
+          <ul class="plain">
+            <li><strong>EWMA, người bán lâu năm.</strong> Nhớ tuần này rõ hơn tháng trước (trọng số giảm một nửa sau mỗi 14 ngày) và biết thứ Bảy bán khác thứ Hai. Đó là "mức nền × hệ số thứ trong tuần".</li>
+            <li><strong>Ngày hết hàng không phải nhu cầu.</strong> Hết hàng lúc 15h thì số bán là số hàng có, không phải số khách muốn mua; giống đếm khán giả bằng số vé đã bán khi rạp đã hết vé. Engine ước lượng phần bị chặn thay vì tin số bán. Bỏ hẳn những ngày này thì dự báo bị lệch thấp, vì đó thường là ngày bán chạy.</li>
+            <li><strong>LightGBM, chuyên gia học ở nơi khác.</strong> Học trên 848 điểm bán FRN khác, nhận cả dự báo EWMA làm một đầu vào để sửa sai cho nó. Huấn luyện trên Kaggle, máy bạn chỉ nạp file mô hình.</li>
+            <li><strong>Điều kiện dùng LightGBM:</strong> <code>FORECAST_ENGINE=auto</code> và có file mô hình; mặt hàng có mã nhóm FRN; có ít nhất 28 ngày lịch sử và 28 ngày gần nhất có bán; nhóm hàng × quy mô điểm bán được bộ chọn cho phép.</li>
+            <li><strong>Bộ chọn chấm theo lãi, không theo điểm thi.</strong> <code>ml/artifacts/decision_gate.json</code> được học từ backtest: nhóm nào dùng LightGBM thì lãi hơn thật. Ở cửa hàng demo, 127/164 mặt hàng dùng dự báo điểm của LightGBM nhưng lấy σ của EWMA; 37 mặt hàng bán ít giữ EWMA.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>7.2 Số lượng đặt: lấy bao nhiêu hàng?</h3>
+          <p>Ý chính chỉ có một dòng: <strong>số đặt = nhu cầu dự báo − hàng cũ còn bán được + hàng dư an toàn</strong>, rồi cắt bớt nếu vượt các giới hạn. Phần khó là hàng dư an toàn bao nhiêu thì đủ. Cả mục này dùng chung một ví dụ: một món sữa chua tưởng tượng, số tự đặt cho dễ theo dõi.</p>
+          <div class="panel">
+            <h3>Mức phục vụ và tồn an toàn</h3>
+            <p>Sữa chua được dự báo bán 40 hộp trong 2 ngày tới. Dự báo là con số ở giữa, nên nếu chỉ đặt đúng 40 hộp thì khoảng một nửa số lần sẽ thiếu hàng. Ngày thực tế thường lệch khỏi dự báo cỡ 7 hộp; con số này gọi là <strong>độ dao động</strong> (ký hiệu σ, đọc là "xích-ma").</p>
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr><th>Muốn không hết hàng trong</th><th>Cần để dư</th><th>Với món sữa chua</th></tr></thead>
+                <tbody>
+                  <tr><td>50% số lần</td><td>0 lần độ dao động</td><td class="num">0 hộp</td></tr>
+                  <tr><td>90% số lần</td><td>1,28 lần độ dao động</td><td class="num">khoảng 9 hộp</td></tr>
+                  <tr><td>95% số lần</td><td>1,65 lần độ dao động</td><td class="num">khoảng 12 hộp</td></tr>
+                  <tr><td>98% số lần</td><td>2,05 lần độ dao động</td><td class="num">khoảng 14 hộp</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>Cột đầu là <strong>mức phục vụ</strong>, cột cuối là <strong>tồn an toàn</strong>. Muốn ít hết hàng hơn thì phải chịu để dư nhiều hơn, mà hàng tươi để dư thì dễ phải hủy. Các hệ số 1,28, 1,65, 2,05 tra từ bảng phân phối chuẩn có sẵn trong sách thống kê.</p>
+          </div>
+          <div class="meta-box">
+            <div class="eyebrow">Ẩn dụ · bài toán cậu bé bán báo</div>
+            <p>Sáng nay lấy bao nhiêu tờ báo? Lấy dư thì báo ế, lấy thiếu thì khách về tay không. Nên nhắm mức phục vụ bao nhiêu phụ thuộc vào chuyện bán được một tờ lời bao nhiêu, và ế một tờ lỗ bao nhiêu.</p>
+          </div>
+          <p>Với hàng tươi, engine chọn mức phục vụ đúng theo ý đó. Sữa chua bán 25.000đ, vốn 15.000đ:</p>
+          <ul class="plain">
+            <li><strong>Thiệt khi thiếu một hộp:</strong> mất 10.000đ tiền lời, cộng "chi phí mất khách" giả định bằng 30% giá bán là 7.500đ (khách thất vọng có thể không quay lại). Tổng 17.500đ.</li>
+            <li><strong>Thiệt khi ế một hộp phải hủy:</strong> mất 15.000đ tiền vốn.</li>
+            <li><strong>Mức phục vụ nên nhắm</strong> = thiệt khi thiếu ÷ (thiệt khi thiếu + thiệt khi ế) = 17.500 ÷ 32.500 ≈ 54%.</li>
+            <li>Nếu hộp ế còn giảm giá cuối ngày thu lại được 8.000đ thì ế chỉ lỗ 7.000đ, và mức nên nhắm tăng lên 17.500 ÷ 24.500 ≈ 71%.</li>
+          </ul>
+          <p>Con số này còn bị nâng lên <strong>sàn mức phục vụ</strong>: hàng kéo khách ít nhất 95%, nhóm A ít nhất 90%, còn lại ít nhất 50%. Sữa chua trong ví dụ thuộc nhóm A, nên dùng 90%, tức để dư khoảng 9 hộp như bảng trên. Dưới đây là toàn bộ các bước, ráp lại với nhau.</p>
+          <div class="wf" role="table" aria-label="Ví dụ minh hoạ các bước tính số lượng đặt">
+            <div class="wf-row" role="row">
+              <span role="cell">Dự báo nhu cầu trong chu kỳ phủ (từ lúc hàng về tới lúc đơn kế tiếp về, 2 ngày)</span>
+              <div class="track" role="cell"><span class="b-main" style="left:0;width:88.9%"></span></div>
+              <span class="v" role="cell">40</span>
+            </div>
+            <div class="wf-row" role="row">
+              <span role="cell">Trừ tồn cũ còn hạn bán được, mô phỏng bán FEFO tới ngày hàng về</span>
+              <div class="track" role="cell"><span class="b-base" style="left:0;width:62.2%"></span><span class="b-cut" style="left:62.2%;width:26.7%"></span></div>
+              <span class="v" role="cell">−12<small>còn 28</small></span>
+            </div>
+            <div class="wf-row" role="row">
+              <span role="cell">Cộng tồn an toàn: 1,28 × 7 hộp, để đạt mức phục vụ 90% (sàn của nhóm A)</span>
+              <div class="track" role="cell"><span class="b-base" style="left:0;width:62.2%"></span><span class="b-plus" style="left:62.2%;width:20%"></span></div>
+              <span class="v" role="cell">+9<small>thành 37</small></span>
+            </div>
+            <div class="wf-row" role="row">
+              <span role="cell">Trần HSD: không đặt nhiều hơn lượng bán kịp trước khi lô mới hết hạn (ví dụ 32)</span>
+              <div class="track" role="cell"><span class="b-base" style="left:0;width:71.1%"></span><span class="b-cut" style="left:71.1%;width:11.1%"></span><span class="cap" style="left:71.1%"></span></div>
+              <span class="v" role="cell">−5<small>còn 32</small></span>
+            </div>
+            <div class="wf-row" role="row">
+              <span role="cell">Sức chứa tủ: tồn lúc hàng về cộng số đặt không vượt chỗ trống (còn 50, không chạm)</span>
+              <div class="track" role="cell"><span class="b-base" style="left:0;width:71.1%"></span></div>
+              <span class="v" role="cell">0<small>vẫn 32</small></span>
+            </div>
+            <div class="wf-row" role="row">
+              <span role="cell">Làm tròn theo thùng 6 hộp (hàng tươi làm tròn tới số gần nhất)</span>
+              <div class="track" role="cell"><span class="b-base" style="left:0;width:71.1%"></span><span class="b-final" style="left:0;width:66.7%"></span></div>
+              <span class="v" role="cell">−2<small>còn 30</small></span>
+            </div>
+            <div class="wf-row total" role="row">
+              <span role="cell">Dòng trên tờ trình: 30 hộp (5 thùng), kèm nhãn "trần HSD"</span>
+              <div class="track" role="cell"><span class="b-final" style="left:0;width:66.7%"></span></div>
+              <span class="v" role="cell">30</span>
+            </div>
+          </div>
+          <ul class="plain">
+            <li><strong>Hàng bền</strong> (HSD dài hơn chu kỳ đặt + 7 ngày) ít khi phải hủy nên không dùng bài toán bán báo. Hệ số "để dư bao nhiêu lần độ dao động" lấy theo ô ABC-XYZ (7.4) và không thấp hơn sàn mức phục vụ. Tồn an toàn cũng không thấp hơn số hàng tối thiểu để kệ trông đầy, vì kệ trống một nửa bán kém hơn.</li>
+            <li><strong>Lịch NCC.</strong> Ngày hàng về và chu kỳ phủ tính theo ngày giao trong tuần và kỳ nghỉ của NCC. Đơn cuối trước Tết tự lớn lên để phủ cả kỳ nghỉ (trần HSD vẫn chặn).</li>
+            <li><strong>Đơn dưới mức tối thiểu</strong> của NCC: engine tính sẵn hai phương án "bù đơn bằng hàng bền" và "hoãn". Muốn duyệt đơn vẫn dưới mức thì phải đánh dấu đã thỏa thuận với NCC, không thì executor từ chối.</li>
+            <li><strong>Hệ số học từ Store Manager</strong> (ví dụ "nhóm bánh mì anh hay giảm 20%") chỉ áp dụng sau khi chính tờ trình hệ số được duyệt, và vẫn không vượt trần HSD hay sức chứa.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: công thức đầy đủ</summary>
+            <div>
+              <ul class="plain">
+                <li>Hàng dễ hư: mức phục vụ = (giá − vốn + chi phí mất khách) / (giá − giá trị thu hồi + chi phí mất khách), kẹp trong 30–98% rồi nâng lên sàn. Tồn an toàn = z · σ · √R, với z tra từ mức phục vụ, σ là độ dao động mỗi ngày, R là số ngày của chu kỳ phủ.</li>
+                <li>Hàng bền: tồn an toàn = z · σ · √(L + R), với L là số ngày chờ hàng về; z lấy theo ô ABC-XYZ.</li>
+                <li>Code: hàm <code>compute_order</code> trong <code>backend/app/engines/replenishment.py</code>.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>7.3 Hàng cận date: giữ, giảm giá hay trả?</h3>
+          <p>Engine mô phỏng bán FEFO theo dự báo để biết mỗi lô dự kiến còn dư bao nhiêu, rồi tính <strong>số tiền thu về</strong> của từng phương án và xếp từ cao xuống thấp. Ví dụ tưởng tượng: lô 20 hộp, giá 25.000đ, vốn 15.000đ, còn 2 ngày, dự kiến chỉ bán giá gốc được 12 hộp.</p>
+          <div class="panel">
+            <div class="opts">
+              <div class="opt best"><span>Giảm giá 20%</span><div class="bar" style="width:100%"></div><span class="v">400.000đ</span></div>
+              <div class="opt"><span>Trả NCC</span><div class="bar" style="width:90%"></div><span class="v">360.000đ</span></div>
+              <div class="opt"><span>Giảm giá 30%</span><div class="bar" style="width:87.5%"></div><span class="v">350.000đ</span></div>
+              <div class="opt"><span>Giữ nguyên giá</span><div class="bar" style="width:74%"></div><span class="v">296.000đ</span></div>
+              <div class="opt"><span>Giảm giá 50%</span><div class="bar" style="width:62.5%"></div><span class="v">250.000đ</span></div>
+            </div>
+            <p class="note">Giữ nguyên: 12 hộp bán giá gốc, 8 hộp hủy tốn thêm 500đ/hộp. Giảm 20% đủ đẩy hết lô (độ co giãn giả định 3,0 cho hàng tươi), nên giảm sâu hơn chỉ mất tiền. Trả NCC: giả sử NCC hoàn 50% giá vốn cho 8 hộp dư. Công thức thật ở <code>engines/disposition.py</code>, hàm <code>evaluate</code>.</p>
+          </div>
+          <ul class="plain">
+            <li>Lô hết hạn trong ngày chỉ được <strong>giảm giờ vàng</strong> cho phần còn dư, bắt đầu sau khung bán đỉnh của nhóm. Engine trừ cả phần khách sau giờ đó vốn sẽ trả giá gốc mà nay được giảm.</li>
+            <li>Mỗi nhóm hàng có cấu hình được giảm hay không và trần mức giảm. Engine không đề xuất vượt trần, Store Manager sửa vượt trần cũng bị chặn.</li>
+            <li>Trả NCC chỉ khi thỏa thuận còn hiệu lực cho phép và lô còn đủ số ngày trước HSD.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>7.4 ABC-XYZ: mặt hàng nào quan trọng?</h3>
+          <p><strong>A/B/C</strong> xếp theo đóng góp lợi nhuận (A là nhóm mang lại phần lớn lãi). <strong>X/Y/Z</strong> xếp theo độ đều của doanh số tuần (X bán đều như nhịp tim, Z thất thường). Ô của mặt hàng quyết định hệ số z của tồn an toàn:</p>
+          <div class="abc" role="table" aria-label="Hệ số z theo ô ABC-XYZ">
+            <div class="h" role="columnheader"></div><div class="h" role="columnheader">X · đều</div><div class="h" role="columnheader">Y · vừa</div><div class="h" role="columnheader">Z · thất thường</div>
+            <div class="h" role="rowheader">A</div><div class="strong"><b>2,05</b>giữ kỹ nhất</div><div class="strong"><b>1,65</b></div><div><b>1,28</b></div>
+            <div class="h" role="rowheader">B</div><div><b>1,65</b></div><div><b>1,28</b></div><div><b>1,04</b></div>
+            <div class="h" role="rowheader">C</div><div><b>1,28</b></div><div class="warn"><b>1,04</b>xét ngừng nhập</div><div class="warn"><b>0,84</b>xét ngừng nhập</div>
+          </div>
+          <p>Ô C-Y và C-Z chỉ thành ứng viên ngừng nhập khi hủy từ 15% hoặc lỗ. Hàng kéo khách (nước suối, mì gói) không bao giờ bị đề xuất ngừng nhập; chặn bằng code, nên LLM có bị bảo "ngừng nhập mặt hàng 70" cũng không tạo được tờ trình. Hàng mới bán chưa đủ 8 tuần cũng được miễn.</p>
+        </div>
+      </section>
+
+      <section id="lo-hang">
+        <header><div class="eyebrow">Phần 8</div><h2>Vòng đời một lô hàng</h2></header>
+        <p>POS chỉ biết mã hàng, không biết HSD. Vì vậy Ops Chest quản lý theo <strong>lô</strong>: mỗi lần nhận hàng của một mặt hàng tạo một lô có HSD riêng. Hàng bán theo <strong>FEFO</strong>, lô hết hạn trước bán trước, giống cách bạn để hộp sữa sắp hết hạn ở ngoài cùng tủ lạnh.</p>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 300" role="img" aria-label="Trạng thái lô: nhận hàng thành ACTIVE; ACTIVE bán hết thành SOLD; hết ngày bán thì nhân viên gỡ thành PULLED, Store Manager duyệt hủy thành WASTED; Store Manager duyệt trả thì thành RETURN_PENDING, NCC lấy thì RETURNED, NCC từ chối thì quay lại ACTIVE.">
+              <defs>
+                <marker id="aH" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="20" y="120" width="140" height="56" rx="10"/>
+              <text class="t" x="90" y="143" text-anchor="middle">Nhận hàng</text>
+              <text class="s" x="90" y="163" text-anchor="middle">nhập HSD từng lô</text>
+              <rect class="box-a" x="220" y="120" width="150" height="56" rx="10"/>
+              <text class="t m" x="295" y="143" text-anchor="middle">ACTIVE</text>
+              <text class="s" x="295" y="163" text-anchor="middle">đang trên kệ</text>
+              <rect class="box" x="460" y="20" width="150" height="52" rx="10"/>
+              <text class="t m" x="535" y="42" text-anchor="middle">SOLD</text>
+              <text class="s" x="535" y="61" text-anchor="middle">bán hết, theo FEFO</text>
+              <rect class="box-t" x="460" y="120" width="150" height="56" rx="10"/>
+              <text class="t m on-t" x="535" y="143" text-anchor="middle">PULLED</text>
+              <text class="s on-t" x="535" y="163" text-anchor="middle">đã gỡ khỏi kệ</text>
+              <rect class="box-d" x="700" y="120" width="160" height="56" rx="10"/>
+              <text class="t m" x="780" y="143" text-anchor="middle">WASTED</text>
+              <text class="s" x="780" y="163" text-anchor="middle">đã ghi hủy</text>
+              <rect class="box" x="460" y="226" width="170" height="56" rx="10"/>
+              <text class="t m" x="545" y="249" text-anchor="middle">RETURN_PENDING</text>
+              <text class="s" x="545" y="269" text-anchor="middle">chờ NCC đến lấy</text>
+              <rect class="box" x="700" y="226" width="160" height="56" rx="10"/>
+              <text class="t m" x="780" y="249" text-anchor="middle">RETURNED</text>
+              <text class="s" x="780" y="269" text-anchor="middle">NCC đã nhận</text>
+
+              <line class="e" x1="160" y1="148" x2="218" y2="148" marker-end="url(#aH)"/>
+              <line class="e" x1="370" y1="132" x2="458" y2="54" marker-end="url(#aH)"/>
+              <text class="lbl" x="394" y="84" text-anchor="end">khách mua</text>
+              <line class="e" x1="370" y1="148" x2="458" y2="148" marker-end="url(#aH)"/>
+              <text class="lbl" x="414" y="140" text-anchor="middle">nhân viên gỡ</text>
+              <line class="e" x1="610" y1="148" x2="698" y2="148" marker-end="url(#aH)"/>
+              <text class="lbl" x="654" y="140" text-anchor="middle">SM duyệt hủy</text>
+              <line class="e" x1="340" y1="176" x2="458" y2="248" marker-end="url(#aH)"/>
+              <text class="lbl" x="392" y="232" text-anchor="end">SM duyệt trả</text>
+              <line class="e" x1="630" y1="254" x2="698" y2="254" marker-end="url(#aH)"/>
+              <text class="lbl" x="664" y="246" text-anchor="middle">NCC lấy</text>
+              <path class="e e-dash" d="M460,272 C380,296 280,262 268,180" marker-end="url(#aH)"/>
+              <text class="lbl" x="250" y="226" text-anchor="end">NCC từ chối</text>
+            </svg>
+          </div>
+          <figcaption>Giảm giá không đổi trạng thái lô, chỉ đổi mức giá dán trên lô. Kiểm kê hay kiểm date lệch sổ thì lô được điều chỉnh qua tờ trình <code>STOCK_ADJUST</code>.</figcaption>
+        </figure>
+        <ul class="plain">
+          <li><strong>Ngày bán cuối</strong> = HSD − số ngày phải rút kệ trước hạn của mặt hàng (demo: hàng tươi 0, ngắn ngày 1, dài ngày 7). Báo cáo cận date, giảm giá, số lượng đặt đều tính theo ngày này; điều khoản trả NCC vẫn tính theo HSD in trên bao bì.</li>
+          <li><strong>Tiền trả NCC chỉ ghi khi NCC đã lấy hàng.</strong> Lúc duyệt trả, lợi nhuận chưa đổi; hàng nằm ở trạng thái chờ lấy, không bán, không tính tồn.</li>
+          <li><strong>Hủy luôn có lý do</strong>: hết hạn, vỡ móp, hỏng do bảo quản, lỗi NCC, khác. Tủ mát hỏng và đặt dư là hai vấn đề khác nhau nên báo cáo tách riêng.</li>
+        </ul>
+      </section>
+
+      <!-- nghiep vu phu -->
+      <section id="nghiep-vu-phu">
+        <header><div class="eyebrow">Phần 9</div><h2>Tám nghiệp vụ phụ</h2></header>
+        <p>Ngoài đặt hàng và xử lý hàng cận date, cửa hàng còn tám việc nhỏ. Mỗi việc có luật riêng, được viết thành code để không phụ thuộc trí nhớ của ai. Ô màu vàng trong mỗi luồng là bước cần Store Manager duyệt.</p>
+        <div class="biz">
+          <div class="panel">
+            <h3>1. Nhận hàng</h3>
+            <p class="like"><b>Ẩn dụ</b>Ký nhận ở cửa sau: ký rồi thì hàng hỏng là của mình, nên kiểm trước khi ký.</p>
+            <div class="flow"><span class="st">NCC giao hàng</span><span class="ar">→</span><span class="st">Đếm từng dòng, ghi HSD từng lô</span><span class="ar">→</span><span class="st">Từ chối hàng móp, sai, date ngắn</span><span class="ar">→</span><span class="st">Nhân viên xác nhận</span><span class="ar">→</span><span class="st">Mỗi cặp (số lượng, HSD) thành một lô</span></div>
+            <ul class="plain">
+              <li>Lô phải còn ít nhất 2/3 hạn dùng. Dưới mức này thì mặc định bị từ chối; chỉ Store Manager tick xác nhận mới nhận được, và việc đó được ghi nhật ký.</li>
+              <li>Không bao giờ nhận hàng đã quá hạn.</li>
+              <li>Giao dư quá 10% hoặc quá một thùng (lấy mức lớn hơn) cần Store Manager xác nhận. Giao thiếu thì ghi lại, không tạo đơn bù; lần đặt sau engine tự tính lại.</li>
+              <li>Giá trên hoá đơn khác giá trên đơn thì lô dùng giá thật, kèm cảnh báo.</li>
+              <li>Chưa hỗ trợ nhận hàng không có đơn.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>2. Kiểm kê, đếm mù</h3>
+            <p class="like"><b>Ẩn dụ</b>Người chấm thi không được xem đáp án trước. Thấy số trên sổ thì người đếm dễ đếm cho khớp.</p>
+            <div class="flow"><span class="st">Phiếu đếm (không hiện số sổ)</span><span class="ar">→</span><span class="st">Nhân viên đếm, gửi</span><span class="ar">→</span><span class="st">Chênh lệch thành tờ trình</span><span class="ar">→</span><span class="st key">Store Manager duyệt</span><span class="ar">→</span><span class="st">Sổ sửa theo số đếm</span></div>
+            <ul class="plain">
+              <li>Đếm thiếu thì trừ vào lô gần hết hạn trước (không biết mất ở lô nào); đếm dư thì cộng vào lô mới nhất.</li>
+              <li>Tồn kho thay đổi giữa lúc đếm và lúc duyệt thì tờ trình thất bại, phải đếm lại, thay vì ghi đè bằng số cũ.</li>
+              <li>Lịch đếm: nhóm A mỗi tuần, nhóm B hai tuần một lần, nhóm C mỗi tháng.</li>
+              <li><strong>Tồn ảo:</strong> món bán đều mà 3 ngày liền không bán được cái nào trong khi sổ vẫn còn hàng thì được đưa vào phiếu đếm. Thường là kệ đã trống mà sổ chưa biết; để lâu thì dự báo tụt dần và món đó không được đặt lại.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>3. Kiểm date theo lô</h3>
+            <p class="like"><b>Ẩn dụ</b>Khách hay với tay lấy hộp mới ở trong cùng kệ. Hộp cũ vẫn nằm đó dù sổ tưởng đã bán.</p>
+            <div class="flow"><span class="st">Phiếu liệt kê các HSD sắp tới ngày bán cuối</span><span class="ar">→</span><span class="st">Nhân viên đếm theo HSD in trên bao bì</span><span class="ar">→</span><span class="st">Chênh lệch thành tờ trình cho từng lô</span><span class="ar">→</span><span class="st key">Store Manager duyệt</span><span class="ar">→</span><span class="st">Sổ ghi đúng số của từng HSD</span></div>
+            <ul class="plain">
+              <li>Phiếu có các HSD sổ đang biết nhưng không kèm số lượng (vẫn đếm mù). Nhân viên thêm được HSD mà sổ chưa có.</li>
+              <li>HSD có trên sổ mà phiếu để trống được tính là 0: người đếm đã xem hết kệ của món đó.</li>
+              <li>Lịch: hàng tươi mỗi ngày, hàng ngắn ngày thứ Hai, hàng dài ngày ngày 1 hằng tháng.</li>
+              <li>Chuyển số giữa các lô cùng món trong một phiếu không bị tính là hao hụt.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>4. Trả hàng cho nhà cung cấp</h3>
+            <p class="like"><b>Ẩn dụ</b>Gửi hàng trả qua bưu điện: tiền chỉ về khi bên kia đã ký nhận.</p>
+            <div class="flow"><span class="st key">Store Manager duyệt tờ trình trả</span><span class="ar">→</span><span class="st">Hàng tách riêng, email báo NCC</span><span class="ar">→</span><span class="st">NCC xác nhận</span><span class="ar">→</span><span class="st">NCC lấy hàng: ghi khoản hoàn theo số NCC thực nhận</span><span class="ar">→</span><span class="st">Tiền về, đóng phiếu</span></div>
+            <ul class="plain">
+              <li>Chỉ được đề xuất khi thỏa thuận với NCC còn hiệu lực, cho trả hàng cận date, và lô còn đủ số ngày trước HSD.</li>
+              <li>Lúc duyệt, hàng được tách khỏi kệ nhưng <strong>chưa ghi tiền</strong>. Khoản hoàn chỉ được ghi khi NCC thật sự lấy hàng, theo số NCC thực nhận, vì NCC có thể từ chối hoặc chỉ nhận một phần.</li>
+              <li>Hai kiểu: hoàn một phần giá vốn (chờ NCC trả tiền hoặc trừ vào đơn sau), hoặc đổi hàng mới (lô mới vào kho với giá vốn 0, phiếu đóng ngay).</li>
+              <li>NCC từ chối thì hàng quay lại kệ và hệ thống xét lại phương án giảm giá.</li>
+              <li>Phiếu đã gửi 5 ngày mà NCC chưa lấy thì bản tin nhắc. Đây là thao tác của Store Manager; trợ lý chỉ xem được trạng thái.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>5. Giả thuyết nhu cầu</h3>
+            <p class="like"><b>Ẩn dụ</b>Đặt cược có ghi sổ: nói trước, rồi đối chiếu kết quả để biết linh cảm của mình đúng tới đâu.</p>
+            <div class="flow"><span class="st">Store Manager nói trong chat</span><span class="ar">→</span><span class="st">Trợ lý tạo tờ trình với đúng hệ số và ngày</span><span class="ar">→</span><span class="st key">Store Manager duyệt</span><span class="ar">→</span><span class="st">Dự báo nhân hệ số trong những ngày đó</span><span class="ar">→</span><span class="st">Hết ngày, chấm đúng hay sai</span></div>
+            <ul class="plain">
+              <li>Giới hạn bằng code: hệ số từ 0,3 đến 3, tối đa 14 ngày, không trùng khoảng ngày với giả thuyết khác cùng phạm vi.</li>
+              <li><strong>Cách chấm:</strong> so số bán thật với dự báo nền đã lưu lúc duyệt. Ví dụ dự báo nền 100, Store Manager nói "gấp 1,5", tức dự đoán thêm 50. Bán thật 130 là đi được 30 trên 50, tức 60%: <strong>đúng</strong> (từ 50% trở lên). Bán 110 là 20%: <strong>sai</strong> (từ 25% trở xuống). Bán 120 là 40%: <strong>đúng một phần</strong>.</li>
+              <li>Nếu từ 20% số món-ngày bị hết hàng, số bán chỉ là mức thấp nhất của nhu cầu. Khi đó hệ thống chỉ giữ kết luận mà số bán chứng minh được, còn lại chấm "chưa đủ căn cứ". Tránh trường hợp nhập ít, bán ít rồi tự cho là đúng "nhu cầu đã giảm".</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>6. Học thói quen sửa đơn</h3>
+            <p class="like"><b>Ẩn dụ</b>Người phụ việc lâu ngày để ý "anh hay bớt bánh mì 20%", rồi hỏi anh có muốn áp luôn không.</p>
+            <div class="flow"><span class="st">Store Manager sửa số trên tờ trình đặt hàng</span><span class="ar">→</span><span class="st">Đủ dữ kiện</span><span class="ar">→</span><span class="st">Hệ thống đề xuất hệ số cho nhóm hàng</span><span class="ar">→</span><span class="st key">Store Manager duyệt</span><span class="ar">→</span><span class="st">Các đơn sau nhân hệ số</span></div>
+            <ul class="plain">
+              <li>Đủ dữ kiện nghĩa là: ít nhất 5 lần sửa trên 3 đơn đã duyệt, mức sửa ở giữa lệch từ 15% trở lên, và 70% số lần sửa cùng một chiều.</li>
+              <li>Hệ số do code tính, làm tròn 0,05, nằm trong khoảng 0,5–1,5. Trợ lý không tự chọn được.</li>
+              <li>Tắt được bất cứ lúc nào. Hệ số tăng vẫn không vượt trần hạn sử dụng hay sức chứa.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>7. Ngừng nhập một mặt hàng</h3>
+            <p class="like"><b>Ẩn dụ</b>Bỏ một món khỏi thực đơn: phải biết món đó có kéo khách không, có món thay thế không, và nguyên liệu còn trong kho tính sao.</p>
+            <div class="flow"><span class="st">Tìm ứng viên</span><span class="ar">→</span><span class="st">Tờ trình kèm kế hoạch xả tồn</span><span class="ar">→</span><span class="st key">Store Manager duyệt</span><span class="ar">→</span><span class="st">Món chuyển sang "ngừng nhập", không được đề xuất đặt nữa</span></div>
+            <ul class="plain">
+              <li>Ứng viên là món ở ô C-Y hoặc C-Z <strong>và</strong> hủy từ 15% trở lên hoặc đang lỗ. Có kiểm món thay thế.</li>
+              <li>Không bao giờ đề xuất với hàng kéo khách, chặn bằng code. Món mới bán chưa đủ 8 tuần cũng được miễn.</li>
+              <li>Kế hoạch xả tồn: còn bao nhiêu, đơn nào đang về, bao lâu bán hết, bao nhiêu đơn vị không kịp bán trước hạn. Có phần không kịp thì gợi ý giảm giá và cân nhắc hủy đơn đang về. Đơn đang mở không tự hủy.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>8. Đơn dưới mức tối thiểu</h3>
+            <p class="like"><b>Ẩn dụ</b>Nhà phân phối chỉ chở hàng khi đơn đủ một mức tiền, giống quán ăn chỉ giao khi đơn trên một số tiền.</p>
+            <div class="flow"><span class="st">Engine thấy đơn chưa đủ mức</span><span class="ar">→</span><span class="st">Tính sẵn hai phương án</span><span class="ar">→</span><span class="st key">Store Manager chọn và duyệt</span></div>
+            <ul class="plain">
+              <li><strong>Bù đơn:</strong> lấy sớm từng thùng hàng bền nhóm A/B đang còn ít ngày tồn nhất, không vượt trần hạn sử dụng và sức chứa.</li>
+              <li><strong>Hoãn:</strong> chỉ khả thi khi theo dự báo, không món nào trong đơn hết trước lần giao kế tiếp.</li>
+              <li>Muốn duyệt đơn vẫn dưới mức thì phải đánh dấu "đã thỏa thuận với NCC"; không đánh dấu thì người thừa hành từ chối.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- so sach -->
+      <section id="so-sach">
+        <header><div class="eyebrow">Phần 10</div><h2>Sổ sách bên dưới</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Tủ hồ sơ có 20 ngăn, chia ba loại. <strong>Danh mục</strong> ít khi đổi: mặt hàng, nhà cung cấp, thỏa thuận. <strong>Sổ ghi</strong> thêm dòng mỗi ngày: lô, chuyển động kho, doanh số. <strong>Hồ sơ công việc</strong> sinh ra khi có việc: tờ trình, đơn hàng, phiếu trả. Nhật ký thì ghi lại mọi lần ai đó mở ngăn nào.</p>
+        </div>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 900 380" role="img" aria-label="Ba nhóm ngăn hồ sơ: danh mục (nhà cung cấp, mặt hàng, thỏa thuận, chính sách nhóm), sổ ghi (ảnh chụp tồn, lô, chuyển động kho, doanh số ngày), hồ sơ công việc (tờ trình, đơn hàng, phiếu trả, giả thuyết và hệ số). Nhà cung cấp cung cấp mặt hàng; mặt hàng gồm nhiều lô và có doanh số mỗi ngày; lô để lại các dòng chuyển động; tờ trình được duyệt thì sinh ra đơn hàng, phiếu trả, giả thuyết, hệ số; nhận hàng theo đơn tạo ra lô. Nhật ký ghi mọi thứ.">
+              <defs>
+                <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <text class="lbl m" x="20" y="24">DANH MỤC · ít đổi</text>
+              <text class="lbl m" x="310" y="24">SỔ GHI · thêm dòng mỗi ngày</text>
+              <text class="lbl m" x="610" y="24">HỒ SƠ CÔNG VIỆC</text>
+
+              <rect class="box" x="20" y="40" width="240" height="50" rx="10"/>
+              <text class="t" x="140" y="61" text-anchor="middle">Nhà cung cấp</text>
+              <text class="s" x="140" y="79" text-anchor="middle">lịch giao, đơn tối thiểu</text>
+              <rect class="box-a" x="20" y="110" width="240" height="50" rx="10"/>
+              <text class="t" x="140" y="131" text-anchor="middle">Mặt hàng</text>
+              <text class="s" x="140" y="149" text-anchor="middle">giá, hạn dùng, sức chứa, vai trò</text>
+              <rect class="box" x="20" y="180" width="240" height="46" rx="10"/>
+              <text class="t" x="140" y="199" text-anchor="middle">Thỏa thuận · lịch nghỉ</text>
+              <text class="s" x="140" y="216" text-anchor="middle">theo từng nhà cung cấp</text>
+              <rect class="box" x="20" y="250" width="240" height="50" rx="10"/>
+              <text class="t" x="140" y="271" text-anchor="middle">Chính sách nhóm hàng</text>
+              <text class="s" x="140" y="289" text-anchor="middle">được giảm giá không, giờ giảm</text>
+
+              <rect class="box" x="310" y="40" width="240" height="50" rx="10"/>
+              <text class="t" x="430" y="61" text-anchor="middle">Ảnh chụp tồn</text>
+              <text class="s" x="430" y="79" text-anchor="middle">giá trị tồn cuối mỗi ngày</text>
+              <rect class="box-a" x="310" y="110" width="240" height="50" rx="10"/>
+              <text class="t" x="430" y="131" text-anchor="middle">Lô</text>
+              <text class="s" x="430" y="149" text-anchor="middle">số còn lại, HSD, trạng thái</text>
+              <rect class="box" x="310" y="180" width="240" height="50" rx="10"/>
+              <text class="t" x="430" y="201" text-anchor="middle">Chuyển động kho</text>
+              <text class="s" x="430" y="219" text-anchor="middle">nhập, hủy, trả, điều chỉnh</text>
+              <rect class="box" x="310" y="250" width="240" height="50" rx="10"/>
+              <text class="t" x="430" y="271" text-anchor="middle">Doanh số ngày</text>
+              <text class="s" x="430" y="289" text-anchor="middle">bán, doanh thu, có hết hàng</text>
+
+              <rect class="box-t" x="610" y="40" width="250" height="50" rx="10"/>
+              <text class="t on-t" x="735" y="61" text-anchor="middle">Tờ trình</text>
+              <text class="s on-t" x="735" y="79" text-anchor="middle">bản gốc, bản sửa, kết quả</text>
+              <rect class="box" x="610" y="110" width="250" height="50" rx="10"/>
+              <text class="t" x="735" y="131" text-anchor="middle">Đơn hàng + dòng đơn</text>
+              <text class="s" x="735" y="149" text-anchor="middle">đặt bao nhiêu, nhận bao nhiêu</text>
+              <rect class="box" x="610" y="180" width="250" height="50" rx="10"/>
+              <text class="t" x="735" y="201" text-anchor="middle">Phiếu trả NCC</text>
+              <text class="s" x="735" y="219" text-anchor="middle">gửi, xác nhận, lấy hàng, nhận tiền</text>
+              <rect class="box" x="610" y="250" width="250" height="50" rx="10"/>
+              <text class="t" x="735" y="271" text-anchor="middle">Giả thuyết · Hệ số đặt</text>
+              <text class="s" x="735" y="289" text-anchor="middle">đang có hiệu lực</text>
+
+              <rect class="box-q" x="20" y="326" width="840" height="44" rx="10"/>
+              <text class="t" x="440" y="353" text-anchor="middle">Nhật ký · ai làm gì, lúc nào, ở ngăn nào</text>
+
+              <line class="e" x1="140" y1="90" x2="140" y2="108" marker-end="url(#aS)"/>
+              <text class="lbl" x="150" y="104">cung cấp</text>
+              <line class="e" x1="260" y1="135" x2="308" y2="135" marker-end="url(#aS)"/>
+              <text class="lbl" x="284" y="128" text-anchor="middle">gồm</text>
+              <line class="e" x1="430" y1="160" x2="430" y2="178" marker-end="url(#aS)"/>
+              <text class="lbl" x="440" y="174">để lại</text>
+              <path class="e" d="M260,150 H285 V275 H308" marker-end="url(#aS)"/>
+              <text class="lbl" x="281" y="242" text-anchor="end">bán ra</text>
+              <line class="e" x1="610" y1="135" x2="552" y2="135" marker-end="url(#aS)"/>
+              <text class="lbl" x="581" y="128" text-anchor="middle">nhận</text>
+              <path class="e" d="M860,65 H872 V275"/>
+              <line class="e" x1="872" y1="135" x2="862" y2="135" marker-end="url(#aS)"/>
+              <line class="e" x1="872" y1="205" x2="862" y2="205" marker-end="url(#aS)"/>
+              <line class="e" x1="872" y1="275" x2="862" y2="275" marker-end="url(#aS)"/>
+              <text class="lbl" x="887" y="170" text-anchor="middle" transform="rotate(90 887 170)">sinh ra khi tờ trình được duyệt</text>
+            </svg>
+          </div>
+          <figcaption>Đường bên phải: đơn hàng, phiếu trả, giả thuyết và hệ số đặt đều sinh ra từ một tờ trình đã duyệt. Đường "nhận": khi nhân viên nhận hàng theo một dòng đơn, mỗi cặp (số lượng, HSD) trở thành một lô mới.</figcaption>
+        </figure>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ · số dư và sao kê</div>
+          <p>Giống tài khoản ngân hàng. <strong>Lô</strong> là số dư: biết ngay còn bao nhiêu. <strong>Chuyển động kho</strong> là sao kê: mỗi lần nhập, hủy, trả, điều chỉnh đều thêm một dòng ghi số lượng, giá vốn, lý do. Số dư cho biết còn bao nhiêu, sao kê cho biết vì sao.</p>
+        </div>
+        <ul class="plain">
+          <li><strong>Bán hàng ghi ở ngăn riêng.</strong> Doanh số ngày có một dòng cho mỗi món mỗi ngày: bán bao nhiêu, doanh thu, giá vốn, có hết hàng không, bao nhiêu bán nhờ giảm giá. Không có từng hoá đơn vì demo chưa nối máy bán hàng (POS); trong demo, con số này do sân tập sinh ra khi tua nhanh.</li>
+          <li><strong>Năm loại dòng sao kê:</strong> nhập kho, hủy (kèm lý do: hết hạn, vỡ, hỏng do bảo quản, lỗi NCC, khác), trả NCC (ghi tiền hoàn), giảm giá (ghi tiền mất do giảm), điều chỉnh (sau kiểm kê, kiểm date, rút kệ).</li>
+          <li><strong>Đóng chứ không xoá.</strong> Lô bán hết thì đổi trạng thái, tờ trình bị từ chối thì đổi trạng thái; dòng vẫn còn đó. Nhờ vậy luôn truy lại được chuyện gì đã xảy ra.</li>
+          <li><strong>Tờ trình giữ cả bản gốc lẫn bản sửa</strong>, kèm danh sách từng lần sửa. Đó là nguyên liệu để đo độ tin cậy của trợ lý và học thói quen sửa đơn.</li>
+          <li><strong>Ảnh chụp tồn mỗi sáng</strong> ghi giá trị tồn cuối ngày hôm trước, để tính tồn trung bình đúng kỳ cho KPI.</li>
+        </ul>
+        <details class="deep">
+          <summary>Chi tiết kỹ thuật: tên 20 bảng</summary>
+          <div>
+            <ul class="plain">
+              <li><strong>Danh mục</strong> (<code>models/catalog.py</code>): <code>suppliers</code>, <code>supplier_agreements</code>, <code>supplier_closures</code>, <code>category_policies</code>, <code>products</code>.</li>
+              <li><strong>Sổ ghi</strong> (<code>models/inventory.py</code>): <code>lots</code>, <code>stock_movements</code> (loại <code>IN</code>, <code>WASTE</code>, <code>RETURN</code>, <code>MARKDOWN</code>, <code>ADJUST</code>), <code>daily_sales</code>, <code>inventory_snapshots</code>.</li>
+              <li><strong>Hồ sơ công việc</strong> (<code>models/ops.py</code>): <code>proposals</code>, <code>purchase_orders</code>, <code>po_lines</code>, <code>supplier_returns</code>, <code>demand_hypotheses</code>, <code>order_adjustments</code>, <code>audit_log</code>, <code>chat_sessions</code>, <code>chat_messages</code>, <code>users</code>, <code>app_meta</code>.</li>
+              <li>Lô nối về dòng đơn qua <code>lots.po_line_id</code>; đơn, phiếu trả, giả thuyết, hệ số nối về tờ trình qua <code>proposal_id</code>. Lược đồ thay đổi qua các file trong <code>backend/alembic/versions/</code>.</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <!-- kpi -->
+      <section id="kpi">
+        <header><div class="eyebrow">Phần 11</div><h2>KPI tính thế nào</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>KPI giống các chỉ số trên phiếu khám sức khoẻ. Mỗi chỉ số trả lời một câu hỏi, và phải đọc cùng nhau: huyết áp đẹp chưa chắc khoẻ nếu đường huyết cao.</p>
+        </div>
+        <p>Dưới đây là một tháng 30 ngày <strong>tự đặt số cho dễ tính</strong>: doanh thu 100 triệu; giá vốn hàng bán 70 triệu; hàng hủy 4 triệu (giá vốn); trả NCC hàng giá vốn 1 triệu, được hoàn 0,5 triệu; hao hụt 0,3 triệu; bán 9.500 đơn vị, khách muốn mua thêm 500 đơn vị mà hết hàng; tồn kho trung bình 14 triệu.</p>
+        <div class="wf" role="table" aria-label="Ví dụ minh hoạ lãi gộp sau hủy, đơn vị triệu đồng">
+          <div class="wf-row" role="row"><span role="cell">Doanh thu</span><div class="track" role="cell"><span class="b-main" style="left:0;width:100%"></span></div><span class="v" role="cell">100</span></div>
+          <div class="wf-row" role="row"><span role="cell">Trừ giá vốn hàng đã bán</span><div class="track" role="cell"><span class="b-base" style="left:0;width:30%"></span><span class="b-cut" style="left:30%;width:70%"></span></div><span class="v" role="cell">−70<small>còn 30</small></span></div>
+          <div class="wf-row" role="row"><span role="cell">Trừ giá vốn hàng hủy</span><div class="track" role="cell"><span class="b-base" style="left:0;width:26%"></span><span class="b-cut" style="left:26%;width:4%"></span></div><span class="v" role="cell">−4<small>còn 26</small></span></div>
+          <div class="wf-row" role="row"><span role="cell">Trừ giá vốn hàng trả NCC</span><div class="track" role="cell"><span class="b-base" style="left:0;width:25%"></span><span class="b-cut" style="left:25%;width:1%"></span></div><span class="v" role="cell">−1<small>còn 25</small></span></div>
+          <div class="wf-row" role="row"><span role="cell">Cộng tiền NCC hoàn (khi NCC đã lấy hàng)</span><div class="track" role="cell"><span class="b-base" style="left:0;width:25%"></span><span class="b-plus" style="left:25%;width:0.5%"></span></div><span class="v" role="cell">+0,5<small>còn 25,5</small></span></div>
+          <div class="wf-row" role="row"><span role="cell">Trừ hao hụt (mất mát phát hiện khi kiểm)</span><div class="track" role="cell"><span class="b-base" style="left:0;width:25.2%"></span><span class="b-cut" style="left:25.2%;width:0.3%"></span></div><span class="v" role="cell">−0,3<small>còn 25,2</small></span></div>
+          <div class="wf-row total" role="row"><span role="cell">Lãi gộp sau hủy, đơn vị triệu đồng</span><div class="track" role="cell"><span class="b-final" style="left:0;width:25.2%"></span></div><span class="v" role="cell">25,2</span></div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Chỉ số</th><th>Trả lời câu hỏi</th><th>Cách tính bằng lời</th><th>Với ví dụ trên</th></tr></thead>
+            <tbody>
+              <tr><td>Tỷ lệ hủy</td><td>Bao nhiêu phần vốn bị vứt đi?</td><td>giá vốn hàng hủy ÷ (giá vốn hàng bán + giá vốn hàng hủy)</td><td class="num">4 ÷ 74 = 5,4%</td></tr>
+              <tr><td>Tỷ lệ hết hàng</td><td>Bao nhiêu lượt muốn mua mà không có hàng?</td><td>đơn vị bị hụt ÷ (đã bán + bị hụt)</td><td class="num">500 ÷ 10.000 = 5%</td></tr>
+              <tr><td>Lãi gộp sau hủy</td><td>Thật sự còn lại bao nhiêu?</td><td>như thác số ở trên</td><td class="num">25,2 triệu</td></tr>
+              <tr><td>Số ngày tồn</td><td>Hàng nằm trong kho bao lâu?</td><td>tồn trung bình (giá vốn) ÷ giá vốn bán mỗi ngày</td><td class="num">14 ÷ (70 ÷ 30) = 6 ngày</td></tr>
+              <tr><td>GMROI</td><td>Mỗi đồng vốn nằm trong hàng đẻ ra bao nhiêu lãi?</td><td>lãi gộp sau hủy ÷ tồn trung bình (giá vốn), trong kỳ</td><td class="num">25,2 ÷ 14 = 1,8 trong một tháng</td></tr>
+              <tr><td>Hao hụt</td><td>Mất mát không rõ lý do bao nhiêu?</td><td>phần điều chỉnh giảm sau kiểm kê, kiểm date, rút kệ; chuyển số giữa các lô cùng phiếu không tính</td><td class="num">0,3 triệu</td></tr>
+              <tr><td>Hủy theo lý do</td><td>Hủy vì đâu?</td><td>giá vốn hủy tách theo hết hạn, vỡ, hỏng bảo quản, lỗi NCC, khác</td><td>—</td></tr>
+              <tr><td>Điểm nhà cung cấp</td><td>NCC có giao đủ, đúng hẹn không?</td><td>trên các đơn đến hạn: tỷ lệ giao đủ, tỷ lệ đúng hẹn, số lần giao date ngắn, số đơn vị bị từ chối</td><td>—</td></tr>
+              <tr><td>Mức tin cậy của trợ lý</td><td>Store Manager có làm theo trợ lý không?</td><td>tỷ lệ tờ trình được duyệt, tỷ lệ bị sửa, mức sửa số lượng trung bình</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="plain">
+          <li><strong>Đọc cùng nhau.</strong> Hủy thấp mà hết hàng cao nghĩa là đặt quá ít. Hủy cao mà hết hàng thấp nghĩa là đặt quá nhiều. Engine đặt hàng tìm điểm cân bằng; sàn mức phục vụ ngăn nó "mua" lãi bằng cách để kệ trống.</li>
+          <li><strong>GMROI càng cao càng tốt.</strong> Trang không đưa mốc chung của ngành; dùng con số này để so giữa các tháng, hoặc giữa các nhóm hàng của chính cửa hàng.</li>
+          <li><strong>Giảm giá không bị trừ thêm lần nữa.</strong> Doanh thu đã là giá sau giảm. Số "tiền mất do giảm giá" chỉ hiện để tham khảo.</li>
+          <li><strong>Tiền trả NCC chỉ tính khi NCC đã lấy hàng</strong>, đúng như luồng ở Phần 9.</li>
+          <li><strong>Số hết hàng chỉ chính xác trong mô phỏng.</strong> Sân tập biết khách muốn mua bao nhiêu; cửa hàng thật không đếm được khách bỏ về, phải ước tính từ dự báo.</li>
+        </ul>
+        <details class="deep">
+          <summary>Chi tiết kỹ thuật: nơi tính KPI</summary>
+          <div>
+            <p>Công thức chung nằm trong hàm <code>summarize</code> của <code>backend/app/engines/kpi.py</code>, dùng chung cho trang số liệu, báo cáo chi phí và backtest. Tồn trung bình lấy từ bảng <code>inventory_snapshots</code> trong đúng kỳ. Định nghĩa đầy đủ ở <code>docs/nghiep-vu.md</code>, mục 4.</p>
+          </div>
+        </details>
+      </section>
+
+      <section id="san-tap">
+        <header><div class="eyebrow">Phần 12</div><h2>Sân tập và dữ liệu</h2></header>
+        <p>Ops Chest là đồ án, chưa nối POS thật. Thư mục <code>sim/</code> dựng một cửa hàng để hệ thống có việc làm và để đo xem nó có giúp ích không.</p>
+        <div class="panel">
+          <h3>Có hai bộ dữ liệu, đừng lẫn</h3>
+          <ul class="plain">
+            <li><strong>Thế giới giả lập cũ:</strong> cửa hàng do nhóm tự dựng, 263 món, nhu cầu do code tự sinh, có Tết và hàng dài ngày. Nay chỉ dùng cho bài kiểm tra quy tắc và buổi phỏng vấn trợ lý. Các con số "+12,8%" và "duyệt 60% thì gần hết lợi ích" ở Phần 18 đo trên bộ này.</li>
+            <li><strong>FRN:</strong> nhu cầu thật, dùng cho demo và cho backtest trên 50 điểm bán. Các con số "+4%" và "+0,8%" ở Phần 15, 16 đo trên bộ này.</li>
+          </ul>
+        </div>
+        <div class="two">
+          <div class="panel real">
+            <h3>Thật</h3>
+            <ul class="plain">
+              <li>Nhu cầu theo ngày và theo giờ của điểm bán số 18 trong bộ FreshRetailNet-50K (Dingdong, giấy phép CC BY 4.0): 164 mặt hàng tươi, 28/03 đến 25/06/2024, cộng 7 ngày để tua nhanh.</li>
+              <li>Khung giờ bán theo nhóm hàng, đo từ dữ liệu theo giờ của FRN.</li>
+              <li>Mô hình LightGBM học trên 848 điểm bán FRN khác, không bao giờ thấy điểm 18.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>Giả định</h3>
+            <ul class="plain">
+              <li>Tên hàng ("Mặt hàng 412 · nhóm 3.10"), giá, giá vốn, HSD: FRN chỉ công bố mã số.</li>
+              <li>7 nhà cung cấp hư cấu, email đuôi <code>.test</code>, thư rơi vào Mailpit.</li>
+              <li>Độ co giãn khi giảm giá (hàng tươi 3,0). FRN không cho ước lượng được con số đáng tin.</li>
+              <li>90 ngày lịch sử vận hành được giả lập bằng chính sách "làm theo kinh nghiệm".</li>
+            </ul>
+          </div>
+        </div>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 230" role="img" aria-label="Backtest: cùng nhu cầu thật của FRN đi vào hai cửa hàng sinh đôi, cửa hàng A làm theo kinh nghiệm, cửa hàng B làm theo Ops Chest; so sánh lãi, hủy và hết hàng.">
+              <defs>
+                <marker id="aI" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box" x="20" y="85" width="200" height="60" rx="10"/>
+              <text class="t" x="120" y="110" text-anchor="middle">Nhu cầu thật FRN</text>
+              <text class="s" x="120" y="130" text-anchor="middle">cùng một dòng khách</text>
+              <rect class="box" x="320" y="20" width="250" height="60" rx="10"/>
+              <text class="t" x="445" y="44" text-anchor="middle">Cửa hàng A · kinh nghiệm</text>
+              <text class="s" x="445" y="64" text-anchor="middle">TB 4 tuần × hệ số an toàn</text>
+              <rect class="box-a" x="320" y="150" width="250" height="60" rx="10"/>
+              <text class="t" x="445" y="174" text-anchor="middle">Cửa hàng B · Ops Chest</text>
+              <text class="s" x="445" y="194" text-anchor="middle">giả sử SM duyệt mọi đề xuất</text>
+              <rect class="box" x="660" y="85" width="200" height="60" rx="10"/>
+              <text class="t" x="760" y="110" text-anchor="middle">So sánh</text>
+              <text class="s" x="760" y="130" text-anchor="middle">lãi · hủy · hết hàng</text>
+              <line class="e" x1="220" y1="105" x2="318" y2="52" marker-end="url(#aI)"/>
+              <line class="e" x1="220" y1="125" x2="318" y2="178" marker-end="url(#aI)"/>
+              <line class="e" x1="570" y1="52" x2="658" y2="105" marker-end="url(#aI)"/>
+              <line class="e" x1="570" y1="178" x2="658" y2="125" marker-end="url(#aI)"/>
+            </svg>
+          </div>
+          <figcaption>Backtest A/B: hai cửa hàng sinh đôi đón cùng một dòng khách, chỉ khác người quản lý. Chạy trên 50 điểm bán FRN giữ lại, trong 37 ngày mà mô hình chưa từng thấy.</figcaption>
+        </figure>
+        <ul class="plain">
+          <li><strong>Kết quả chính:</strong> Ops Chest lãi hơn cách làm theo kinh nghiệm khoảng +4% (trung vị qua 50 điểm) và giảm hết hàng; với hàng kéo khách, hết hàng giảm từ 8,7% xuống 2,7%.</li>
+          <li><strong>LightGBM:</strong> đoán sát hơn EWMA (lệch 30,2% so với 35,1% trong tuần chấm cuối 26/06–02/07) nhưng dùng nguyên thì không lãi hơn. Lấy con số đoán của LightGBM, giữ mức dư của EWMA, chọn theo lãi: lãi hơn EWMA 0,8% (điểm giữa của 50 điểm bán), thắng ở 76% số điểm. Giải thích ở Phần 15, 16.</li>
+          <li><strong>Đồng hồ:</strong> <code>clock.today()</code> là nguồn "hôm nay" duy nhất. Demo đặt ở 26/06/2024; tua nhanh tối đa 7 ngày vì dữ liệu FRN hết vào 02/07/2024. Ngày đã tua được lưu vào DB, khởi động lại server không mất.</li>
+        </ul>
+        <h3>Câu hội đồng dễ hỏi</h3>
+        <ul class="plain">
+          <li>Điểm bán FRN là kho giao hàng online 30 phút, không phải cửa hàng có khách bước vào. Giờ cao điểm (9–10h, 16–17h) là giờ đặt đơn online.</li>
+          <li>Backtest coi Store Manager duyệt 100% đề xuất. Trên thế giới giả lập cũ, nếu chỉ duyệt 60% thì phần lãi thêm gần như mất hết; trên dữ liệu FRN, duyệt 60% vẫn còn lãi hơn khoảng 3,8%.</li>
+          <li>Con số +0,8% của bộ chọn hơi lạc quan: biến thể "LightGBM + σ của EWMA" được thêm sau khi đã xem kết quả chẩn đoán trên chính 50 điểm đó.</li>
+          <li>Người soát bài chỉ cảnh báo, không chặn. Eval 30 câu hỏi cho thấy LLM vẫn thỉnh thoảng nêu số không có trong kết quả công cụ.</li>
+        </ul>
+      </section>
+
+      <div class="part-break">
+        <div class="eyebrow">Phần kỹ thuật</div>
+        <h2>Mở nắp máy, nói bằng lời thường</h2>
+        <p>Mười hai phần trên trả lời "hệ thống làm gì". Bốn phần dưới trả lời "nó được dựng bằng gì, và làm sao biết nó đúng". Mỗi ý mở đầu bằng một ví dụ đời thường. Tên thư viện, tham số và đoạn code được gom vào các ô <strong>Chi tiết kỹ thuật</strong> thu gọn; đọc lần đầu có thể bỏ qua. Những từ như giao diện, backend, API, cơ sở dữ liệu được giải thích ngay trong Phần 13.</p>
+      </div>
+
+      <section id="nen-tang">
+        <header><div class="eyebrow">Phần 13</div><h2>Hệ thống được dựng bằng gì</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Ops Chest giống một văn phòng nhỏ. Khách đứng ở <strong>mặt tiền</strong> (giao diện) và đưa giấy tờ qua <strong>ô cửa</strong> (API). <strong>Văn phòng</strong> phía sau (backend, gồm tất cả các phòng ở Phần 1) xử lý, cất hồ sơ vào <strong>tủ</strong> (cơ sở dữ liệu), bỏ thư vào <strong>hộp thư giả</strong> (thư không bao giờ ra bưu điện thật), và khi cần thì gọi điện hỏi <strong>chuyên gia thuê ngoài</strong> (LLM).</p>
+        </div>
+        <figure>
+          <div class="fig">
+            <svg class="dg" viewBox="0 0 880 256" role="img" aria-label="Máy của bạn dùng mặt tiền; mặt tiền gửi yêu cầu cho văn phòng; văn phòng ghi đọc tủ hồ sơ, gửi thư vào hộp thư giả, và gọi LLM thuê ngoài trên Internet. Bốn phần mặt tiền, văn phòng, tủ hồ sơ, hộp thư giả được dựng cùng nhau bằng Docker.">
+              <defs>
+                <marker id="aJ" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+              </defs>
+              <rect class="box-q" x="190" y="8" width="685" height="168" rx="12"/>
+              <text class="lbl" x="204" y="28">dựng cùng nhau bằng Docker</text>
+              <rect class="box" x="20" y="100" width="140" height="60" rx="10"/>
+              <text class="t" x="90" y="124" text-anchor="middle">Máy của bạn</text>
+              <text class="s" x="90" y="144" text-anchor="middle">trình duyệt web</text>
+              <rect class="box" x="215" y="100" width="160" height="60" rx="10"/>
+              <text class="t" x="295" y="124" text-anchor="middle">Mặt tiền</text>
+              <text class="s" x="295" y="144" text-anchor="middle">giao diện</text>
+              <rect class="box-a" x="430" y="100" width="180" height="60" rx="10"/>
+              <text class="t" x="520" y="124" text-anchor="middle">Văn phòng</text>
+              <text class="s" x="520" y="144" text-anchor="middle">backend · quy tắc, tính toán</text>
+              <rect class="box" x="690" y="22" width="170" height="56" rx="10"/>
+              <text class="t" x="775" y="45" text-anchor="middle">Tủ hồ sơ</text>
+              <text class="s" x="775" y="64" text-anchor="middle">cơ sở dữ liệu</text>
+              <rect class="box" x="690" y="104" width="170" height="56" rx="10"/>
+              <text class="t" x="775" y="127" text-anchor="middle">Hộp thư giả</text>
+              <text class="s" x="775" y="146" text-anchor="middle">thư không ra ngoài</text>
+              <rect class="box" x="690" y="190" width="170" height="56" rx="10"/>
+              <text class="t" x="775" y="213" text-anchor="middle">LLM thuê ngoài</text>
+              <text class="s" x="775" y="232" text-anchor="middle">trên Internet</text>
+              <line class="e" x1="160" y1="130" x2="213" y2="130" marker-end="url(#aJ)"/>
+              <line class="e" x1="375" y1="130" x2="428" y2="130" marker-end="url(#aJ)"/>
+              <text class="lbl" x="401" y="122" text-anchor="middle">yêu cầu</text>
+              <line class="e" x1="610" y1="115" x2="688" y2="52" marker-end="url(#aJ)"/>
+              <text class="lbl" x="640" y="78" text-anchor="end">ghi, đọc</text>
+              <line class="e" x1="610" y1="132" x2="688" y2="132" marker-end="url(#aJ)"/>
+              <text class="lbl" x="649" y="124" text-anchor="middle">gửi thư</text>
+              <line class="e" x1="610" y1="148" x2="688" y2="212" marker-end="url(#aJ)"/>
+              <text class="lbl" x="640" y="198" text-anchor="end">hỏi</text>
+            </svg>
+          </div>
+          <figcaption>Bốn phần trong khung nét đứt chạy trên máy của bạn. Thứ duy nhất đi ra Internet là câu hỏi gửi tới LLM. Email đơn hàng chỉ rơi vào hộp thư giả, mở xem ở <code>localhost:8025</code>.</figcaption>
+        </figure>
+
+        <div class="stack">
+          <h3>Theo chân một lần bấm "Duyệt"</h3>
+          <ol class="plain">
+            <li><strong>Trình duyệt gửi giấy tờ qua ô cửa</strong> "duyệt tờ trình số 12", kèm thẻ ra vào bạn nhận lúc đăng nhập.</li>
+            <li><strong>Bảo vệ ở cửa</strong> đọc thẻ: bạn là ai, có phải Store Manager không. Thẻ hết hạn sau 12 giờ, phải đăng nhập lại.</li>
+            <li><strong>Nhân viên văn phòng</strong> rút hồ sơ tờ trình ra và khoá ngăn kéo lại, để hai người bấm duyệt cùng lúc thì người sau thấy "đã duyệt rồi".</li>
+            <li><strong>Người thừa hành</strong> ghi sổ, gửi email, ghi nhật ký. Lỗi ở bước nào thì trả mọi thứ về như cũ.</li>
+            <li><strong>Văn phòng trả lời</strong> về màn hình: thẻ tờ trình đổi sang "Đã thực thi".</li>
+          </ol>
+        </div>
+
+        <div class="stack">
+          <h3>Ba ý nhỏ đáng nhớ</h3>
+          <ul class="plain">
+            <li><strong>Mật khẩu không được lưu nguyên văn.</strong> Hệ thống chỉ giữ "dấu vân tay" của mật khẩu (băm). Lúc đăng nhập, nó lấy dấu vân tay của mật khẩu bạn gõ rồi so; kẻ trộm được tủ hồ sơ cũng không đọc ra mật khẩu.</li>
+            <li><strong>Chat hiện chữ dần</strong> như nghe đài phát trực tiếp, thay vì chờ thu xong cả băng rồi mới phát. Văn phòng gửi từng mẩu ngay khi LLM viết ra.</li>
+            <li><strong>Cả hệ thống nhìn chung một đồng hồ.</strong> Hỏi "hôm nay là ngày mấy" thì mọi phần đều hỏi cùng một chỗ. Nhờ vậy khi kiểm tra có thể cho ngày đứng yên, khi demo có thể vặn kim tua nhanh.</li>
+          </ul>
+        </div>
+
+        <details class="deep">
+          <summary>Chi tiết kỹ thuật: tên công nghệ và cơ chế</summary>
+          <div>
+            <div class="tbl-wrap">
+              <table>
+                <thead><tr><th>Phần</th><th>Công nghệ</th><th>Vì sao</th></tr></thead>
+                <tbody>
+                  <tr><td>Giao diện</td><td>React 18, TypeScript, Vite 5, TanStack Query, Recharts, React Router</td><td>Vite chuyển mọi đường <code>/api</code> sang backend. TanStack Query gọi API và lưu tạm kết quả. Recharts vẽ biểu đồ.</td></tr>
+                  <tr><td>Văn phòng</td><td>FastAPI trên uvicorn</td><td>Tự sinh tài liệu API ở <code>localhost:8000/docs</code>, tự kiểm kiểu dữ liệu gửi lên.</td></tr>
+                  <tr><td>Tủ hồ sơ</td><td>SQLAlchemy 2, Alembic (6 bản migration); SQLite khi dev và test, PostgreSQL 16 trong Docker</td><td>Viết code một lần, chạy được trên cả hai loại cơ sở dữ liệu.</td></tr>
+                  <tr><td>Cấu hình</td><td>pydantic-settings đọc file <code>.env</code></td><td>Đổi LLM, sàn mức phục vụ, giờ đóng cửa mà không sửa code.</td></tr>
+                  <tr><td>Chuông hẹn giờ</td><td>APScheduler chạy trong backend</td><td>Không cần cron riêng; tắt bằng <code>ENABLE_SCHEDULER=false</code>.</td></tr>
+                  <tr><td>Thư và PDF</td><td>SMTP tới Mailpit; reportlab có font tiếng Việt</td><td>Thư đúng định dạng thật nhưng không rời máy.</td></tr>
+                  <tr><td>LLM</td><td>SDK <code>openai</code> trỏ sang địa chỉ bất kỳ</td><td>Đổi nhà cung cấp bằng ba biến trong <code>.env</code>.</td></tr>
+                  <tr><td>Học máy</td><td>numpy, LightGBM trong app; pandas trên Kaggle</td><td>App chỉ dùng mô hình, không huấn luyện.</td></tr>
+                  <tr><td>Quản lý gói</td><td>uv (Python), npm (Node 20+)</td><td>Khoá phiên bản trong <code>uv.lock</code> và <code>package.json</code>.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <ul class="plain">
+              <li>Thẻ ra vào là token ký HMAC; mật khẩu băm PBKDF2-SHA256, 200.000 vòng (<code>app/auth.py</code>). Hai vai trò: <code>manager</code> và <code>staff</code>.</li>
+              <li>Chat trả về luồng <code>text/event-stream</code>, mỗi sự kiện một dòng <code>data: {…}</code>. Frontend đọc bằng <code>fetch</code> + <code>getReader()</code> thay vì <code>EventSource</code>, vì cần gửi POST kèm header đăng nhập.</li>
+              <li>"Khoá ngăn kéo" là <code>SELECT … FOR UPDATE</code> trong <code>proposals/service.py</code>, có tác dụng trên PostgreSQL. Người bấm sau nhận lỗi 409.</li>
+              <li>Đồng hồ chung là <code>clock.today()</code>; ngày đã tua lưu trong bảng <code>app_meta</code>. Hàm <code>lifespan</code> trong <code>api/main.py</code> nạp lại ngày đó và bật chuông hẹn giờ khi khởi động.</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <section id="agent">
+        <header><div class="eyebrow">Phần 14</div><h2>Trợ lý được lắp ráp thế nào</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Trợ lý giống một nhân viên trực tổng đài mới vào làm. Trên bàn có ba thứ: <strong>sổ tay quy tắc</strong> (đọc lại trước mỗi cuộc gọi), <strong>danh bạ các phòng ban</strong> (gọi để hỏi số liệu hoặc nộp tờ trình), và <strong>một đường dây tới chuyên gia thuê ngoài</strong> (LLM) để nhờ hiểu câu hỏi và viết câu trả lời, có thêm một đường dây dự phòng (LLM phụ) khi LLM chính bận. Ba thứ này do nhóm tự viết, không dùng bộ khung làm sẵn.</p>
+        </div>
+
+        <div class="stack">
+          <h3>LLM biết gì và không biết gì</h3>
+          <p>LLM không nhìn thấy tủ hồ sơ. Mỗi lần được hỏi, nó chỉ thấy những gì trợ lý đưa cho đọc: sổ tay quy tắc, mấy tin nhắn gần đây, danh bạ phòng ban, và kết quả các cuộc gọi phòng ban trước đó. Nó trả lời bằng một trong hai cách: "gọi phòng X với câu hỏi Y" hoặc "đây là câu trả lời cho người dùng". Mỗi lần hỏi tính tiền theo số chữ.</p>
+        </div>
+
+        <div class="stack">
+          <h3>Danh bạ phòng ban (công cụ)</h3>
+          <ul class="plain">
+            <li>Danh bạ có 31 số. Mỗi số kèm một dòng mô tả ngắn, để LLM đọc và chọn số cần gọi.</li>
+            <li>Chỉ có hai loại số: <strong>hỏi thông tin</strong> (22 số, ví dụ "lô nào sắp hết hạn") và <strong>nộp tờ trình</strong> (9 số, ví dụ "đề xuất giảm giá"). Không có số nào gọi được phòng thực thi.</li>
+            <li>Mỗi phòng trả về hai thứ: một <strong>tờ ghi chú</strong> cho LLM đọc, và một <strong>bảng in sẵn</strong> dán thẳng lên màn hình của bạn. Bảng do code in từ số liệu thật, LLM không động tay vào.</li>
+            <li>LLM không bao giờ tự viết câu lệnh truy vấn tủ hồ sơ. Nó chỉ chọn số và điền vài ô như mã hàng, số ngày.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: một công cụ trông như thế nào trong code</summary>
+            <div>
+              <pre>@tool("get_product_detail", "read",
+      "One SKU: lots with expiry, incoming POs, 28-day sales, 14-day forecast, ABC-XYZ cell.",
+      {"sku": SKU}, ["sku"])
+def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
+    d = inventory.product_detail(ctx.db, sku.upper())
+    return ToolOutput(d if d else {"error": f"Không tìm thấy SKU {sku}"})</pre>
+              <ul class="plain">
+                <li><code>@tool</code> ghi công cụ vào <code>REGISTRY</code> và tự sinh mô tả JSON Schema gửi cho LLM. Loại chỉ được là <code>read</code> hoặc <code>propose</code>; có <code>assert</code> chặn loại khác.</li>
+                <li><code>ToolOutput.data</code> là tờ ghi chú cho LLM, <code>ToolOutput.ui</code> là bảng in sẵn (widget).</li>
+                <li>Tham số tùy chọn được khai báo cho phép <code>null</code>, vì nhiều model gửi <code>null</code> thay vì bỏ qua và Groq kiểm rất chặt.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Sổ tay quy tắc (prompt hệ thống)</h3>
+          <p>Giống tờ hướng dẫn dán cạnh bàn nhân viên mới, được đọc lại trước mỗi cuộc gọi. Tờ này có ngày hôm nay, tên và vai trò của bạn, rồi các quy tắc. Những quy tắc chính, nói lại bằng lời thường:</p>
+          <ul class="plain">
+            <li>Luôn trả lời tiếng Việt, gọn, tiền viết dạng 1.250.000đ.</li>
+            <li>Con số nào cũng phải lấy từ kết quả gọi phòng ban, không tự tính, không đoán.</li>
+            <li>Không tự đặt hàng, gửi thư, đổi giá, ghi hủy. Chỉ nộp tờ trình rồi báo "đã tạo đề xuất, chờ anh/chị duyệt".</li>
+            <li>Bạn nói "thứ Bảy bia bán gấp rưỡi" mà thiếu ngày hay thiếu hệ số thì phải hỏi lại, không tự chọn.</li>
+            <li>Màn hình đã có bảng thì không đọc lại từng số trong bảng, chỉ nói 2–3 ý chính.</li>
+          </ul>
+          <p>Tờ hướng dẫn viết bằng tiếng Anh vì chữ Việt có dấu tốn khoảng gấp ba số token, mà tờ này được gửi đi mỗi lần hỏi. Và nhớ: sổ tay chỉ là lời dặn. Ổ khoá thật nằm ở Phần 3, LLM có không nghe lời cũng không vượt qua được.</p>
+        </div>
+
+        <div class="stack">
+          <h3>LLM chính và LLM phụ</h3>
+          <p>Giống một văn phòng có số điện thoại chính và số dự phòng. Trợ lý luôn gọi LLM chính trước, và có ba chuyện có thể xảy ra:</p>
+          <figure>
+            <div class="fig">
+              <svg class="dg" viewBox="0 0 880 260" role="img" aria-label="Trợ lý gọi LLM chính. Ba trường hợp: trả lời trọn vẹn thì hiện cho người dùng; lỗi trước chữ đầu tiên thì cho LLM chính nghỉ và gọi LLM phụ; đứt giữa câu thì báo lỗi, không đổi LLM giữa chừng.">
+                <defs>
+                  <marker id="aK" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                </defs>
+                <rect class="box" x="20" y="100" width="150" height="60" rx="10"/>
+                <text class="t" x="95" y="124" text-anchor="middle">Trợ lý</text>
+                <text class="s" x="95" y="144" text-anchor="middle">cần một câu trả lời</text>
+                <rect class="box-a" x="210" y="100" width="170" height="60" rx="10"/>
+                <text class="t" x="295" y="124" text-anchor="middle">Gọi LLM chính</text>
+                <text class="s" x="295" y="144" text-anchor="middle">ví dụ Groq</text>
+                <rect class="box" x="450" y="20" width="190" height="56" rx="10"/>
+                <text class="t" x="545" y="43" text-anchor="middle">Trả lời trọn vẹn</text>
+                <text class="s" x="545" y="62" text-anchor="middle">trường hợp thường gặp</text>
+                <rect class="box-t" x="450" y="102" width="190" height="56" rx="10"/>
+                <text class="t on-t" x="545" y="125" text-anchor="middle">Lỗi trước chữ đầu</text>
+                <text class="s on-t" x="545" y="144" text-anchor="middle">hết lượt, lỗi, mất mạng</text>
+                <rect class="box-d" x="450" y="184" width="190" height="56" rx="10"/>
+                <text class="t" x="545" y="207" text-anchor="middle">Đứt giữa câu</text>
+                <text class="s" x="545" y="226" text-anchor="middle">đã trả được một phần</text>
+                <rect class="box-a" x="690" y="20" width="170" height="56" rx="10"/>
+                <text class="t" x="775" y="43" text-anchor="middle">Hiện cho bạn</text>
+                <text class="s" x="775" y="62" text-anchor="middle">chữ chạy dần</text>
+                <rect class="box" x="690" y="102" width="170" height="56" rx="10"/>
+                <text class="t" x="775" y="125" text-anchor="middle">Gọi LLM phụ</text>
+                <text class="s" x="775" y="144" text-anchor="middle">LLM chính nghỉ 2–15 phút</text>
+                <rect class="box" x="690" y="184" width="170" height="56" rx="10"/>
+                <text class="t" x="775" y="207" text-anchor="middle">Báo lỗi</text>
+                <text class="s" x="775" y="226" text-anchor="middle">không đổi LLM giữa chừng</text>
+                <line class="e" x1="170" y1="130" x2="208" y2="130" marker-end="url(#aK)"/>
+                <line class="e" x1="380" y1="125" x2="448" y2="50" marker-end="url(#aK)"/>
+                <line class="e" x1="380" y1="130" x2="448" y2="130" marker-end="url(#aK)"/>
+                <line class="e" x1="380" y1="135" x2="448" y2="210" marker-end="url(#aK)"/>
+                <line class="e" x1="640" y1="48" x2="688" y2="48" marker-end="url(#aK)"/>
+                <line class="e" x1="640" y1="130" x2="688" y2="130" marker-end="url(#aK)"/>
+                <line class="e" x1="640" y1="212" x2="688" y2="212" marker-end="url(#aK)"/>
+              </svg>
+            </div>
+            <figcaption>Chỉ trường hợp giữa mới chuyển sang LLM phụ. Đã trả lời dở thì không đổi, để không có câu trả lời nửa của LLM này nửa của LLM kia.</figcaption>
+          </figure>
+          <ul class="plain">
+            <li>"Hết lượt" là khi nhà cung cấp báo đã dùng hết hạn mức miễn phí (mã lỗi 429). LLM chính bị cho nghỉ 2 phút nếu hết lượt theo phút, 15 phút nếu hết lượt theo ngày; trong lúc đó mọi câu hỏi đi thẳng sang LLM phụ.</li>
+            <li>Không khai báo LLM phụ thì trường hợp giữa chỉ báo lỗi. Bản tin đầu ngày và các nút gợi ý nhanh vẫn chạy vì không cần LLM.</li>
+            <li>Đổi nhà cung cấp LLM chỉ cần sửa ba dòng trong file <code>.env</code>, không sửa code. Màn hình chat ghi rõ lượt nào do LLM nào trả lời.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: cách nói chuyện với nhiều nhà cung cấp</summary>
+            <div>
+              <ul class="plain">
+                <li>Dùng SDK <code>openai</code> nhưng trỏ <code>LLM_BASE_URL</code> sang bất kỳ dịch vụ nào có <code>/v1/chat/completions</code> hỗ trợ tool: OpenAI, Groq, Gemini, OpenRouter, DeepSeek, Ollama, vLLM.</li>
+                <li><code>FailoverLLM</code> trong <code>agent/llm.py</code> quy mọi phản hồi về vài loại sự kiện chung (<code>provider</code>, <code>text</code>, <code>tool_call</code>, <code>usage</code>, <code>finish</code>), nên vòng lặp chat không cần biết đang nói với ai. "Bận" là lỗi 429, 5xx hoặc mất kết nối.</li>
+                <li>Riêng Gemini: không nhận kiểu <code>["string","null"]</code> nên bỏ phần <code>null</code>; Gemini 3 bắt gửi lại <code>thought_signature</code> của từng lần gọi tool; không đánh số các lần gọi song song nên client tự đánh số theo id. Mỗi điểm này có test trong <code>tests/test_llm.py</code>.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Gửi ít chữ hơn cho rẻ và nhanh</h3>
+          <p>Giống gửi fax tính tiền theo trang: viết càng gọn càng rẻ. Mỗi lượt chat gửi đi ít nhất một lần cả sổ tay, danh bạ và lịch sử trò chuyện.</p>
+          <div class="panel chart">
+            <h4>Số token của lần hỏi đầu tiên trong một lượt chat</h4>
+            <p class="sub">Đo trên Groq, trước và sau khi rút gọn (số trong README)</p>
+            <div class="bars">
+              <div class="r" title="Trước khi rút gọn: khoảng 3.500 token"><span>Trước khi rút gọn</span><div class="trk"><div class="bar" style="width:100%"></div></div><span class="v">~3.500</span></div>
+              <div class="r" title="Sau khi rút gọn: 1.641 token"><span>Sau khi rút gọn</span><div class="trk"><div class="bar hl" style="width:46.9%"></div></div><span class="v">1.641</span></div>
+            </div>
+          </div>
+          <ul class="plain">
+            <li>Sổ tay và danh bạ viết bằng tiếng Anh.</li>
+            <li>Tờ ghi chú của phòng ban được tóm gọn trước khi gửi: bỏ ô trống, làm tròn số lẻ. Dài quá thì cắt và nhắc LLM hỏi hẹp lại.</li>
+            <li>Chỉ gửi 24 tin nhắn gần nhất. Tờ ghi chú của các lượt trước chỉ giữ vài dòng đầu; cần chi tiết thì LLM gọi lại phòng ban.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>Người soát bài làm việc thế nào</h3>
+          <p>Giống người dò bài đối chiếu với đáp án. Việc này làm bằng code tìm chữ, không nhờ LLM:</p>
+          <ul class="plain">
+            <li>Gạch dưới mọi con số từ 1.000 trở lên trong câu trả lời mà không tìm thấy trong các tờ ghi chú của phòng ban hay trong câu hỏi của bạn.</li>
+            <li>Gạch dưới những câu kiểu "em đã duyệt", "đã gửi email", "vừa đặt hàng", vì trợ lý không thể làm những việc đó.</li>
+            <li>Có chỗ bị gạch thì màn hình hiện cảnh báo dưới câu trả lời. Câu trả lời vẫn hiện, vì chặn hẳn thì cả những câu đúng bị bắt nhầm cũng mất.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>Đọc hạn sử dụng từ ảnh tem</h3>
+          <p>Chia việc như một văn phòng: <strong>người đánh máy</strong> (một LLM nhìn được ảnh) chỉ chép lại nguyên văn chữ in cạnh "HSD" hay "EXP"; <strong>kế toán</strong> (code) mới đọc chuỗi đó ra ngày, theo kiểu Việt Nam ngày đứng trước tháng, chỉ có tháng/năm thì lấy ngày cuối tháng. Không rõ thì để trống, không bao giờ lấy ngày sản xuất thay vào. Kết quả chỉ điền sẵn ô HSD, người nhận hàng vẫn tự kiểm và bấm xác nhận; ảnh không được lưu. Mới thử trên ảnh tem tự tạo, chưa thử trên bao bì thật.</p>
+        </div>
+
+        <div class="stack">
+          <h3>Đồng hồ tính cước mỗi lượt</h3>
+          <p>Như đồng hồ trên taxi: mỗi lượt chat ghi một dòng vào nhật ký gồm mất bao lâu, hỏi LLM mấy lần, tốn bao nhiêu token, LLM nào trả lời, gọi những phòng ban nào, có con số nào bị gạch dưới không. Nhờ đó so được LLM nào rẻ, nhanh và ít nói sai hơn.</p>
+        </div>
+      </section>
+
+      <section id="hoc-may">
+        <header><div class="eyebrow">Phần 15</div><h2>Học máy, cho người không học máy</h2></header>
+        <div class="stack">
+          <h3>Học máy là gì ở đây</h3>
+          <p>Engine EWMA đoán nhu cầu bằng một công thức người viết sẵn. Học máy làm ngược lại: cho máy xem thật nhiều ví dụ "mấy tuần qua bán thế này, hôm sau bán chừng này", để máy tự rút ra quy luật. Thứ máy rút ra được lưu thành file mô hình.</p>
+          <div class="meta-box">
+            <div class="eyebrow">Ẩn dụ</div>
+            <p>LightGBM giống một <strong>thực tập sinh đã học việc ở 848 cửa hàng khác</strong> trước khi về cửa hàng số 18. Nó không thay người bán lâu năm (EWMA) mà ngồi cạnh, xem người đó đoán bao nhiêu rồi sửa lại. Một <strong>bộ chọn</strong>, đóng vai trọng tài, quyết định món nào nghe thực tập sinh.</p>
+          </div>
+          <div class="meta-box">
+            <div class="eyebrow">Ẩn dụ · LightGBM đoán thế nào</div>
+            <p>Nhớ trò chơi hai mươi câu hỏi. Mỗi "cây" là một chuỗi câu hỏi có/không: "Hôm qua bán trên 10 không? Ngày mai là cuối tuần không? Tuần qua có hết hàng không?", cuối chuỗi là một con số đoán. LightGBM là cả trăm cây như vậy xếp hàng; cây sau chuyên sửa những chỗ các cây trước đoán sai. Cộng tất cả lại ra dự báo.</p>
+          </div>
+        </div>
+
+        <div class="stack">
+          <h3>Học từ đâu</h3>
+          <ul class="plain">
+            <li><strong>Sổ bán hàng thật</strong> của bộ FreshRetailNet-50K: một chuỗi bán đồ tươi giao online ở Trung Quốc, 898 điểm bán, 865 món, 90 ngày để học và 7 ngày để chấm. Có số bán từng giờ và ghi cả giờ nào hết hàng.</li>
+            <li>Bộ dữ liệu có một cột ghi từng giờ còn hàng hay hết hàng. Kiểm trên dữ liệu mới biết giá trị 1 nghĩa là <strong>hết</strong> hàng, ngược với lời mô tả trong bài báo giới thiệu bộ dữ liệu. 44% số ngày có ít nhất một giờ hết hàng.</li>
+            <li>Số bán trong bộ dữ liệu đã bị quy đổi; nhân 10 để ra số đơn vị của cửa hàng. Đây là giả định.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>Không cho nhìn trộm đề thi</h3>
+          <p>Giáo viên giỏi giữ riêng một bộ đề học sinh chưa từng thấy. Ở đây giữ riêng hai thứ: <strong>50 điểm bán</strong> (gồm điểm demo 18) không bao giờ đưa cho máy học, và <strong>những ngày cuối</strong> dùng để chấm.</p>
+          <figure>
+            <div class="fig">
+              <svg class="dg" viewBox="0 0 880 196" role="img" aria-label="Hai bản mô hình trên trục thời gian 28/03 đến 02/07: bản thi thử học đến 26/05 rồi thi 37 ngày; bản dùng thật học đến 25/06 rồi thi tuần cuối. Cả hai chỉ học ở 848 điểm, thi ở 50 điểm giữ kín.">
+                <text class="t" x="20" y="55">Bản thi thử</text>
+                <text class="s" x="20" y="72">để chạy backtest</text>
+                <rect class="box-a" x="200" y="40" width="408" height="36" rx="6"/>
+                <text class="s" x="404" y="63" text-anchor="middle">học: 848 điểm, 28/03 → 26/05</text>
+                <rect class="box-t" x="610" y="40" width="250" height="36" rx="6"/>
+                <text class="s on-t" x="735" y="63" text-anchor="middle">thi: 50 điểm giữ kín · 37 ngày</text>
+                <text class="t" x="20" y="115">Bản dùng thật</text>
+                <text class="s" x="20" y="132">chạy trong app</text>
+                <rect class="box-a" x="200" y="100" width="612" height="36" rx="6"/>
+                <text class="s" x="506" y="123" text-anchor="middle">học: 848 điểm, 28/03 → 25/06 (90 ngày)</text>
+                <rect class="box-t" x="814" y="100" width="46" height="36" rx="6"/>
+                <text class="s on-t" x="837" y="123" text-anchor="middle">thi</text>
+                <line class="e" x1="200" y1="158" x2="860" y2="158"/>
+                <line class="e" x1="200" y1="153" x2="200" y2="163"/>
+                <line class="e" x1="608" y1="153" x2="608" y2="163"/>
+                <line class="e" x1="812" y1="153" x2="812" y2="163"/>
+                <line class="e" x1="860" y1="153" x2="860" y2="163"/>
+                <text class="lbl m" x="200" y="180">28/03</text>
+                <text class="lbl m" x="608" y="180" text-anchor="middle">26/05</text>
+                <text class="lbl m" x="812" y="180" text-anchor="end">25/06</text>
+                <text class="lbl m" x="860" y="180" text-anchor="end">02/07</text>
+              </svg>
+            </div>
+            <figcaption>Màu xanh là phần cho máy học, màu vàng là phần dùng để chấm. Bản thi thử học ít hơn để 37 ngày so sánh A/B là những ngày nó chưa từng thấy. Bản dùng thật học đủ 90 ngày để đoán cho "hôm nay" của demo.</figcaption>
+          </figure>
+        </div>
+
+        <div class="stack">
+          <h3>Sửa số liệu ngày hết hàng</h3>
+          <div class="meta-box">
+            <div class="eyebrow">Ẩn dụ</div>
+            <p>Rạp hết vé lúc 15 giờ. Số vé bán được không phải số người muốn xem. Nhưng nếu biết ngày thường 70% khách đến trước 15 giờ, thì ước được số người muốn xem bằng số vé đã bán chia cho 70%.</p>
+          </div>
+          <p>Khi chuẩn bị dữ liệu học trên Kaggle, Ops Chest làm đúng như vậy với từng món: lấy tỷ lệ bán theo giờ của những ngày đủ hàng, rồi suy ra nhu cầu cả ngày cho những ngày hết hàng giữa chừng. Để kiểm, người làm lấy 200.000 ngày đủ hàng, giả vờ hết hàng từ một giờ nào đó, rồi so ước tính với số bán thật. Cách này đoán lệch 20,5%; coi số bán là nhu cầu thì lệch 32,3% và luôn đoán thiếu.</p>
+          <p>Cách này cần biết giờ nào hết hàng, nên chỉ dùng được với dữ liệu FRN lúc học. Trong app, sổ chỉ biết một ngày có hết hàng hay không, nên EWMA dùng cách khác (Phần 7.1): ước lượng phần nhu cầu bị chặn dựa trên mức bán thường và độ dao động của món đó.</p>
+        </div>
+
+        <div class="stack">
+          <h3>Mỗi lần đoán, máy được xem gì</h3>
+          <p>Một tờ phiếu 29 ô, chia sáu nhóm. Lúc học trên Kaggle và lúc dùng trong app đều lập phiếu bằng cùng một đoạn code, nên hai bên nhìn giống hệt nhau.</p>
+          <div class="feat">
+            <div><b>Lịch sử gần</b><span>Bảy ngày qua mỗi ngày bán bao nhiêu, trung bình 3, 7, 14 ngày, cùng thứ tuần trước bán bao nhiêu.</span></div>
+            <div><b>Độ thất thường</b><span>Bán đều hay lúc nhiều lúc ít, bao nhiêu ngày không bán được món nào, đang tăng hay giảm, mức bán bình thường.</span></div>
+            <div><b>Hết hàng</b><span>Bốn tuần qua hết hàng mấy ngày, tuần qua mấy ngày, lần gần nhất cách đây bao lâu.</span></div>
+            <div><b>Người bán lâu năm nói gì</b><span>Con số đoán và độ dao động của EWMA. Máy học cách sửa sai cho EWMA thay vì học lại từ đầu.</span></div>
+            <div><b>Lịch</b><span>Đoán cho mấy ngày tới, ngày đó là thứ mấy, hôm đặt là thứ mấy, có phải cuối tuần hay ngày lễ.</span></div>
+            <div><b>Loại hàng</b><span>Món này thuộc nhóm nào trong ba cấp phân loại của bộ dữ liệu.</span></div>
+          </div>
+          <ul class="plain">
+            <li><strong>Đoán theo tỷ lệ, không theo số tuyệt đối.</strong> Máy đoán "ngày mai gấp 1,3 lần mức bình thường", rồi mới nhân với mức bình thường của món đó. Nhờ vậy một mô hình dùng được cho cả món bán 2 lẫn món bán 200 mỗi ngày.</li>
+            <li><strong>Không cho xem thứ cửa hàng không biết trước</strong>, như thời tiết hay khuyến mãi của ngày cần đoán. Cho xem thì điểm thi đẹp nhưng dùng thật không được.</li>
+            <li>Ngày Store Manager khai báo sự kiện ("có trận bóng") được thay bằng mức bán thường cùng thứ trước khi đưa cho máy, để ngày đột biến không làm lệch các tuần sau.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: tên 29 cột</summary>
+            <div>
+              <p><code>lag1–lag7</code>, <code>mean3</code>, <code>mean7</code>, <code>mean14</code>, <code>same_wd</code>, <code>same_wd_last</code>, <code>std28</code>, <code>zero28</code>, <code>trend</code>, <code>log_level</code>, <code>stockout28</code>, <code>stockout7</code>, <code>days_since_stockout</code>, <code>stockout_last</code>, <code>ewma_h</code>, <code>ewma_sigma</code>, <code>h</code>, <code>target_wd</code>, <code>origin_wd</code>, <code>target_holiday</code>, <code>mgmt_group</code>, <code>cat1</code>, <code>cat2</code>. Định nghĩa trong <code>backend/app/engines/ml_features.py</code>; đích học là tỷ lệ so với mức nền 28 ngày.</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Ba người cùng đoán</h3>
+          <div class="meta-box">
+            <div class="eyebrow">Ẩn dụ</div>
+            <p>Thay vì một con số, hỏi ba người. Người <strong>dè dặt</strong> nói mức mà chỉ 1 ngày trong 10 ngày bán thấp hơn. Người <strong>trung dung</strong> đoán mức giữa. Người <strong>mạnh tay</strong> nói mức mà chỉ 1 ngày trong 10 ngày bán cao hơn. Ba người càng cách xa nhau, món đó càng khó đoán, và càng cần để dư hàng an toàn.</p>
+          </div>
+          <ul class="plain">
+            <li>Mỗi "người" là một mô hình LightGBM riêng, cả ba học từ 16,9 triệu ví dụ của 848 điểm bán.</li>
+            <li>Việc học chạy trên Kaggle, một trang web cho mượn máy tính miễn phí để chạy code học máy, hết 2,5 giờ. Máy của bạn không học gì, chỉ mở file kết quả.</li>
+            <li>App lấy con số của người trung dung làm dự báo. Khoảng cách giữa ba người cho biết độ dao động, dùng để tính hàng dư an toàn.</li>
+          </ul>
+          <figure>
+            <div class="fig">
+              <svg class="dg" viewBox="0 0 880 200" role="img" aria-label="Sổ bán FRN đưa lên Kaggle; trên Kaggle sửa số liệu ngày hết hàng, lập phiếu 29 ô, dạy ba người đoán; file mô hình tải về Ops Chest, bộ dự báo dùng để đoán cho từng món. Cách lập phiếu dùng chung cho cả hai bên.">
+                <defs>
+                  <marker id="aL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+                  <marker id="aLa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-a" d="M0,0 L10,5 L0,10 z"/></marker>
+                </defs>
+                <rect class="box-q" x="150" y="10" width="460" height="180" rx="12"/>
+                <text class="lbl" x="164" y="30">Kaggle · máy thuê miễn phí · 2,5 giờ</text>
+                <rect class="box-q" x="630" y="10" width="240" height="180" rx="12"/>
+                <text class="lbl" x="644" y="30">Ops Chest</text>
+                <rect class="box" x="20" y="70" width="110" height="60" rx="10"/>
+                <text class="t" x="75" y="94" text-anchor="middle">Sổ bán FRN</text>
+                <text class="s" x="75" y="114" text-anchor="middle">dữ liệu thật</text>
+                <rect class="box" x="165" y="70" width="130" height="60" rx="10"/>
+                <text class="t" x="230" y="94" text-anchor="middle">Sửa số liệu</text>
+                <text class="s" x="230" y="114" text-anchor="middle">ngày hết hàng</text>
+                <rect class="box" x="320" y="70" width="125" height="60" rx="10"/>
+                <text class="t" x="382" y="94" text-anchor="middle">Lập phiếu</text>
+                <text class="s" x="382" y="114" text-anchor="middle">29 ô mỗi lần đoán</text>
+                <rect class="box-a" x="470" y="70" width="125" height="60" rx="10"/>
+                <text class="t" x="532" y="94" text-anchor="middle">Dạy 3 người</text>
+                <text class="s" x="532" y="114" text-anchor="middle">thấp · giữa · cao</text>
+                <rect class="box" x="645" y="44" width="210" height="56" rx="10"/>
+                <text class="t" x="750" y="67" text-anchor="middle">File mô hình</text>
+                <text class="s" x="750" y="86" text-anchor="middle">kinh nghiệm đã học</text>
+                <rect class="box-a" x="645" y="124" width="210" height="56" rx="10"/>
+                <text class="t" x="750" y="147" text-anchor="middle">Bộ dự báo</text>
+                <text class="s" x="750" y="166" text-anchor="middle">đoán cho từng món</text>
+                <line class="e" x1="130" y1="100" x2="163" y2="100" marker-end="url(#aL)"/>
+                <line class="e" x1="295" y1="100" x2="318" y2="100" marker-end="url(#aL)"/>
+                <line class="e" x1="445" y1="100" x2="468" y2="100" marker-end="url(#aL)"/>
+                <line class="e" x1="595" y1="95" x2="643" y2="72" marker-end="url(#aL)"/>
+                <line class="e" x1="750" y1="100" x2="750" y2="122" marker-end="url(#aL)"/>
+                <path class="e-a e-dash" d="M382,130 V172 H643" marker-end="url(#aLa)"/>
+                <text class="lbl-a" x="512" y="166" text-anchor="middle">cùng một cách lập phiếu</text>
+              </svg>
+            </div>
+            <figcaption>Học ở Kaggle, dùng ở Ops Chest. Đường nét đứt nhắc rằng hai bên lập phiếu bằng cùng một đoạn code, nên lúc học và lúc dùng máy nhìn thấy những thứ giống hệt nhau.</figcaption>
+          </figure>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: cách huấn luyện</summary>
+            <div>
+              <ul class="plain">
+                <li>Ba mô hình LightGBM hồi quy phân vị q10, q50, q90 (<code>ml/kaggle/train_frn.py</code>), 16,9 triệu mẫu = mọi mốc dự báo × 7 khoảng cách × 47.325 chuỗi.</li>
+                <li>Dò 7 cấu hình trên 30% số mẫu; các cấu hình gần như ngang nhau (pinball 0,2496–0,2497), chọn <code>num_leaves 127</code>, <code>min_data_in_leaf 200</code>. Tốc độ học 0,03, dừng sớm theo 7 ngày cuối, rồi học lại trên toàn bộ với số vòng tốt nhất × 1,1.</li>
+                <li>Độ dao động σ = (q90 − q10) / 2,563 khi dùng khoảng của mô hình.</li>
+                <li>Mã chạy trên Kaggle được đóng gói bằng <code>ml/package_kaggle.py</code>; đầu ra gồm <code>q*.txt</code> (bản dùng thật), <code>bt_q*.txt</code> (bản thi thử), <code>meta.json</code> và dữ liệu 50 điểm giữ kín.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Điểm thi dự báo</h3>
+          <p>WAPE đọc là: tính chung, dự báo lệch bao nhiêu phần trăm so với số bán thật. Thấp hơn là tốt.</p>
+          <div class="panel chart">
+            <h4>Dự báo lệch bao nhiêu, tuần chấm cuối, 50 điểm giữ kín</h4>
+            <p class="sub">WAPE, thấp hơn là tốt · 11.037 ngày còn hàng đủ giờ</p>
+            <div class="bars">
+              <div class="r" title="LightGBM: lệch 30,2%"><span>LightGBM</span><div class="trk"><div class="bar hl" style="width:75.5%"></div></div><span class="v">30,2%</span></div>
+              <div class="r" title="EWMA, engine cũ: lệch 35,1%"><span>EWMA (engine cũ)</span><div class="trk"><div class="bar" style="width:87.75%"></div></div><span class="v">35,1%</span></div>
+              <div class="r" title="EWMA không xét ngày hết hàng: lệch 35,1%"><span>EWMA không xét hết hàng</span><div class="trk"><div class="bar" style="width:87.75%"></div></div><span class="v">35,1%</span></div>
+              <div class="r" title="Trung bình 28 ngày: lệch 35,5%"><span>Trung bình 28 ngày</span><div class="trk"><div class="bar" style="width:88.75%"></div></div><span class="v">35,5%</span></div>
+              <div class="r" title="Lấy số cùng thứ tuần trước: lệch 38,7%"><span>Cùng thứ tuần trước</span><div class="trk"><div class="bar" style="width:96.75%"></div></div><span class="v">38,7%</span></div>
+            </div>
+            <div class="axis-note"><span></span><span><span>0%</span><span>40%</span></span><span></span></div>
+          </div>
+          <ul class="plain">
+            <li>Hai dòng EWMA có cùng mức lệch 35,1% nhưng lệch về hai phía: bản có sửa ngày hết hàng đoán dư 6,9%, bản bỏ qua thì đoán thiếu 10,8%. Đoán thiếu nguy hiểm hơn vì dẫn tới đặt thiếu rồi lại hết hàng. Biểu đồ chỉ vẽ mức lệch tổng nên không thấy khác biệt này.</li>
+            <li>Khoảng giữa người dè dặt và người mạnh tay chứa 81% số ngày thật, sát mức lý tưởng 80%. Của EWMA chỉ 73%, tức EWMA tự tin hơn mức nó nên có.</li>
+            <li>Ô trên phiếu mà máy dựa vào nhiều nhất: loại hàng, <strong>con số đoán của EWMA</strong>, thứ của ngày cần đoán, trung bình 7 ngày, mức bán bình thường. Đúng như ẩn dụ: thực tập sinh nghe người bán lâu năm rồi sửa.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: ba phiên bản đã thử</summary>
+            <div>
+              <div class="tbl-wrap">
+                <table>
+                  <thead><tr><th>Bản</th><th>Đã thử</th><th>Rút ra</th></tr></thead>
+                  <tbody>
+                    <tr><td class="num">1</td><td>Cho xem giảm giá của ngày cần đoán</td><td>WAPE 34,3% nhưng đoán thiếu 15,7%: lúc dùng thật cửa hàng không biết trước khuyến mãi.</td></tr>
+                    <tr><td class="num">2</td><td>Quy số bán về giá gốc bằng độ co giãn ước lượng</td><td>Độ co giãn ra 9,6, phi lý; mọi cách đoán đều thiếu 14–31%. Bỏ.</td></tr>
+                    <tr><td class="num">3</td><td>Nhu cầu thô, thêm dự báo EWMA vào phiếu, dùng toàn bộ dữ liệu</td><td>WAPE 30,2%, đoán dư 2,7%. Đang dùng.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>Đánh giá cuốn chiếu 37 ngày bằng bản thi thử: LightGBM 35,0% so với EWMA 37,8%.</p>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Đưa thực tập sinh vào làm</h3>
+          <ul class="plain">
+            <li>Khi cần đoán, app mở file mô hình và kiểm tờ phiếu có đúng 29 ô như lúc học. Không khớp thì không dùng, tránh cho người học kiểu phiếu cũ đọc phiếu mới.</li>
+            <li>Bộ chọn và các điều kiện ở Phần 7.1 quyết định món nào dùng LightGBM. Thiếu file mô hình, hoặc tắt bằng cấu hình, thì app tự quay về EWMA, vẫn chạy bình thường.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: nạp mô hình</summary>
+            <div>
+              <ul class="plain">
+                <li><code>ml/forecaster.py</code> so danh sách đặc trưng trong <code>meta.json</code> với <code>FEATURES</code> trong <code>ml_features.py</code>; lệch thì báo lỗi và router dùng EWMA.</li>
+                <li>File mô hình được đọc rồi đổi xuống dòng CRLF thành LF: checkout trên Windows có thể đổi kiểu xuống dòng, và LightGBM làm sập cả tiến trình khi gặp CRLF.</li>
+                <li>Dự báo được lưu tạm theo lịch sử đầu vào. Tắt hẳn bằng <code>FORECAST_ENGINE=ewma</code>.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Một lần thử thất bại nhưng đáng kể</h3>
+          <div class="meta-box">
+            <div class="eyebrow">Ẩn dụ</div>
+            <p>Ngày mưa thì nhiều người cầm ô. Đếm người cầm ô không cho biết cái ô làm trời mưa nhiều hay ít.</p>
+          </div>
+          <p>Nhóm thử đo "giảm giá 10% thì bán thêm bao nhiêu" từ dữ liệu FRN và ra con số vô lý: bán thêm 50–96%. Lý do hợp lý nhất: chuỗi bán hàng đó hay giảm giá đúng lúc món đang đắt khách, nên ngày giảm giá vốn đã là ngày bán chạy. So ngày giảm với ngày không giảm không đo được tác dụng của giá. Ops Chest giữ giả định cũ và ghi rõ đó là giả định. Muốn đo đúng phải thử giảm giá ngẫu nhiên.</p>
+        </div>
+      </section>
+
+      <section id="danh-gia">
+        <header><div class="eyebrow">Phần 16</div><h2>Làm sao biết hệ thống đúng</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Bốn kỳ thi cho bốn câu hỏi khác nhau. Đỗ kỳ này không thay được kỳ kia, giống như học sinh giỏi lý thuyết chưa chắc buôn bán giỏi.</p>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Kỳ thi</th><th>Hỏi gì</th><th>Thi thế nào</th><th>Điểm hiện tại</th></tr></thead>
+            <tbody>
+              <tr><td>1. Kiểm tra trong xưởng</td><td>Từng chi tiết có làm đúng quy tắc không?</td><td>256 bài kiểm tra tự động</td><td>Qua hết, mất 52 giây (12/11/2026)</td></tr>
+              <tr><td>2. Phỏng vấn trợ lý</td><td>Trợ lý có nói đúng, đúng vai không?</td><td>30 câu hỏi với LLM thật, chấm tự động</td><td>Groq 27/30, Gemini 25/30</td></tr>
+              <tr><td>3. Thi lý thuyết</td><td>Dự báo có sát không?</td><td>Đoán trên 50 điểm bán giữ kín</td><td>LightGBM lệch 30,2%, EWMA 35,1% (tuần chấm cuối 26/06–02/07)</td></tr>
+              <tr><td>4. Thi thực hành</td><td>Làm theo hệ thống có lãi hơn không?</td><td>Chạy thử hai cửa hàng sinh đôi</td><td>Lãi hơn cách làm kinh nghiệm khoảng 4%</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="stack">
+          <h3>Kỳ 1: kiểm tra trong xưởng</h3>
+          <p>Giống kiểm tra từng chi tiết máy trong xưởng trước khi lắp xe. Mỗi bài kiểm tra dựng một tình huống nhỏ, ví dụ "lô còn 1 ngày, nhà cung cấp cho trả hàng", rồi xem hệ thống có xử lý đúng không. Có 256 bài như vậy, chạy hết trong 52 giây.</p>
+          <ul class="plain">
+            <li>Các bài chạy trong <strong>phòng thí nghiệm kín</strong>: tủ hồ sơ tạm, ngày đứng yên, chuông hẹn giờ tắt, không gọi LLM thật. Nhờ vậy chạy lại lần nào cũng cho cùng kết quả, không cần mạng, không tốn tiền.</li>
+            <li>Nhóm bài đông nhất kiểm quy tắc nghiệp vụ: trần hạn sử dụng, mức phục vụ tối thiểu, lịch nhà cung cấp, đơn tối thiểu, nhận hàng, trả hàng. Một nhóm khác thử cố tình bảo trợ lý tự duyệt để chắc chắn ổ khoá ở Phần 3 giữ được.</li>
+          </ul>
+          <details class="deep">
+            <summary>Chi tiết kỹ thuật: các file test</summary>
+            <div>
+              <ul class="plain">
+                <li>18 file trong <code>backend/tests/</code>, chạy bằng <code>uv run pytest -q</code>. <code>conftest.py</code> đặt SQLite tạm, <code>SIM_TODAY</code> cố định, <code>ENABLE_SCHEDULER=false</code>, và đổi địa chỉ LLM thành tên miền <code>.invalid</code>.</li>
+                <li><code>test_zy_business_rules.py</code> (76 hàm) chạy trên thế giới giả lập 200 ngày vì cần Tết và hàng dài ngày, ép dùng EWMA để không phụ thuộc file mô hình.</li>
+                <li><code>test_hitl.py</code> kiểm ổ khoá, <code>test_llm.py</code> kiểm việc chuyển sang LLM phụ bằng LLM giả, <code>test_frn.py</code> kiểm phiếu đặc trưng và mô hình thật.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
+        <div class="stack">
+          <h3>Kỳ 2: phỏng vấn trợ lý</h3>
+          <p>Hỏi trợ lý 30 câu tiếng Việt với LLM thật, rồi máy tự chấm từng câu: có gọi đúng phòng ban không, có bịa số không, có nói như đã tự làm không, có chịu bỏ qua bước duyệt khi bị nài không, có đọc lại số đã có trong bảng không.</p>
+          <ul class="plain">
+            <li>Ngày 09/11/2026: Groq đạt 27/30, Gemini đạt 25/30. Cả hai không câu nào nói như đã tự thực thi.</li>
+            <li>Mỗi LLM mới phỏng vấn một lần, nên chênh 2 câu chưa đủ nói LLM nào giỏi hơn. Bộ câu hỏi cũng chưa có câu cho 5 công cụ mới nhất.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>Kỳ 3 và 4: giỏi lý thuyết chưa chắc buôn giỏi</h3>
+          <div class="charts-two">
+            <div class="panel chart">
+              <h4>Thi lý thuyết: dự báo lệch bao nhiêu</h4>
+              <p class="sub">Thấp hơn là tốt · 50 điểm giữ kín</p>
+              <div class="bars">
+                <div class="r" title="LightGBM: lệch 30,2%"><span>LightGBM</span><div class="trk"><div class="bar hl" style="width:75.5%"></div></div><span class="v">30,2%</span></div>
+                <div class="r" title="EWMA: lệch 35,1%"><span>EWMA</span><div class="trk"><div class="bar" style="width:87.75%"></div></div><span class="v">35,1%</span></div>
+              </div>
+              <div class="axis-note"><span></span><span><span>0%</span><span>40%</span></span><span></span></div>
+            </div>
+            <div class="panel chart div">
+              <h4>Thi thực hành: lãi hơn hay kém EWMA</h4>
+              <p class="sub">Ba cách dùng LightGBM · điểm giữa của 50 điểm bán</p>
+              <div class="bars">
+                <div class="r" title="Để LightGBM tự định mức dư an toàn: −0,4%"><span>LightGBM tự định mức dư</span><div class="trk"><div class="bar neg" style="left:42%;width:8%"></div></div><span class="v">−0,4%</span></div>
+                <div class="r" title="Như trên, khoảng lệch hai phía: −2,2%"><span>Như trên, tính riêng hai phía</span><div class="trk"><div class="bar neg" style="left:6%;width:44%"></div></div><span class="v">−2,2%</span></div>
+                <div class="r" title="Số đoán của LightGBM, mức dư của EWMA: +0,8%"><span>Số LightGBM, mức dư EWMA</span><div class="trk"><div class="bar pos" style="left:50%;width:16%"></div></div><span class="v">+0,8%</span></div>
+              </div>
+              <div class="axis-note"><span></span><span><span>−2,5%</span><span>0</span><span>+2,5%</span></span><span></span></div>
+            </div>
+          </div>
+          <p>Ba thanh bên phải là ba cách lấy mức hàng dư: (1) theo khoảng dao động của LightGBM; (2) như (1) nhưng tính riêng phía bán nhiều và phía bán ít, vì hai phía rộng hẹp khác nhau; (3) lấy con số đoán của LightGBM nhưng mức dư theo EWMA.</p>
+          <p>LightGBM đoán sát hơn, và nó cũng thật thà hơn về chuyện mình không chắc. Nhưng khi để nó tự quyết mức hàng dư an toàn, cộng thêm mức phục vụ tối thiểu 90–95%, cửa hàng đặt dư; hàng tươi để lâu là hủy, lãi giảm. Lấy con số đoán của LightGBM nhưng giữ mức dư hẹp hơn của EWMA thì lãi hơn 0,8%. Bài học: <strong>điểm thi dự báo và tiền lãi là hai thước đo khác nhau.</strong></p>
+        </div>
+
+        <div class="stack">
+          <h3>Thi sao cho không gian lận</h3>
+          <p>Kỳ 4 dễ bị nghi "tự ra đề, tự chấm". Năm cách chống:</p>
+          <ul class="plain">
+            <li><strong>Cùng một dòng khách.</strong> Hai cửa hàng sinh đôi A và B đón đúng cùng những khách đó (Phần 12). Khác nhau chỉ ở người quản lý.</li>
+            <li><strong>Cố tình làm khó.</strong> Trong mô phỏng, khách chỉ phản ứng với giảm giá bằng một nửa mức hệ thống tin. Hệ thống phải thắng dù đoán sai về khách.</li>
+            <li><strong>Đề chưa từng thấy.</strong> Bản thi thử chưa thấy 37 ngày thi. Bộ chọn chọn món dùng LightGBM bằng cách chia 50 điểm làm hai nửa, nửa này chọn cho nửa kia. Ngoại lệ phải nói rõ: cách dùng thắng cuộc (số đoán của LightGBM, mức dư của EWMA) được nghĩ ra sau khi đã xem kết quả trên chính 50 điểm này, nên con số +0,8% hơi lạc quan.</li>
+            <li><strong>Đổi từng giả định một</strong> xem kết luận còn đứng không: khách phản ứng yếu hơn nữa, Store Manager chỉ duyệt 60–80%, bỏ mức phục vụ tối thiểu, giảm giá cố định lúc 18 giờ…</li>
+            <li><strong>Báo cả độ trải</strong>, không chỉ một con số: điểm giữa của 50 điểm bán, khoảng chứa một nửa số điểm ở giữa, và bao nhiêu điểm bán thắng.</li>
+          </ul>
+        </div>
+
+        <div class="stack">
+          <h3>Thuật ngữ trên các bảng kết quả</h3>
+          <dl class="terms">
+            <dt>WAPE</dt><dd>Tính chung, dự báo lệch bao nhiêu phần trăm so với số bán thật. 30% nghĩa là cứ 100 món bán thật thì tổng chỗ đoán lệch khoảng 30 món.</dd>
+            <dt>Đoán dư, đoán thiếu</dt><dd>Tính chung dự báo cao hơn (+) hay thấp hơn (−) thực tế. Đoán thiếu dẫn tới đặt thiếu, hết hàng.</dd>
+            <dt>Độ phủ 80%</dt><dd>Bao nhiêu phần trăm số ngày thật nằm giữa con số của người dè dặt và người mạnh tay. Lý tưởng là gần 80%.</dd>
+            <dt>Ngoài mẫu</dt><dd>Chấm trên dữ liệu mà mô hình hay bộ chọn chưa từng thấy, tức thi bằng đề mới.</dd>
+            <dt>Trung vị</dt><dd>Xếp 50 điểm bán từ kém đến tốt, lấy điểm đứng giữa. Ít bị một điểm bất thường kéo lệch hơn trung bình cộng.</dd>
+            <dt>Khoảng tứ phân vị</dt><dd>Khoảng chứa 25 điểm bán đứng giữa. Hẹp nghĩa là kết quả đều, rộng nghĩa là tuỳ điểm.</dd>
+            <dt>Kiểm chéo</dt><dd>Chia làm hai nhóm, học trên nhóm này, chấm trên nhóm kia, rồi đổi vai.</dd>
+            <dt>KPI trong app</dt><dd>Tỷ lệ hủy, tỷ lệ hết hàng, lãi gộp sau hủy, số ngày tồn, lãi trên mỗi đồng vốn nằm trong hàng (GMROI), điểm nhà cung cấp, và mức tin cậy của trợ lý (bao nhiêu tờ trình được duyệt, bao nhiêu bị sửa).</dd>
+          </dl>
+        </div>
+      </section>
+
+      <!-- noi kiosk -->
+      <section id="noi-kiosk">
+        <header><div class="eyebrow">Phần 17</div><h2>Nối sang kiosk Retail-AI</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Kho có một ô cửa nhỏ thông ra quầy tư vấn khách. Qua ô cửa chỉ đưa ra những gì khách cần biết: còn hàng không, hạn đến bao giờ, có đang giảm giá không, hôm nay có hàng gì mới về. Sổ sách, giá vốn và tên nhà cung cấp ở lại trong kho.</p>
+        </div>
+
+        <div class="stack">
+          <p>Từ 19/11/2026, Ops Chest có thể cấp dữ liệu cho <strong>Retail-AI</strong>, một kiosk chatbot tư vấn người mua với catalog 3.099 sản phẩm WinMart. Hai bên phục vụ hai người khác nhau: <strong>Ops Chest phục vụ Store Manager, kiosk phục vụ người mua.</strong> Nguyên tắc này quyết định thứ gì được đi qua và đi bằng lời lẽ nào.</p>
+          <p>Việc nối do một chương trình riêng làm, gọi là <strong>bridge</strong>, nằm ở repo <code>bridge/</code> (cùng cấp với <code>doanbackup/</code>, không nằm trong Ops Chest). Bridge không import code của bên nào. Nó chỉ đọc dữ liệu một chiều, từ Ops Chest sang kiosk; kiosk không ghi ngược lại được.</p>
+
+          <div class="flow">
+            <span class="st">Ops Chest REST (tài khoản nhân viên, chỉ xem)</span><span class="ar">→</span>
+            <span class="st key">bridge sync, mỗi 2 phút</span><span class="ar">→</span>
+            <span class="st">file <code>ops_feed.json</code> + bảng hàng mới về trong Postgres của Retail-AI</span><span class="ar">→</span>
+            <span class="st">kiosk trả lời người mua</span>
+          </div>
+        </div>
+
+        <div class="cast">
+          <article class="card key">
+            <h3>Đi qua ô cửa</h3><div class="path">bridge/contract/ops_feed.v1.md</div>
+            <div class="row"><span class="chip do">Có</span><span>Số lượng bán được, hạn sử dụng từng lô, giá bán thường, giá sau giảm kèm câu kiểu "Giảm 30% cho 5 sản phẩm HSD 20/11", và hàng mới về (tên sản phẩm, giờ về).</span></div>
+          </article>
+          <article class="card">
+            <h3>Ở lại trong kho</h3><div class="path">bridge/src/bridge/feed.py</div>
+            <div class="row"><span class="chip no">Không</span><span>Giá vốn, nhà cung cấp, thỏa thuận, dự báo, giá trị rủi ro, các phương án xử lý cận date. Bridge dựng lại từng dòng theo danh sách trường cho phép và tự kiểm trước khi ghi; gặp trường nội bộ là dừng.</span></div>
+          </article>
+          <article class="card">
+            <h3>Ops Chest không đổi gì</h3><div class="path">tài khoản nhanvien</div>
+            <div class="row"><span class="chip do">Làm</span><span>Trả lời các API đọc như với giao diện của chính nó.</span></div>
+            <div class="row"><span class="chip no">Không</span><span>Biết kiosk tồn tại. Không có tờ trình, quy tắc hay quyền duyệt nào thay đổi vì bridge.</span></div>
+          </article>
+        </div>
+
+        <div class="stack">
+          <h3>Một quyết định của Store Manager đi tới người mua thế nào</h3>
+          <ol class="plain">
+            <li>06:30, chuông sáng đề xuất giảm 30% một lô còn ít ngày. Store Manager duyệt; executor ghi <code>lots.markdown_pct = 0.3</code>.</li>
+            <li>Lần sync kế tiếp (chậm nhất 2 phút), bridge đọc <code>/api/inventory/expiring</code>, tính giá sau giảm, làm tròn 100 đồng như tem giá (từ 50 đồng trở lên làm tròn lên).</li>
+            <li>Kiosk thấy file đổi thì đọc lại. Danh sách khuyến mãi của kiosk xếp hàng cận date của Ops Chest lên trước (giảm sâu trước, hạn gần trước), rồi mới tới khuyến mãi có sẵn trong catalog. Người mua hỏi "có khuyến mãi gì không?" sẽ nghe món này trong nhóm đầu.</li>
+            <li>Nếu Store Manager duyệt <strong>ngừng nhập</strong> (nghiệp vụ 7), mặt hàng thành <code>DELISTED</code>; feed ghi <code>INACTIVE</code> và bỏ hẳn lô, hạn, khuyến mãi, để kiosk không quảng cáo món cửa hàng đã thôi bán.</li>
+          </ol>
+          <p>Chiều ngược lại không có: kiosk không tạo tờ trình, không đổi giá, không đặt hàng. Mọi thay đổi vẫn phải qua bàn ký của Store Manager.</p>
+        </div>
+
+        <div class="stack">
+          <h3>Ba chỗ dễ vấp</h3>
+          <div class="panel">
+            <h3>Hai đồng hồ khác nhau</h3>
+            <p>Ops Chest chạy đồng hồ giả lập (26/06/2024), kiosk dùng ngày thật. Chuyển nguyên hạn sử dụng thì kiosk coi mọi lô đã hết hạn. Mỗi lần sync, bridge tính <code>shift = ngày thật − ngày của Ops Chest</code> rồi cộng vào mọi ngày lấy từ Ops Chest. Giờ nhận hàng đã xảy ra thì không được vượt quá hiện tại. Tua nhanh Ops Chest 1 ngày thì <code>shift</code> giảm 1, nên số ngày còn lại của mỗi lô vẫn đúng.</p>
+          </div>
+          <div class="panel">
+            <h3>Hai bộ mặt hàng không trùng nhau</h3>
+            <p>FRN chỉ có mã số ẩn danh, WinMart có tên thật; hai bên không có món nào chung. Bridge giữ một bảng ánh xạ 164 dòng (<code>bridge/data/crosswalk.csv</code>), sinh bằng thuật toán tất định giữ cấu trúc nhóm và danh mục. <strong>Đây là giả định demo</strong>: nó không cho biết mặt hàng FRN thật là gì.</p>
+            <p class="note">Khi seed với biến <code>CATALOG_OVERRIDES_PATH</code>, Ops Chest lấy tên và giá WinMart cho 164 món (giá vốn tính lại theo đúng tỷ lệ cũ) và đổi 7 nhà cung cấp thành "Kho tổng WinMart – {ngành hàng} (demo)". Thời gian giao, lịch đặt, đơn tối thiểu, thỏa thuận trả hàng và nhóm hàng giữ nguyên, nên engine chạy y như cũ. Chữ "NCC" trên giao diện chưa đổi thành "kho".</p>
+          </div>
+          <div class="panel">
+            <h3>Feed cũ thì sao</h3>
+            <p>Ops Chest tắt hoặc lỗi thì bridge giữ nguyên feed cũ, không ghi đè. Kiosk vẫn dùng feed cũ nhưng tự bỏ các lô đã quá hạn theo <strong>ngày ở cửa hàng</strong> (không theo ngày UTC, vốn chậm 7 tiếng). Một lần sync lỗi bất ngờ chỉ được ghi log, vòng lặp vẫn chạy tiếp ở lần sau.</p>
+          </div>
+        </div>
+
+        <div class="stack">
+          <h3>Code nằm ở đâu</h3>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Phần</th><th>Ở đâu</th><th>Ghi chú</th></tr></thead>
+              <tbody>
+                <tr><td>Chỗ nạp tên/giá lúc seed</td><td><code>app/sim/frn_catalog.py</code> · <code>apply_catalog_overrides</code></td><td rowspan="2">Nhánh <code>feat/catalog-overrides</code> (worktree <code>worktrees/ops-chest-catalog-overrides</code>), <strong>chưa gộp vào main</strong></td></tr>
+                <tr><td>Giờ nhận trong danh sách đơn</td><td><code>GET /api/purchase-orders</code> trả thêm <code>received_at</code></td></tr>
+                <tr><td>Bridge: ánh xạ, feed, hàng mới về</td><td><code>bridge/src/bridge/</code></td><td>Lệnh <code>uv run bridge sync --every 120</code>; xem <code>bridge/README.md</code></td></tr>
+                <tr><td>Kiosk đọc feed</td><td><code>side/Retail-AI-/backend/products/ops_overlay_repository.py</code></td><td>Bật bằng <code>CATALOG_REPOSITORY=snapshot</code> và <code>OPS_FEED_PATH</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note">Giờ vàng: trên main, giảm giá ca chiều nằm ở trường riêng <code>lots.evening_markdown_pct</code> và hiện trong <code>/api/inventory/expiring</code>. Bridge đã đọc trường này (chỉ áp trong ngày bán cuối, sau giờ giảm giá của nhóm hàng). Nhánh <code>feat/catalog-overrides</code> tách từ trước thay đổi đó nên chưa có trường này; khi gộp nhánh, kiosk sẽ thấy cả mức giờ vàng.</p>
+        </div>
+      </section>
+
+      <!-- vi sao -->
+      <section id="vi-sao">
+        <header><div class="eyebrow">Phần 18</div><h2>Vì sao thiết kế như vậy</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Mỗi quyết định thiết kế là một ngã ba: chọn đường này là bỏ đường kia, và đường nào cũng có giá phải trả. Hội đồng hay hỏi về con đường đã bỏ. Phần này do AI tóm lại từ tài liệu dự án; lý do thật là của tác giả, nên tác giả hãy tự kiểm từng thẻ xem có đúng ý mình không.</p>
+        </div>
+        <div class="decs">
+          <article class="card dec">
+            <h3>Cửa hàng độc lập</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>cửa hàng trong chuỗi như 7-Eleven, Circle K, WinMart+.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Store Manager tự quyết nhập gì, ngừng gì và làm việc thẳng với nhà cung cấp, nên có đủ quyết định để hệ thống hỗ trợ. Ở chuỗi, danh mục hàng do tổng công ty quyết.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Không có kho tổng hay dữ liệu chuỗi. Cửa hàng độc lập thật thường đặt hàng qua Zalo, điện thoại; gửi email kèm PDF là giả định của demo.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Quản lý theo lô có hạn sử dụng</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>chỉ theo mã hàng như máy bán hàng.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Cùng một mã có thể gồm nhiều lô khác hạn. Không biết hạn thì không làm được cận date, giảm giá, trần hạn sử dụng.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Thêm việc lúc nhận hàng (đỡ bằng đọc ảnh tem). Khách lấy lô mới trước làm sổ lệch, nên phải có kiểm date.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Trợ lý chỉ đề xuất, người quyết</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>để hệ thống tự đặt hàng, tự giảm giá.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Mỗi quyết định dính tới tiền và trách nhiệm; LLM có thể sai. Các chuỗi Nhật như Lawson, FamilyMart cũng để máy gợi ý, người xác nhận.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Lợi ích phụ thuộc người duyệt. Trên thế giới giả lập cũ, nếu Store Manager chỉ duyệt 60% đề xuất thì phần lãi thêm gần như mất hết; trên dữ liệu FRN còn khoảng +3,8%.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Con số do engine tính</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>để LLM tự tính và quyết định.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>LLM tính sai và mỗi lần trả lời một kiểu. Engine cho cùng kết quả mỗi lần, kiểm thử được, giải thích được từng bước khi bảo vệ.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Nghiệp vụ nào cũng phải viết thành code. Trợ lý không trả lời được câu hỏi chưa có công cụ.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Đơn đặt hàng theo mẫu</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>để trợ lý tự soạn "hợp đồng" gửi nhà cung cấp.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Hợp đồng ký mỗi năm một lần, đơn hàng gửi mỗi ngày. Điều khoản (chiết khấu, đổi trả, đơn tối thiểu) được lưu thành dữ liệu; LLM không nên soạn văn bản pháp lý.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Điều khoản không có trong mẫu phải nhập tay.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Có sàn mức phục vụ</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>để engine tối ưu lãi thuần.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Khách vào cửa hàng tiện lợi vì tin là có hàng. Không có sàn, bản trước "mua" lãi bằng cách để kệ trống nhiều hơn người làm tay.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Lãi trong mô phỏng thấp hơn (+4,2% thay vì +12,8% trên thế giới giả lập). Các mức 95/90/50% là chính sách, cần trích nguồn nếu đưa vào báo cáo.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Dữ liệu nhu cầu thật</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>chỉ dùng cửa hàng giả lập tự dựng.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Kết quả đo trên thế giới tự dựng dễ bị hỏi "có phải tự chứng minh không".</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>FRN là kho giao hàng online, chỉ có hàng tươi, 97 ngày, không có Tết. Tên hàng, giá, hạn dùng, nhà cung cấp vẫn là giả định.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Chọn mô hình theo lãi</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>chọn mô hình đoán sát nhất.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Điểm thi dự báo và tiền lãi là hai thước đo khác nhau (Phần 16). Đoán sát hơn mà đặt dư thì vẫn lỗ.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Con số +0,8% hơi lạc quan, vì cách dùng thắng cuộc được thêm vào sau khi đã xem kết quả.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>Trợ lý tự viết, không bộ khung</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>dùng bộ khung làm sẵn như LangChain.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Dễ gỡ lỗi, dễ trình bày từng bước, và nắm chắc việc trợ lý không có công cụ thực thi nào.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Tự lo khác biệt giữa các nhà cung cấp LLM và tự viết vòng lặp.</span></div>
+          </article>
+          <article class="card dec">
+            <h3>LLM nào cũng dùng được</h3>
+            <div class="row"><span class="chip alt">Thay vì</span><span>gắn chặt với một nhà cung cấp.</span></div>
+            <div class="row"><span class="chip why">Vì</span><span>Đổi theo giá và hạn mức miễn phí chỉ bằng file <code>.env</code>; có LLM phụ khi LLM chính bận.</span></div>
+            <div class="row"><span class="chip cost">Cái giá</span><span>Chất lượng gọi công cụ và tiếng Việt khác nhau giữa các LLM, phải đo bằng buổi phỏng vấn 30 câu.</span></div>
+          </article>
+        </div>
+        <h3>Những gì chưa làm</h3>
+        <p>Danh sách này giúp trả lời câu "sao không làm cái này": đã cân nhắc và để ngoài phạm vi.</p>
+        <ul class="plain">
+          <li>Nối máy bán hàng và phần mềm kế toán thật; ước tính số khách bỏ về khi hết hàng ở cửa hàng thật.</li>
+          <li>Đặt hàng qua Zalo, điện thoại, nhân viên tuyến của nhà phân phối.</li>
+          <li>Giới hạn tiền mặt và công nợ khi đặt hàng. Cửa hàng nhỏ thường bị giới hạn bởi tiền nhiều hơn bởi dự báo.</li>
+          <li>Một mặt hàng nhiều nhà cung cấp, giá vốn đổi theo thời gian, thuế VAT, hàng ký gửi, khuyến mãi của nhà cung cấp (mua 10 tặng 1).</li>
+          <li>Lịch lễ ngoài Tết (30/4, 2/9, Trung thu); hiện dựa vào giả thuyết Store Manager tự nhập.</li>
+          <li>Đặt hàng tươi theo nhóm có thay thế (hết cơm gà thì khách lấy cơm sườn).</li>
+          <li>Món mới mượn dự báo của món tương tự; nhận hàng không có đơn; đọc ảnh hoá đơn giao hàng.</li>
+          <li>Đo độ co giãn khi giảm giá bằng thử nghiệm; mô phỏng hao hụt trong backtest; thử hạ sàn mức phục vụ cho hàng tươi.</li>
+        </ul>
+      </section>
+
+      <!-- chay va sua loi -->
+      <section id="chay">
+        <header><div class="eyebrow">Phần 19</div><h2>Chạy và sửa lỗi</h2></header>
+        <div class="meta-box">
+          <div class="eyebrow">Ẩn dụ</div>
+          <p>Phần này là sổ tay mở cửa hàng và hộp cứu thương: làm sao bật hệ thống lên, chỉnh nút nào ở đâu, và gặp triệu chứng nào thì xử lý ra sao.</p>
+        </div>
+
+        <div class="stack">
+          <h3>Mở cửa hàng lần đầu</h3>
+          <p><strong>Cách nhanh, dùng Docker:</strong> chép <code>.env.example</code> thành <code>.env</code>, điền khoá LLM, rồi chạy:</p>
+          <pre>docker compose up -d --build</pre>
+          <p>Lần đầu, hệ thống tự dựng tủ hồ sơ và nạp 90 ngày dữ liệu demo, mất khoảng 10 giây. Sau đó mở:</p>
+          <ul class="plain">
+            <li><code>localhost:5173</code>: giao diện. Tài khoản Store Manager và nhân viên ghi trong <code>.env.example</code>.</li>
+            <li><code>localhost:8000/docs</code>: danh sách mọi ô cửa API, thử gọi được ngay trên trình duyệt.</li>
+            <li><code>localhost:8025</code>: hộp thư giả, nơi email đơn hàng kèm PDF rơi vào.</li>
+          </ul>
+          <p><strong>Cách không dùng Docker:</strong></p>
+          <pre><span class="c"># trong thư mục backend/</span>
+uv sync
+uv run python -m app.sim.seed --reset      <span class="c"># nạp cửa hàng demo vào file SQLite</span>
+uv run uvicorn app.api.main:app --reload
+<span class="c"># trong thư mục frontend/</span>
+npm install
+npm run dev
+<span class="c"># hộp thư giả (cần cho email)</span>
+docker run -p 8025:8025 -p 1025:1025 axllent/mailpit</pre>
+          <p><strong>Làm lại từ đầu</strong> (ví dụ sau khi tua nhanh hết 7 ngày): chạy lại lệnh nạp với <code>--reset</code>. Trong Docker là <code>docker compose exec backend python -m app.sim.seed --reset</code>. Thêm <code>--source synthetic</code> để nạp thế giới giả lập cũ (cần cho buổi phỏng vấn trợ lý 30 câu).</p>
+        </div>
+
+        <div class="stack">
+          <h3>Các nút chỉnh trong file .env</h3>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Nút</th><th>Dùng để</th></tr></thead>
+              <tbody>
+                <tr><td><code>LLM_BASE_URL</code>, <code>LLM_API_KEY</code>, <code>LLM_MODEL</code></td><td>Chọn LLM chính. Đổi nhà cung cấp chỉ cần sửa ba dòng này.</td></tr>
+                <tr><td><code>LLM_*_FALLBACK</code></td><td>LLM phụ, dùng khi LLM chính bận. Để trống nếu không cần.</td></tr>
+                <tr><td><code>LLM_VISION_*</code></td><td>LLM đọc ảnh tem. Để trống thì dùng LLM phụ, không có nữa thì dùng LLM chính.</td></tr>
+                <tr><td><code>LLM_STREAM</code></td><td>Tắt (<code>false</code>) nếu nhà cung cấp không cho vừa hiện chữ dần vừa gọi công cụ.</td></tr>
+                <tr><td><code>LLM_STREAM_USAGE</code></td><td>Tắt nếu nhà cung cấp báo lỗi về <code>stream_options</code>; khi đó nhật ký không đếm được token.</td></tr>
+                <tr><td><code>ENABLE_SIM_CONTROLS</code></td><td>Hiện nút tua nhanh. Tắt khi chạy với dữ liệu thật.</td></tr>
+                <tr><td><code>SIM_TODAY</code></td><td>Cố định "hôm nay" khi chưa có ngày demo. Đã nạp demo và bật tua nhanh thì ngày demo đã lưu (26/06/2024, hoặc ngày đã tua tới) được ưu tiên.</td></tr>
+                <tr><td><code>SECRET_KEY</code></td><td>Chuỗi bí mật để ký thẻ đăng nhập. Đổi thành chuỗi ngẫu nhiên.</td></tr>
+                <tr><td><code>STORE_NAME</code>, <code>STORE_ADDRESS</code>, <code>STORE_PHONE</code></td><td>Thông tin in trên PDF đơn hàng.</td></tr>
+                <tr><td><code>FORECAST_ENGINE</code></td><td><code>auto</code> (mặc định) dùng LightGBM khi được phép; <code>ewma</code> tắt hẳn học máy.</td></tr>
+                <tr><td><code>SERVICE_FLOOR_TRAFFIC</code>, <code>_CLASS_A</code>, <code>_OTHER</code></td><td>Sàn mức phục vụ: 0,95 / 0,90 / 0,50.</td></tr>
+                <tr><td><code>CLOSING_HOUR</code>, <code>ENABLE_SCHEDULER</code></td><td>Giờ đóng cửa (mặc định 22) và bật/tắt chuông hẹn giờ.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Các nút <code>FORECAST_ENGINE</code>, <code>SERVICE_FLOOR_*</code>, <code>CLOSING_HOUR</code>, <code>ENABLE_SCHEDULER</code> không có sẵn trong <code>.env.example</code> nhưng vẫn đặt được; danh sách đầy đủ ở <code>backend/app/config.py</code>.</p>
+        </div>
+
+        <div class="stack">
+          <h3>Hộp cứu thương</h3>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Triệu chứng</th><th>Nguyên nhân</th><th>Xử lý</th></tr></thead>
+              <tbody>
+                <tr><td>Chat báo "Chưa cấu hình LLM_API_KEY"</td><td>Chưa điền khoá LLM.</td><td>Điền ba dòng LLM trong <code>.env</code>, khởi động lại backend.</td></tr>
+                <tr><td>Chat báo lỗi 429 hoặc rất chậm</td><td>Hết lượt dùng miễn phí của nhà cung cấp.</td><td>Chờ, hoặc khai báo LLM phụ. Bản tin và các nút gợi ý nhanh vẫn chạy không cần LLM.</td></tr>
+                <tr><td>Lỗi nhắc tới <code>stream_options</code></td><td>Nhà cung cấp không hỗ trợ đếm token khi hiện chữ dần.</td><td><code>LLM_STREAM_USAGE=false</code>.</td></tr>
+                <tr><td>Tua nhanh báo "Hết dữ liệu FRN sau 02/07/2024"</td><td>Dữ liệu thật chỉ tới ngày đó.</td><td>Nạp lại bằng <code>seed --reset</code>.</td></tr>
+                <tr><td>Bấm duyệt báo "Đề xuất đã hết hiệu lực"</td><td>Quá hạn chốt (cuối ngày tạo).</td><td>Bấm "Quét &amp; tạo đề xuất ngay" để tạo tờ trình mới.</td></tr>
+                <tr><td>Duyệt đơn bị từ chối vì dưới giá trị tối thiểu</td><td>Luật đơn tối thiểu (nghiệp vụ 8).</td><td>Chọn bù đơn, hoãn, hoặc đánh dấu đã thỏa thuận với NCC.</td></tr>
+                <tr><td>Tờ trình chuyển "Thất bại" sau khi duyệt</td><td>Lỗi lúc thực thi, thường là không gửi được email.</td><td>Đọc lỗi trên thẻ và trang Nhật ký, sửa nguyên nhân (ví dụ bật hộp thư giả), rồi duyệt lại.</td></tr>
+                <tr><td>Nhân viên bấm duyệt bị từ chối (403)</td><td>Đúng thiết kế.</td><td>Chỉ Store Manager được duyệt.</td></tr>
+                <tr><td>Nhận hàng báo "dưới chuẩn nhận hàng"</td><td>Lô còn dưới 2/3 hạn dùng.</td><td>Từ chối lô, hoặc Store Manager tick xác nhận nếu vẫn nhận.</td></tr>
+                <tr><td>Không thấy nhãn LightGBM; backend in "Không nạp được mô hình LightGBM"</td><td>Thiếu file mô hình, hoặc file lệch với cách lập phiếu hiện tại.</td><td>App tự dùng EWMA nên vẫn chạy. Chép lại đúng bộ file vào <code>backend/app/ml/artifacts/</code>.</td></tr>
+                <tr><td>Không thấy email</td><td>Email chỉ rơi vào hộp thư giả.</td><td>Mở <code>localhost:8025</code>; chạy không Docker thì phải bật Mailpit ở cổng 1025.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="stack">
+          <h3>Bài thực hành: dạy trợ lý một việc mới</h3>
+          <p>Cách nhanh nhất để hiểu kiến trúc là tự đi qua đủ các tầng một lần. Đề bài: cho trợ lý trả lời được câu "mặt hàng nào bán chạy nhất 7 ngày qua". Hiện chưa có công cụ nào xếp hạng như vậy.</p>
+          <ol class="plain">
+            <li><strong>Thủ kho:</strong> viết một hàm trong <code>backend/app/services/</code> đọc ngăn Doanh số ngày trong N ngày gần nhất, cộng theo mặt hàng, xếp từ cao xuống thấp.</li>
+            <li><strong>Danh bạ:</strong> thêm một công cụ loại <code>read</code> trong <code>backend/app/agent/tools.py</code>, mô tả tiếng Anh một dòng, tham số số ngày. Trả về dữ liệu cho LLM và một bảng cho màn hình (xem cách <code>get_inventory_summary</code> làm).</li>
+            <li><strong>Không cần sửa vòng lặp hay sổ tay quy tắc:</strong> công cụ tự xuất hiện trong danh bạ gửi cho LLM.</li>
+            <li><strong>Kiểm tra trong xưởng:</strong> viết một test gọi hàm của bạn trên dữ liệu test và kiểm thứ tự. Chạy lại <code>test_hitl.py</code> để chắc vẫn không có công cụ nào thực thi được.</li>
+            <li><strong>Thử thật:</strong> hỏi trong chat, rồi mở trang Nhật ký xem lượt đó có gọi đúng công cụ của bạn không.</li>
+          </ol>
+          <p>Hãy tự làm. Kẹt ở bước nào thì hỏi đúng bước đó. Nhờ AI viết hộ cả bài thì bài tập mất tác dụng.</p>
+        </div>
+      </section>
+
+      <section id="doc-code">
+        <header><div class="eyebrow">Phần 20</div><h2>Lộ trình đọc code trong một buổi</h2></header>
+        <p>Đọc theo thứ tự này, mỗi file chỉ cần đọc phần được nêu. Docstring và comment trong code viết tiếng Việt không dấu.</p>
+        <ol class="path-list">
+          <li><div><div class="f">backend/app/models/ops.py · class Proposal</div><p>Một tờ trình gồm những gì: type, status, payload, original_payload, sm_edits, expires_at, dedupe_key.</p></div></li>
+          <li><div><div class="f">backend/app/models/inventory.py · class Lot</div><p>Một lô hàng: số còn lại, HSD, mức giảm giá, trạng thái, thuộc tính sell_by (ngày bán cuối).</p></div></li>
+          <li><div><div class="f">backend/app/proposals/service.py · approve()</div><p>Bàn ký: kiểm vai trò, kiểm hạn, gọi executor, hoàn tác và ghi FAILED khi lỗi. Khoảng 40 dòng, đọc kỹ.</p></div></li>
+          <li><div><div class="f">backend/app/agent/tools.py · @tool và 2 công cụ đầu</div><p>Cách khai báo công cụ, chỉ có "read" và "propose". Xem một công cụ đọc trả về cả dữ liệu lẫn widget.</p></div></li>
+          <li><div><div class="f">backend/app/agent/orchestrator.py · run_turn()</div><p>Vòng lặp chat ở Phần 4, từng bước một.</p></div></li>
+          <li><div><div class="f">backend/app/jobs/daily.py · run_morning()</div><p>Danh sách việc lúc 06:30. Chú ý: chỉ gọi builders.</p></div></li>
+          <li><div><div class="f">backend/app/services/replenish.py · suggest_po()</div><p>Thủ kho gom dữ liệu cho từng mặt hàng của một NCC rồi gọi kế toán.</p></div></li>
+          <li><div><div class="f">backend/app/engines/replenishment.py · compute_order()</div><p>Các bước 1), 2), 3) có comment, khớp với ví dụ 30 hộp ở Phần 7.</p></div></li>
+          <li><div><div class="f">backend/app/engines/forecast_router.py · docstring đầu file</div><p>Khi nào dùng LightGBM, khi nào dùng EWMA.</p></div></li>
+          <li><div><div class="f">backend/app/agent/llm.py · FailoverLLM.stream_chat()</div><p>Thử LLM chính, lỗi trước chữ đầu thì chuyển LLM phụ, cho LLM lỗi được nghỉ.</p></div></li>
+          <li><div><div class="f">backend/app/engines/ml_features.py · FEATURES</div><p>29 đặc trưng dùng chung cho Kaggle và app; đọc docstring đầu file.</p></div></li>
+          <li><div><div class="f">backend/app/sim/backtest.py · choose_gate() và run_frn()</div><p>Bộ chọn theo lãi và backtest trên 50 điểm FRN.</p></div></li>
+          <li><div><div class="f">backend/tests/conftest.py và test_hitl.py</div><p>Cách test được cô lập. Mỗi test kể một tình huống và kết quả mong đợi, đọc như ví dụ sống.</p></div></li>
+        </ol>
+        <p>Muốn tự quan sát hệ thống chạy:</p>
+        <pre><span class="c"># trong thư mục backend/</span>
+uv run python -m app.sim.seed --reset      <span class="c"># nạp lại cửa hàng demo</span>
+uv run uvicorn app.api.main:app --reload   <span class="c"># API ở cổng 8000, tài liệu ở /docs</span>
+uv run pytest -q tests/test_hitl.py        <span class="c"># chạy riêng các test HITL</span>
+<span class="c"># trong thư mục frontend/</span>
+npm run dev                                <span class="c"># giao diện ở cổng 5173</span></pre>
+        <p>Mẹo: sau mỗi thao tác trên giao diện, mở trang <strong>Nhật ký</strong>. Từng dòng ở đó cho biết nhân vật nào vừa làm gì.</p>
+      </section>
+
+      <section id="kiem-tra">
+        <header><div class="eyebrow">Phần 21</div><h2>Tự kiểm tra</h2></header>
+        <p>Trả lời trong đầu trước, rồi bấm để xem đáp án.</p>
+        <div class="quiz">
+          <details>
+            <summary>Trợ lý có tự gửi email đặt hàng cho nhà cung cấp được không?</summary>
+            <div><p>Không. Hộp đồ nghề của trợ lý chỉ có công cụ đọc và đề xuất. Email chỉ được gửi trong executor, executor chỉ được gọi từ <code>service.approve</code>, và endpoint duyệt đòi vai trò manager. LLM có cố gọi <code>send_email</code> cũng chỉ nhận lỗi "không có công cụ tên này".</p></div>
+          </details>
+          <details>
+            <summary>Đơn đã ghi vào DB nhưng gửi email cho NCC bị lỗi. Chuyện gì xảy ra?</summary>
+            <div><p>Toàn bộ thay đổi trong DB bị hoàn tác (rollback). Tờ trình chuyển <code>FAILED</code>, lỗi ghi vào nhật ký. Store Manager duyệt lại được nếu tờ trình còn hạn. Đó là lý do executor gửi email sau cùng.</p></div>
+          </details>
+          <details>
+            <summary>Con số "30 hộp" trên tờ trình đặt hàng do ai tính?</summary>
+            <div><p>Engine <code>compute_order</code>. LLM chỉ đọc kết quả và giải thích. Nếu LLM nói một con số khác không có trong kết quả công cụ, người soát bài gắn cảnh báo.</p></div>
+          </details>
+          <details>
+            <summary>Vì sao không coi số bán của ngày hết hàng là nhu cầu?</summary>
+            <div><p>Vì số bán bị chặn bởi lượng hàng có. Ngày hết hàng thường là ngày bán chạy; coi số bán là nhu cầu thì dự báo lệch thấp, đặt ít, lại hết hàng tiếp. Engine ước lượng phần nhu cầu bị chặn.</p></div>
+          </details>
+          <details>
+            <summary>22:00 có một lô hết ngày bán. Ai làm gì, theo thứ tự nào?</summary>
+            <div><p>Job lập danh sách rút kệ. Nhân viên gỡ hàng và ghi số thực gỡ, không chờ duyệt; lô thành <code>PULLED</code>. Ngay lúc đó hệ thống tạo tờ trình ghi hủy theo số thực gỡ; Store Manager duyệt, lô thành <code>WASTED</code>, phần chênh với sổ ghi là hao hụt.</p></div>
+          </details>
+          <details>
+            <summary>LightGBM dự báo chính xác hơn EWMA. Sao không dùng cho mọi mặt hàng?</summary>
+            <div><p>Vì chính xác hơn chưa chắc lãi hơn. Ở điểm bán nhỏ và hàng bán ít, LightGBM làm đặt dư nên hủy nhiều hơn. Bộ chọn chấm theo lãi trong backtest, nên chỉ cho LightGBM ở những nhóm nó thật sự lãi hơn, và lấy σ của EWMA để tính tồn an toàn.</p></div>
+          </details>
+          <details>
+            <summary>Bấm "Tua nhanh 7 ngày" mà không duyệt gì. Cửa hàng sẽ ra sao?</summary>
+            <div><p>Hàng vẫn bán theo nhu cầu thật, đơn cũ vẫn về, nhưng không có đơn mới. Kệ trống dần, các lô đã rút kệ nằm chờ ghi hủy, tờ trình cũ hết hạn. Tua nhanh không bao giờ duyệt thay Store Manager.</p></div>
+          </details>
+          <details>
+            <summary>Vì sao prompt hệ thống viết tiếng Anh mà trợ lý vẫn trả lời tiếng Việt?</summary>
+            <div><p>Chữ Việt có dấu tốn khoảng gấp ba số token, mà prompt được gửi kèm mọi lần gọi LLM. Quy tắc đầu tiên trong prompt bảo trợ lý luôn trả lời tiếng Việt.</p></div>
+          </details>
+          <details>
+            <summary>Sổ đang ghi còn 12 hộp sữa, sao vẫn cần ngăn "chuyển động kho"?</summary>
+            <div><p>Lô giống số dư tài khoản: cho biết còn bao nhiêu. Chuyển động kho giống sao kê: cho biết vì sao còn bấy nhiêu (nhập bao nhiêu, hủy bao nhiêu vì lý do gì, trả bao nhiêu, điều chỉnh sau kiểm kê). Không có sao kê thì không tính được tỷ lệ hủy, hao hụt, hay truy lại lỗi.</p></div>
+          </details>
+          <details>
+            <summary>Tháng này tỷ lệ hủy giảm mạnh nhưng tỷ lệ hết hàng tăng. Đọc thế nào?</summary>
+            <div><p>Nhiều khả năng đang đặt quá ít: hủy ít vì ít hàng, nhưng khách đến không có hàng. Hai chỉ số phải đọc cùng nhau. Sàn mức phục vụ có mặt chính là để engine không "mua" tỷ lệ hủy đẹp bằng kệ trống.</p></div>
+          </details>
+          <details>
+            <summary>Dự báo nền 200, Store Manager nói "gấp đôi", bán thật 260. Giả thuyết được chấm thế nào?</summary>
+            <div><p>Dự đoán thêm 200, thật sự thêm 60, tức đi được 30% quãng đường. Nằm giữa 25% và 50% nên chấm <strong>đúng một phần</strong>. Nếu những ngày đó hết hàng nhiều, số bán chỉ là mức thấp nhất của nhu cầu; giả thuyết tăng chưa đạt "đúng" thì chấm "chưa đủ căn cứ".</p></div>
+          </details>
+          <details>
+            <summary>Duyệt trả hàng cho nhà cung cấp xong, lãi gộp hôm nay có tăng không?</summary>
+            <div><p>Chưa. Lúc duyệt, hàng chỉ được tách khỏi kệ và email báo nhà cung cấp. Tiền hoàn chỉ được ghi khi nhà cung cấp thật sự lấy hàng, theo số họ thực nhận.</p></div>
+          </details>
+          <details>
+            <summary>LLM chính bị đứt khi đã trả lời được nửa câu. Hệ thống làm gì?</summary>
+            <div><p>Không chuyển sang LLM phụ giữa chừng, để không có câu trả lời nửa của LLM này nửa của LLM kia; lượt đó kết thúc bằng thông báo lỗi. LLM phụ chỉ được gọi khi LLM chính lỗi ngay từ đầu.</p></div>
+          </details>
+          <details>
+            <summary>Vì sao có hai bản mô hình: bản thi thử và bản dùng thật?</summary>
+            <div><p>Để không cho nhìn trộm đề. Bản thi thử chỉ học đến 26/05, nên 37 ngày dùng để so A và B là những ngày nó chưa từng thấy. Bản dùng thật học đủ đến 25/06 để đoán cho "hôm nay" của demo. Cả hai chỉ học ở 848 điểm bán, không bao giờ thấy 50 điểm giữ kín.</p></div>
+          </details>
+          <details>
+            <summary>Các bài kiểm tra tự động có gọi LLM thật không?</summary>
+            <div><p>Không. Chúng chạy trong phòng thí nghiệm kín: địa chỉ LLM bị đổi thành một địa chỉ không tồn tại. Nhờ vậy chạy lúc nào cũng được, không tốn tiền, và lần nào cũng cho cùng kết quả. Trợ lý nói chuyện với LLM thật ra sao thì đo riêng bằng buổi phỏng vấn 30 câu.</p></div>
+          </details>
+          <details>
+            <summary>LightGBM đoán sát hơn, sao để nó tự quyết mức hàng dư lại lỗ?</summary>
+            <div><p>LightGBM thật thà hơn về chuyện mình không chắc, nên khoảng dao động của nó rộng hơn. Hệ thống biến khoảng rộng đó thành nhiều hàng dư an toàn, lại cộng thêm mức phục vụ tối thiểu 90–95%, nên đặt dư. Hàng tươi để lâu là hủy, lãi giảm. Lấy con số đoán của LightGBM nhưng giữ mức dư hẹp hơn của EWMA thì lãi hơn 0,8%.</p></div>
+          </details>
+          <details>
+            <summary>Kiosk Retail-AI có biết giá vốn hay nhà cung cấp của một món không? Nó có đổi được giá trong Ops Chest không?</summary>
+            <div><p>Không cả hai. Bridge chỉ đọc Ops Chest bằng tài khoản nhân viên chỉ xem, rồi dựng feed từ danh sách trường cho phép: tồn bán được, hạn từng lô, giá thường, giá sau giảm, hàng mới về. Giá vốn, nhà cung cấp, dự báo và phương án xử lý không bao giờ vào feed. Dòng dữ liệu chỉ đi một chiều; muốn đổi giá vẫn phải qua tờ trình và Store Manager duyệt.</p></div>
+          </details>
+        </div>
+      </section>
+
+      <footer>Viết từ mã nguồn trên nhánh main (commit 5650bf3 và các sửa đổi ngày 12/11/2026), cùng README, docs/nghiep-vu.md, docs/ml-frn.md và docs/demo.md. Ví dụ "30 hộp", "lô 20 hộp" và tháng doanh thu 100 triệu ở phần KPI là số minh hoạ tự đặt. Các con số dự báo, eval và backtest lấy từ tài liệu dự án; số test (256 qua) là lần chạy ngày 12/11/2026, chạy lại ngày 20/11/2026 vẫn 256 qua. Phần 17 (nối sang kiosk) viết ngày 20/11/2026 từ repo <code>bridge/</code>, nhánh <code>feat/catalog-overrides</code> của Ops Chest và repo Retail-AI.</footer>
+    </main>
+  </div>
+</div>
