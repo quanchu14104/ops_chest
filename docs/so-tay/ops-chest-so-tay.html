@@ -1972,14 +1972,14 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
             <table>
               <thead><tr><th>Phần</th><th>Ở đâu</th><th>Ghi chú</th></tr></thead>
               <tbody>
-                <tr><td>Chỗ nạp tên/giá lúc seed</td><td><code>app/sim/frn_catalog.py</code> · <code>apply_catalog_overrides</code></td><td rowspan="2">Nhánh <code>feat/catalog-overrides</code> (worktree <code>worktrees/ops-chest-catalog-overrides</code>), <strong>chưa gộp vào main</strong></td></tr>
+                <tr><td>Chỗ nạp tên/giá lúc seed</td><td><code>app/sim/frn_catalog.py</code> · <code>apply_catalog_overrides</code></td><td rowspan="2">Trên main từ 20/11/2026. Không đặt <code>CATALOG_OVERRIDES_PATH</code> thì seed giữ nguyên tên và giá cũ</td></tr>
                 <tr><td>Giờ nhận trong danh sách đơn</td><td><code>GET /api/purchase-orders</code> trả thêm <code>received_at</code></td></tr>
                 <tr><td>Bridge: ánh xạ, feed, hàng mới về</td><td><code>bridge/src/bridge/</code></td><td>Lệnh <code>uv run bridge sync --every 120</code>; xem <code>bridge/README.md</code></td></tr>
                 <tr><td>Kiosk đọc feed</td><td><code>side/Retail-AI-/backend/products/ops_overlay_repository.py</code></td><td>Bật bằng <code>CATALOG_REPOSITORY=snapshot</code> và <code>OPS_FEED_PATH</code></td></tr>
               </tbody>
             </table>
           </div>
-          <p class="note">Giờ vàng: trên main, giảm giá ca chiều nằm ở trường riêng <code>lots.evening_markdown_pct</code> và hiện trong <code>/api/inventory/expiring</code>. Bridge đã đọc trường này (chỉ áp trong ngày bán cuối, sau giờ giảm giá của nhóm hàng). Nhánh <code>feat/catalog-overrides</code> tách từ trước thay đổi đó nên chưa có trường này; khi gộp nhánh, kiosk sẽ thấy cả mức giờ vàng.</p>
+          <p class="note">Giờ vàng: trên main, giảm giá ca chiều nằm ở trường riêng <code>lots.evening_markdown_pct</code> và hiện trong <code>/api/inventory/expiring</code>. Bridge đọc trường này và chỉ áp trong ngày bán cuối, sau giờ giảm giá của nhóm hàng, nên kiosk thấy cả mức giờ vàng.</p>
         </div>
       </section>
 
@@ -2260,7 +2260,7 @@ npm run dev                                <span class="c"># giao diện ở c�
         </div>
       </section>
 
-      <footer>Viết từ mã nguồn trên nhánh main (commit 5650bf3 và các sửa đổi ngày 12/11/2026), cùng README, docs/nghiep-vu.md, docs/ml-frn.md và docs/demo.md. Ví dụ "30 hộp", "lô 20 hộp" và tháng doanh thu 100 triệu ở phần KPI là số minh hoạ tự đặt. Các con số dự báo, eval và backtest lấy từ tài liệu dự án; số test (256 qua) là lần chạy ngày 12/11/2026, chạy lại ngày 20/11/2026 vẫn 256 qua. Phần 17 (nối sang kiosk) viết ngày 20/11/2026 từ repo <code>bridge/</code>, nhánh <code>feat/catalog-overrides</code> của Ops Chest và repo Retail-AI.</footer>
+      <footer>Viết từ mã nguồn trên nhánh main (commit 5650bf3 và các sửa đổi ngày 12/11/2026), cùng README, docs/nghiep-vu.md, docs/ml-frn.md và docs/demo.md. Ví dụ "30 hộp", "lô 20 hộp" và tháng doanh thu 100 triệu ở phần KPI là số minh hoạ tự đặt. Các con số dự báo, eval và backtest lấy từ tài liệu dự án; số test (256 qua) là lần chạy ngày 12/11/2026, chạy lại ngày 20/11/2026 vẫn 256 qua. Phần 17 (nối sang kiosk) viết ngày 20/11/2026 từ repo <code>bridge/</code>, phần seed có overrides của Ops Chest (đã gộp vào main) và repo Retail-AI; sau khi gộp, bộ test chạy 259 qua.</footer>
     </main>
   </div>
 </div>
