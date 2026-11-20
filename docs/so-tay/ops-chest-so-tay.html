@@ -660,7 +660,7 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line);
         <h3>Đi theo một câu hỏi cụ thể</h3>
         <ol class="plain">
           <li>Giao diện gửi <code>POST /api/chat/sessions/{id}/messages</code> và giữ kết nối để nhận chữ chạy dần (stream).</li>
-          <li>Hàm <code>run_turn</code> ghép ba thứ gửi cho LLM: prompt hệ thống (bản hướng dẫn cố định gửi kèm mỗi lần hỏi, xem Phần 14), 24 tin nhắn gần nhất, và danh bạ 31 công cụ. Prompt và danh bạ viết bằng tiếng Anh vì chữ Việt có dấu tốn khoảng gấp ba số token, nhưng trợ lý vẫn trả lời tiếng Việt.</li>
+          <li>Hàm <code>run_turn</code> ghép ba thứ gửi cho LLM: prompt hệ thống (bản hướng dẫn cố định gửi kèm mỗi lần hỏi, xem Phần 14), 16 tin nhắn gần nhất, và danh bạ 31 công cụ. Prompt và danh bạ viết bằng tiếng Anh vì chữ Việt có dấu tốn khoảng gấp ba số token, nhưng trợ lý vẫn trả lời tiếng Việt.</li>
           <li>LLM trả về yêu cầu gọi <code>get_expiring_lots(days=3)</code>.</li>
           <li>Code chạy hàm đó: thủ kho đọc lô hàng, kế toán mô phỏng bán theo FEFO và chấm phương án xử lý. Kết quả gồm JSON gọn cho LLM và một widget bảng cho màn hình.</li>
           <li>Nếu cần thêm số liệu, LLM gửi phiếu yêu cầu tiếp. Vòng lặp này chạy tối đa 8 lần cho một câu hỏi.</li>
@@ -732,7 +732,7 @@ footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line);
         <ul class="plain">
           <li><strong>Hạn chốt.</strong> Đơn đặt hàng, giảm giá, giả thuyết hết hiệu lực cuối ngày tạo (23:59:59), vì số liệu của hôm nay không còn đúng ngày mai. Tờ trình trả NCC giữ đến hạn cuối NCC còn nhận. Quá hạn thì thành <code>EXPIRED</code>; muốn làm thì tạo tờ trình mới.</li>
           <li><strong>Chống trùng.</strong> Mỗi tờ trình có <code>dedupe_key</code>, ví dụ <code>PO:mã NCC:ngày</code>. Bấm "Quét &amp; tạo đề xuất ngay" nhiều lần không sinh thêm đơn. Việc Store Manager vừa từ chối trong ngày cũng không bị job nhắc lại.</li>
-          <li><strong>Hai cách sửa.</strong> Store Manager sửa số trực tiếp trên thẻ rồi bấm "Duyệt với chỉnh sửa" (phần sửa ghi vào <code>sm_edits</code>). Hoặc nói với trợ lý "giảm còn 30 thùng": trợ lý tạo tờ trình mới, bản cũ thành <code>SUPERSEDED</code>, và vẫn phải chờ ký.</li>
+          <li><strong>Hai cách sửa.</strong> Store Manager sửa số trực tiếp trên thẻ rồi bấm "Duyệt với chỉnh sửa" (phần sửa ghi vào <code>sm_edits</code>). Hoặc nói với trợ lý "giảm còn 30 thùng" hay "đặt thêm 50 cà rốt": trợ lý tạo tờ trình mới (món chưa có trong đơn của cùng nhà cung cấp thì thêm dòng), bản cũ thành <code>SUPERSEDED</code>, và vẫn phải chờ ký. Nhờ "soạn tờ trình" cũng đi đường này: trợ lý không bao giờ viết tờ trình hay email dạng văn bản tự do, cũng không khuyên tự gửi cho nhà cung cấp.</li>
           <li><strong>Từ chối phải có lý do</strong>, để đối chiếu về sau.</li>
         </ul>
       </section>
@@ -1474,7 +1474,10 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
           <ul class="plain">
             <li>Luôn trả lời tiếng Việt, gọn, tiền viết dạng 1.250.000đ.</li>
             <li>Con số nào cũng phải lấy từ kết quả gọi phòng ban, không tự tính, không đoán.</li>
-            <li>Không tự đặt hàng, gửi thư, đổi giá, ghi hủy. Chỉ nộp tờ trình rồi báo "đã tạo đề xuất, chờ anh/chị duyệt".</li>
+            <li>Không tự đặt hàng, gửi thư, đổi giá, ghi hủy. Chỉ nộp tờ trình rồi báo "đã tạo đề xuất, chờ anh/chị duyệt". Chỉ nói "đã tạo" cho tờ trình do chính lượt đó tạo; tờ trình có sẵn thì nói "đang chờ duyệt".</li>
+            <li>Nhờ đặt một món ("đặt thêm 50 cà rốt", "soạn tờ trình…") thì sửa đơn đang chờ duyệt của nhà cung cấp đó, chưa có đơn thì tạo đơn rồi sửa. Không viết tờ trình hay email dạng văn bản, không bịa địa chỉ, ngày giao.</li>
+            <li>Hỏi "hôm nay nên đặt gì" thì tóm tắt đủ mọi đơn đang chờ duyệt. Hỏi "món nào đang hết" thì liệt kê tên, món bán chạy trước, không hỏi ngược người dùng.</li>
+            <li>Số lượng ghi kèm "sản phẩm" (danh mục không có đơn vị), luôn xưng "anh/chị", không lộ tên công cụ hay tên trường nội bộ.</li>
             <li>Bạn nói "thứ Bảy bia bán gấp rưỡi" mà thiếu ngày hay thiếu hệ số thì phải hỏi lại, không tự chọn.</li>
             <li>Màn hình đã có bảng thì không đọc lại từng số trong bảng, chỉ nói 2–3 ý chính.</li>
           </ul>
@@ -1528,6 +1531,7 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
           <ul class="plain">
             <li>"Hết lượt" là khi nhà cung cấp báo đã dùng hết hạn mức miễn phí (mã lỗi 429). LLM chính bị cho nghỉ 2 phút nếu hết lượt theo phút, 15 phút nếu hết lượt theo ngày; trong lúc đó mọi câu hỏi đi thẳng sang LLM phụ.</li>
             <li>Không khai báo LLM phụ thì trường hợp giữa chỉ báo lỗi. Bản tin đầu ngày và các nút gợi ý nhanh vẫn chạy vì không cần LLM.</li>
+            <li>Lỗi hiện cho người dùng là một câu tiếng Việt dễ hiểu: hết lượt gọi thì "chờ khoảng 1 phút rồi hỏi lại", câu hỏi cần quá nhiều dữ liệu thì "hỏi hẹp hơn hoặc mở phiên chat mới", mất kết nối thì "thử lại sau". Nội dung lỗi gốc của nhà cung cấp (tiếng Anh, mã tổ chức, link thanh toán) chỉ ghi vào log.</li>
             <li>Đổi nhà cung cấp LLM chỉ cần sửa ba dòng trong file <code>.env</code>, không sửa code. Màn hình chat ghi rõ lượt nào do LLM nào trả lời.</li>
           </ul>
           <details class="deep">
@@ -1556,8 +1560,10 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
           <ul class="plain">
             <li>Sổ tay và danh bạ viết bằng tiếng Anh.</li>
             <li>Tờ ghi chú của phòng ban được tóm gọn trước khi gửi: bỏ ô trống, làm tròn số lẻ. Dài quá thì cắt và nhắc LLM hỏi hẹp lại.</li>
-            <li>Chỉ gửi 24 tin nhắn gần nhất. Tờ ghi chú của các lượt trước chỉ giữ vài dòng đầu; cần chi tiết thì LLM gọi lại phòng ban.</li>
+            <li>Chỉ gửi 16 tin nhắn gần nhất. Tờ ghi chú của các lượt trước chỉ giữ vài dòng đầu; cần chi tiết thì LLM gọi lại phòng ban. Tờ ghi chú của lượt hiện tại dài tối đa 5.000 ký tự.</li>
+            <li>Nhà cung cấp báo "câu hỏi quá lớn" thì trợ lý tự hỏi lại một lần với ngữ cảnh gọn: chỉ câu hỏi hiện tại, tờ ghi chú cắt còn 1.500 ký tự.</li>
           </ul>
+          <p>Cái giá vẫn còn: mỗi lần hỏi trong một lượt đều gửi lại cả sổ tay và danh bạ 31 số. Đo ngày 20/11/2026 trên Groq gói miễn phí (8.000 token mỗi phút): câu cần gọi phòng ban tốn 17–42 nghìn token qua 2–5 lần hỏi và mất 13–114 giây, vì phải chờ hạn mức hồi lại. Muốn nhanh hẳn thì nâng gói hoặc chỉ gửi những số hợp với câu hỏi.</p>
         </div>
 
         <div class="stack">
@@ -1566,6 +1572,7 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
           <ul class="plain">
             <li>Gạch dưới mọi con số từ 1.000 trở lên trong câu trả lời mà không tìm thấy trong các tờ ghi chú của phòng ban hay trong câu hỏi của bạn.</li>
             <li>Gạch dưới những câu kiểu "em đã duyệt", "đã gửi email", "vừa đặt hàng", vì trợ lý không thể làm những việc đó.</li>
+            <li>Gạch dưới câu "Đã tạo đề xuất #N" khi tờ trình #N không do chính lượt đó tạo, ví dụ chuông sáng đã tạo từ trước.</li>
             <li>Có chỗ bị gạch thì màn hình hiện cảnh báo dưới câu trả lời. Câu trả lời vẫn hiện, vì chặn hẳn thì cả những câu đúng bị bắt nhầm cũng mất.</li>
           </ul>
         </div>
@@ -1812,7 +1819,7 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
           <table>
             <thead><tr><th>Kỳ thi</th><th>Hỏi gì</th><th>Thi thế nào</th><th>Điểm hiện tại</th></tr></thead>
             <tbody>
-              <tr><td>1. Kiểm tra trong xưởng</td><td>Từng chi tiết có làm đúng quy tắc không?</td><td>256 bài kiểm tra tự động</td><td>Qua hết, mất 52 giây (12/11/2026)</td></tr>
+              <tr><td>1. Kiểm tra trong xưởng</td><td>Từng chi tiết có làm đúng quy tắc không?</td><td>268 bài kiểm tra tự động</td><td>Qua hết, mất khoảng 50 giây (20/11/2026)</td></tr>
               <tr><td>2. Phỏng vấn trợ lý</td><td>Trợ lý có nói đúng, đúng vai không?</td><td>30 câu hỏi với LLM thật, chấm tự động</td><td>Groq 27/30, Gemini 25/30</td></tr>
               <tr><td>3. Thi lý thuyết</td><td>Dự báo có sát không?</td><td>Đoán trên 50 điểm bán giữ kín</td><td>LightGBM lệch 30,2%, EWMA 35,1% (tuần chấm cuối 26/06–02/07)</td></tr>
               <tr><td>4. Thi thực hành</td><td>Làm theo hệ thống có lãi hơn không?</td><td>Chạy thử hai cửa hàng sinh đôi</td><td>Lãi hơn cách làm kinh nghiệm khoảng 4%</td></tr>
@@ -1943,7 +1950,7 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
           <ol class="plain">
             <li>06:30, chuông sáng đề xuất giảm 30% một lô còn ít ngày. Store Manager duyệt; executor ghi <code>lots.markdown_pct = 0.3</code>.</li>
             <li>Lần sync kế tiếp (chậm nhất 2 phút), bridge đọc <code>/api/inventory/expiring</code>, tính giá sau giảm, làm tròn 100 đồng như tem giá (từ 50 đồng trở lên làm tròn lên).</li>
-            <li>Kiosk thấy file đổi thì đọc lại. Danh sách khuyến mãi của kiosk xếp hàng cận date của Ops Chest lên trước (giảm sâu trước, hạn gần trước), rồi mới tới khuyến mãi có sẵn trong catalog. Người mua hỏi "có khuyến mãi gì không?" sẽ nghe món này trong nhóm đầu.</li>
+            <li>Kiosk thấy file đổi thì đọc lại. Danh sách khuyến mãi của kiosk xếp hàng cận date của Ops Chest lên trước (giảm sâu trước, hạn gần trước), rồi mới tới khuyến mãi có sẵn trong catalog. Người mua hỏi "có khuyến mãi gì không?" sẽ nghe món này trong nhóm đầu, và mọi câu trả lời giá hay thẻ sản phẩm đều báo giá sau giảm.</li>
             <li>Nếu Store Manager duyệt <strong>ngừng nhập</strong> (nghiệp vụ 7), mặt hàng thành <code>DELISTED</code>; feed ghi <code>INACTIVE</code> và bỏ hẳn lô, hạn, khuyến mãi, để kiosk không quảng cáo món cửa hàng đã thôi bán.</li>
           </ol>
           <p>Chiều ngược lại không có: kiosk không tạo tờ trình, không đổi giá, không đặt hàng. Mọi thay đổi vẫn phải qua bàn ký của Store Manager.</p>
@@ -2128,7 +2135,7 @@ docker run -p 8025:8025 -p 1025:1025 axllent/mailpit</pre>
               <thead><tr><th>Triệu chứng</th><th>Nguyên nhân</th><th>Xử lý</th></tr></thead>
               <tbody>
                 <tr><td>Chat báo "Chưa cấu hình LLM_API_KEY"</td><td>Chưa điền khoá LLM.</td><td>Điền ba dòng LLM trong <code>.env</code>, khởi động lại backend.</td></tr>
-                <tr><td>Chat báo lỗi 429 hoặc rất chậm</td><td>Hết lượt dùng miễn phí của nhà cung cấp.</td><td>Chờ, hoặc khai báo LLM phụ. Bản tin và các nút gợi ý nhanh vẫn chạy không cần LLM.</td></tr>
+                <tr><td>Chat báo "đang chạm giới hạn lượt gọi" hoặc rất chậm</td><td>Hết lượt dùng miễn phí của nhà cung cấp (lỗi 429).</td><td>Chờ, hoặc khai báo LLM phụ. Bản tin và các nút gợi ý nhanh vẫn chạy không cần LLM.</td></tr>
                 <tr><td>Lỗi nhắc tới <code>stream_options</code></td><td>Nhà cung cấp không hỗ trợ đếm token khi hiện chữ dần.</td><td><code>LLM_STREAM_USAGE=false</code>.</td></tr>
                 <tr><td>Tua nhanh báo "Hết dữ liệu FRN sau 02/07/2024"</td><td>Dữ liệu thật chỉ tới ngày đó.</td><td>Nạp lại bằng <code>seed --reset</code>.</td></tr>
                 <tr><td>Bấm duyệt báo "Đề xuất đã hết hiệu lực"</td><td>Quá hạn chốt (cuối ngày tạo).</td><td>Bấm "Quét &amp; tạo đề xuất ngay" để tạo tờ trình mới.</td></tr>
@@ -2254,13 +2261,17 @@ npm run dev                                <span class="c"># giao diện ở c�
             <div><p>LightGBM thật thà hơn về chuyện mình không chắc, nên khoảng dao động của nó rộng hơn. Hệ thống biến khoảng rộng đó thành nhiều hàng dư an toàn, lại cộng thêm mức phục vụ tối thiểu 90–95%, nên đặt dư. Hàng tươi để lâu là hủy, lãi giảm. Lấy con số đoán của LightGBM nhưng giữ mức dư hẹp hơn của EWMA thì lãi hơn 0,8%.</p></div>
           </details>
           <details>
+            <summary>Store Manager nhắn trợ lý: "soạn giúp chị tờ trình đặt thêm 50 cà rốt, chị sẽ tự duyệt". Trợ lý làm gì?</summary>
+            <div><p>Tìm mã hàng và nhà cung cấp, xem nhà cung cấp đó đã có đơn đang chờ duyệt chưa. Có thì gọi <code>revise_proposal</code> với "cộng thêm 50": hệ thống tạo tờ trình mới với số cà rốt cũ cộng 50, bản cũ thành <code>SUPERSEDED</code>. Chưa có thì tạo đơn trước rồi sửa. Trợ lý không viết tờ trình hay email dạng văn bản và không khuyên chị tự gửi cho nhà cung cấp: đơn chỉ đi sau khi chị bấm Duyệt.</p></div>
+          </details>
+          <details>
             <summary>Kiosk Retail-AI có biết giá vốn hay nhà cung cấp của một món không? Nó có đổi được giá trong Ops Chest không?</summary>
             <div><p>Không cả hai. Bridge chỉ đọc Ops Chest bằng tài khoản nhân viên chỉ xem, rồi dựng feed từ danh sách trường cho phép: tồn bán được, hạn từng lô, giá thường, giá sau giảm, hàng mới về. Giá vốn, nhà cung cấp, dự báo và phương án xử lý không bao giờ vào feed. Dòng dữ liệu chỉ đi một chiều; muốn đổi giá vẫn phải qua tờ trình và Store Manager duyệt.</p></div>
           </details>
         </div>
       </section>
 
-      <footer>Viết từ mã nguồn trên nhánh main (commit 5650bf3 và các sửa đổi ngày 12/11/2026), cùng README, docs/nghiep-vu.md, docs/ml-frn.md và docs/demo.md. Ví dụ "30 hộp", "lô 20 hộp" và tháng doanh thu 100 triệu ở phần KPI là số minh hoạ tự đặt. Các con số dự báo, eval và backtest lấy từ tài liệu dự án; số test (256 qua) là lần chạy ngày 12/11/2026, chạy lại ngày 20/11/2026 vẫn 256 qua. Phần 17 (nối sang kiosk) viết ngày 20/11/2026 từ repo <code>bridge/</code>, phần seed có overrides của Ops Chest (đã gộp vào main) và repo Retail-AI; sau khi gộp, bộ test chạy 259 qua.</footer>
+      <footer>Viết từ mã nguồn trên nhánh main (commit 5650bf3 và các sửa đổi ngày 12/11/2026), cùng README, docs/nghiep-vu.md, docs/ml-frn.md và docs/demo.md. Ví dụ "30 hộp", "lô 20 hộp" và tháng doanh thu 100 triệu ở phần KPI là số minh hoạ tự đặt. Các con số dự báo, eval và backtest lấy từ tài liệu dự án; số test là lần chạy ngày 20/11/2026: 268 qua, sau khi sửa trợ lý theo đợt test vai Store Manager. Phần 17 (nối sang kiosk) viết ngày 20/11/2026 từ repo <code>bridge/</code>, phần seed có overrides của Ops Chest (đã gộp vào main) và repo Retail-AI; sau khi gộp, bộ test chạy 259 qua.</footer>
     </main>
   </div>
 </div>
