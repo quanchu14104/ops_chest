@@ -1912,7 +1912,7 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
 
         <div class="stack">
           <p>Từ 19/11/2026, Ops Chest có thể cấp dữ liệu cho <strong>Retail-AI</strong>, một kiosk chatbot tư vấn người mua với catalog 3.099 sản phẩm WinMart. Hai bên phục vụ hai người khác nhau: <strong>Ops Chest phục vụ Store Manager, kiosk phục vụ người mua.</strong> Nguyên tắc này quyết định thứ gì được đi qua và đi bằng lời lẽ nào.</p>
-          <p>Việc nối do một chương trình riêng làm, gọi là <strong>bridge</strong>, nằm ở repo <code>bridge/</code> (cùng cấp với <code>doanbackup/</code>, không nằm trong Ops Chest). Bridge không import code của bên nào. Nó chỉ đọc dữ liệu một chiều, từ Ops Chest sang kiosk; kiosk không ghi ngược lại được.</p>
+          <p>Việc nối do một chương trình riêng làm, gọi là <strong>bridge</strong>, nằm ở repo <code>bridge/</code> (cùng cấp với <code>ops_chest/</code>, không nằm trong Ops Chest). Bridge không import code của bên nào. Nó chỉ đọc dữ liệu một chiều, từ Ops Chest sang kiosk; kiosk không ghi ngược lại được.</p>
 
           <div class="flow">
             <span class="st">Ops Chest REST (tài khoản nhân viên, chỉ xem)</span><span class="ar">→</span>
@@ -1975,7 +1975,7 @@ def _product_detail(ctx: ToolContext, sku: str) -&gt; ToolOutput:
                 <tr><td>Chỗ nạp tên/giá lúc seed</td><td><code>app/sim/frn_catalog.py</code> · <code>apply_catalog_overrides</code></td><td rowspan="2">Trên main từ 20/11/2026. Không đặt <code>CATALOG_OVERRIDES_PATH</code> thì seed giữ nguyên tên và giá cũ</td></tr>
                 <tr><td>Giờ nhận trong danh sách đơn</td><td><code>GET /api/purchase-orders</code> trả thêm <code>received_at</code></td></tr>
                 <tr><td>Bridge: ánh xạ, feed, hàng mới về</td><td><code>bridge/src/bridge/</code></td><td>Lệnh <code>uv run bridge sync --every 120</code>; xem <code>bridge/README.md</code></td></tr>
-                <tr><td>Kiosk đọc feed</td><td><code>side/Retail-AI-/backend/products/ops_overlay_repository.py</code></td><td>Bật bằng <code>CATALOG_REPOSITORY=snapshot</code> và <code>OPS_FEED_PATH</code></td></tr>
+                <tr><td>Kiosk đọc feed</td><td><code>Retail-AI-/backend/products/ops_overlay_repository.py</code></td><td>Bật bằng <code>CATALOG_REPOSITORY=snapshot</code> và <code>OPS_FEED_PATH</code></td></tr>
               </tbody>
             </table>
           </div>
