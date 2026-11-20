@@ -934,3 +934,199 @@ def test_world_daypart_differs_from_store_assumption():
     cat = "Cơm hộp & cơm nắm"
     assert REFERENCE_WORLD.share_after(cat, 14) != pytest.approx(category_policy(cat)["remaining_share"])
     assert REFERENCE_WORLD.share_after("Bia", 18) == pytest.approx(0.3)
+
+
+# ---- Hoi quy cho cac loi tim thay khi review logic toan du an (11/2026)
+from app.engines.disposition import ELASTICITY  # noqa: E402
+from app.engines.forecast import baseline_demand  # noqa: E402
+from app.models import ChatSession, DemandHypothesis  # noqa: E402
+from app.services import hypotheses as hyp_svc  # noqa: E402
+
+
+def _md_item(lot_id, days_left=1, timing="ALL_DAY"):
+    return {"lot_id": lot_id, "sku": "X", "name": "x", "qty": 5, "expiry_date": T.isoformat(), "days_left": days_left,
+            "unit_price": 10000, "category": "c", "max_markdown_pct": 0.5, "markdown_hour": 18, "expected_waste": 3,
+            "option": {"markdown_pct": 0.3, "timing": timing, "delta_vs_keep": 1000}, "options": []}
+
+
+def _drop(db, *props):
+    for p in props:
+        if p is not None:
+            db.delete(p)
+    db.commit()
+
+
+def test_hypothesis_is_scored_on_demand_not_raw_sales(db):
+    d = T - timedelta(days=5)
+    r = db.scalars(select(DailySales).where(DailySales.date == d, DailySales.qty_sold >= 6)
+                   .order_by(DailySales.product_id)).first()
+    saved = (r.discounted_qty, r.discount_pct, r.evening_qty)
+    r.discounted_qty, r.discount_pct, r.evening_qty = 2, 0.3, 2
+    prod = db.get(Product, r.product_id)
+    h = DemandHypothesis(sku=prod.sku, category=None, factor=1.5, start_date=d, end_date=d, reason="Thử", status="ACTIVE",
+                         baseline_total=float(r.qty_sold), scope_product_ids=[prod.id], created_by="quanly",
+                         created_at=datetime(2026, 11, 1))
+    db.add(h)
+    db.commit()
+    try:
+        hyp_svc.evaluate_finished(db)
+        db.flush()
+        exp = baseline_demand(r.qty_sold, 2, 0.3, 2, ELASTICITY[prod.freshness_class])
+        assert h.result["sold_total"] == r.qty_sold
+        assert h.result["actual_total"] == pytest.approx(round(exp, 1))
+        assert h.result["ratio"] < 1  # so qty_sold tho voi du bao da khu giam gia thi ty le = 1
+    finally:
+        r.discounted_qty, r.discount_pct, r.evening_qty = saved
+        _drop(db, h)
+
+
+def test_hypothesis_scope_and_baseline_frozen_at_approval(db, outbox):
+    product = _first_product(db, freshness_class="FRESH")
+    p, _ = builders.demand_hypothesis(db, "quanly", 1.3, T + timedelta(days=1), T + timedelta(days=2), "Thử phạm vi",
+                                      category=product.category)
+    db.commit()
+    assert service.approve(db, p.id, _mgr(db)).status == "EXECUTED"
+    row = db.get(DemandHypothesis, p.execution_result["hypothesis_id"])
+    try:
+        ids = set(db.scalars(select(Product.id).where(Product.category == product.category, Product.status == "ACTIVE")))
+        assert set(row.scope_product_ids) == ids and row.baseline_total > 0
+    finally:
+        row.status = "CANCELLED"  # khong de gia thuyet dang chay anh huong du bao cua test sau
+        db.commit()
+
+
+def test_markdown_lot_is_never_in_two_open_proposals(db, monkeypatch):
+    ids = (990001, 990002, 990003)
+    batches = iter([[_md_item(ids[0]), _md_item(ids[1], 0, "EVENING")],
+                    [_md_item(ids[1], 0, "EVENING"), _md_item(ids[2], 0, "EVENING")],
+                    [_md_item(ids[2], 0, "EVENING")]])
+    monkeypatch.setattr(builders, "_lot_items", lambda db, lot_ids, days, action: next(batches))
+    p1 = p2 = None
+    try:
+        p1, c1 = builders.markdown(db, "job", days=3)  # job sang
+        p2, c2 = builders.markdown(db, "job", days=0, evening_only=True)  # job 17h: lo 990002 da co de xuat
+        p3, c3 = builders.markdown(db, "job", days=0, evening_only=True)
+        assert c1 and c2 and not c3 and p3.id == p2.id
+        assert [i["lot_id"] for i in p2.payload["items"]] == [ids[2]]
+    finally:
+        _drop(db, p1, p2)
+
+
+def test_scan_does_not_recreate_what_the_manager_rejected(db, monkeypatch):
+    lot_id = 990010
+    monkeypatch.setattr(builders, "_lot_items", lambda db, lot_ids, days, action: [_md_item(lot_id)])
+    p, created = builders.markdown(db, "job")
+    db.commit()
+    asked = None
+    try:
+        assert created
+        service.reject(db, p.id, _mgr(db), "Để mai tính")
+        again, c2 = builders.markdown(db, "job")  # SM bam "Quet lai" trong ngay
+        assert again is None and not c2
+        asked, c3 = builders.markdown(db, "quanly", lot_ids=[lot_id])  # SM chu dong yeu cau lai qua chat
+        assert c3 and asked.id != p.id
+    finally:
+        _drop(db, p, asked)
+
+
+def test_rejected_dedupe_key_blocks_only_automatic_scans(db):
+    old = Proposal(type="DISPOSE", status="REJECTED", title="t", rationale="r", evidence={}, payload={"items": []},
+                   original_payload={"items": []}, created_by="job", created_at=datetime(2026, 11, 7, 8),
+                   dedupe_key="TEST:rejected")
+    db.add(old)
+    db.commit()
+    kw = dict(type="DISPOSE", title="t", rationale="r", payload={"items": []}, evidence={}, est_value=None,
+              dedupe_key="TEST:rejected")
+    ex, created = builders._create(db, created_by="job", **kw)
+    assert ex.id == old.id and not created
+    new, created = builders._create(db, created_by="quanly", **kw)
+    assert created and new.id != old.id
+    _drop(db, old, new)
+
+
+def test_evening_markdown_keeps_the_all_day_markdown(db, outbox):
+    product = _first_product(db, freshness_class="FRESH")
+    lot = _only_lot(db, product, 10, T + timedelta(days=product.pull_days_before_expiry or 0), markdown=0.2)
+    assert lot.sell_by == T
+    p, _ = builders._create(db, type="MARKDOWN", title="t", rationale="r", evidence={}, est_value=0, created_by="quanly",
+                            payload={"items": [{"lot_id": lot.id, "sku": product.sku, "qty": 10, "markdown_pct": 0.3,
+                                                "timing": "EVENING", "category": product.category}]})
+    db.commit()
+    assert service.approve(db, p.id, _mgr(db)).status == "EXECUTED"
+    db.refresh(lot)
+    assert lot.markdown_pct == 0.2 and lot.evening_markdown_pct == 0.3
+
+
+def test_edit_values_are_cast_or_refused(db):
+    p, _ = builders._create(db, type="MARKDOWN", title="t", rationale="r", evidence={}, est_value=0, created_by="job",
+                            payload={"items": [_md_item(990020)]})
+    db.commit()
+    try:
+        service.apply_edits(db, p, {"items": [{"lot_id": "990020", "qty": "3", "include": "false"}]}, _mgr(db))
+        it = p.payload["items"][0]
+        assert it["qty"] == 3 and isinstance(it["qty"], int) and it["include"] is False
+        with pytest.raises(service.ProposalError):
+            service.apply_edits(db, p, {"items": [{"lot_id": 990020, "qty": "ba"}]}, _mgr(db))
+        with pytest.raises(service.ProposalError):
+            service.apply_edits(db, p, {"items": [{"lot_id": 990020, "markdown_pct": "nan"}]}, _mgr(db))
+    finally:
+        _drop(db, p)
+
+
+def test_actual_refund_is_booked_and_counted_in_kpi(db, outbox):
+    p, _ = _approved_return(db)
+    r = db.get(SupplierReturn, service.approve(db, p.id, _mgr(db)).execution_result["return_id"])
+    returns_svc.pick_up(db, r.id, {}, _mgr(db))
+    db.commit()
+    booked = r.credit_value
+    before = reports.cost_report(db, T, T)["kpi"]["return_credit"]
+    returns_svc.mark_credited(db, r.id, _mgr(db), amount=booked // 2)
+    db.commit()
+    assert r.status == "CREDITED" and r.credit_value == booked // 2
+    assert reports.cost_report(db, T, T)["kpi"]["return_credit"] == pytest.approx(before - (booked - booked // 2))
+
+
+def test_pull_keeps_damage_report_and_its_reason(db, outbox):
+    _clear_open(db, "DISPOSE")
+    lot = _only_lot(db, _first_product(db, freshness_class="FRESH"), 10, T)
+    dmg = builders.write_off(db, [{"lot_id": lot.id, "qty": 2, "reason": "DAMAGED"}], "user:nhanvien")
+    db.commit()
+    shelf.confirm_pull(db, [{"lot_id": lot.id, "pulled_qty": 8}], "nhanvien")  # 2 hop vo da de rieng
+    db.commit()
+    db.refresh(dmg)
+    assert dmg.status == "PENDING"
+    p, created = builders.dispose_expired(db, "job")  # cho bao huy duoc quyet truoc
+    db.commit()
+    assert not created or all(i["lot_id"] != lot.id for i in p.payload["items"])
+    assert service.approve(db, dmg.id, _mgr(db)).status == "EXECUTED"
+    db.refresh(lot)
+    assert lot.qty_remaining == 8 and lot.status == "PULLED"
+    p2, _ = builders.dispose_expired(db, "job")
+    db.commit()
+    it = next(i for i in p2.payload["items"] if i["lot_id"] == lot.id)
+    assert it["qty"] == 8 and it["book_qty"] == 8  # khong con phan lech bi ghi thanh hao hut
+    (w,) = _moves(db, dmg.id, "WASTE")
+    assert w.reason == "DAMAGED" and w.qty == 2
+
+
+def test_stock_count_merges_sku_case(db):
+    p = _first_product(db)
+    with pytest.raises(stockcount.StockCountError):
+        stockcount.diffs(db, {p.sku.lower(): 1, p.sku: 2})
+    out = stockcount.diffs(db, {p.sku.lower(): 99999, f" {p.sku} ": 99999})
+    assert [x["sku"] for x in out] == [p.sku]
+
+
+def test_deleting_chat_keeps_its_proposals(client, manager, db):
+    s = ChatSession(title="t", username="quanly", created_at=datetime(2026, 11, 7))
+    db.add(s)
+    db.commit()
+    p = Proposal(type="DISPOSE", status="REJECTED", title="t", rationale="r", evidence={}, payload={"items": []},
+                 original_payload={"items": []}, created_by="agent", created_at=datetime(2026, 11, 7, 9),
+                 chat_session_id=s.id)
+    db.add(p)
+    db.commit()
+    assert client.delete(f"/api/chat/sessions/{s.id}", headers=manager).status_code == 200
+    db.expire_all()
+    assert db.get(Proposal, p.id).chat_session_id is None
+    _drop(db, db.get(Proposal, p.id))

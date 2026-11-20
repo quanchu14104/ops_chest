@@ -169,33 +169,33 @@ Hai chính sách chạy trên cùng cửa hàng, với **cùng nhu cầu khách*
 
 **Thiết kế để kết quả không tự chứng minh:** hệ số co giãn của "thế giới giả lập" (`sim/world.py`) tách khỏi hệ số engine giả định. Ở kịch bản tham chiếu, khách chỉ phản ứng với giảm giá bằng 50% mức engine tin (FRESH 1,5 so với 3,0), nghĩa là engine cố tình bị sai mô hình. Chính sách B chỉ dùng thứ cửa hàng quan sát được.
 
-Bảng dưới (08/09–06/11/2026, 60 ngày). Mỗi dòng chỉ đổi một điều so với dòng tham chiếu. Tạo lại bằng `python -m app.sim.backtest --sensitivity`, và cũng hiện trong trang **Phân tích**. Hai cột cuối là tỷ lệ hết hàng riêng của hàng kéo khách và nhóm A (nhóm A xếp theo lợi nhuận 90 ngày trước kỳ so sánh, cùng một tập SKU cho cả A và B).
+Bảng dưới (08/09–06/11/2026, 60 ngày; chạy lại 12/11/2026 sau đợt sửa lỗi review, lệch bản trước tối đa 0,1 điểm). Mỗi dòng chỉ đổi một điều so với dòng tham chiếu. Tạo lại bằng `python -m app.sim.backtest --sensitivity`, và cũng hiện trong trang **Phân tích**. Hai cột cuối là tỷ lệ hết hàng riêng của hàng kéo khách và nhóm A (nhóm A xếp theo lợi nhuận 90 ngày trước kỳ so sánh, cùng một tập SKU cho cả A và B).
 
 | Kịch bản | Lợi nhuận B so với A | Tỷ lệ hủy A / B | Hết hàng A / B | Hàng kéo khách A / B | Nhóm A: A / B |
 |---|---|---|---|---|---|
-| **Tham chiếu** | **+4,2%** | 11,1% / 9,8% | 6,1% / 4,6% | 4,1% / 2,3% | 4,8% / 2,6% |
+| **Tham chiếu** | **+4,2%** | 11,1% / 9,9% | 6,1% / 4,6% | 4,1% / 2,3% | 4,8% / 2,6% |
 | B không có sàn mức phục vụ (cách đặt cũ) | +12,8% | 11,1% / 6,3% | 6,1% / 7,4% | 4,1% / 5,0% | 4,8% / 6,3% |
-| Giờ giảm giá cố định 18h cho mọi nhóm (cách cũ) | +1,9% | 11,1% / 11,1% | 6,1% / 4,7% | 4,1% / 2,4% | 4,8% / 2,7% |
+| Giờ giảm giá cố định 18h cho mọi nhóm (cách cũ) | +1,8% | 11,1% / 11,1% | 6,1% / 4,7% | 4,1% / 2,4% | 4,8% / 2,7% |
 | Sàn nhóm A 80% thay vì 90% | +6,7% | 11,1% / 9,0% | 6,1% / 5,3% | 4,1% / 2,3% | 4,8% / 3,6% |
 | Nhu cầu khác (seed 11) | +2,7% | 11,7% / 10,6% | 5,9% / 4,8% | 3,8% / 1,9% | 4,5% / 2,4% |
-| Nhu cầu khác (seed 23) | +4,9% | 11,2% / 9,7% | 6,1% / 4,5% | 2,5% / 1,1% | 4,4% / 2,0% |
+| Nhu cầu khác (seed 23) | +4,9% | 11,2% / 9,8% | 6,1% / 4,5% | 2,5% / 1,1% | 4,4% / 2,0% |
 | Khách phản ứng đúng 100% giả định | +8,7% | 11,0% / 8,6% | 5,9% / 4,3% | 3,6% / 2,3% | 4,6% / 2,4% |
-| Khách chỉ phản ứng 25% giả định | +1,8% | 11,5% / 10,8% | 6,2% / 4,7% | 4,4% / 2,4% | 4,9% / 2,7% |
+| Khách chỉ phản ứng 25% giả định | +1,8% | 11,5% / 10,9% | 6,2% / 4,7% | 4,4% / 2,4% | 4,9% / 2,7% |
 | B chỉ đặt hàng (tắt giảm giá, trả NCC) | +0,2% | 11,1% / 12,2% | 6,1% / 4,7% | 4,1% / 2,4% | 4,8% / 2,7% |
-| B không tách doanh số giảm giá khỏi nhu cầu | +1,0% | 11,1% / 10,8% | 6,1% / 4,2% | 4,1% / 1,9% | 4,8% / 2,4% |
+| B không tách doanh số giảm giá khỏi nhu cầu | +0,9% | 11,1% / 10,8% | 6,1% / 4,2% | 4,1% / 1,9% | 4,8% / 2,4% |
 | Store Manager chỉ duyệt 80% đề xuất | +3,3% | 11,1% / 10,4% | 6,1% / 4,8% | 4,1% / 2,7% | 4,8% / 3,0% |
-| Store Manager chỉ duyệt 60% đề xuất | +1,2% | 11,1% / 11,1% | 6,1% / 5,0% | 4,1% / 3,4% | 4,8% / 3,5% |
-| 20% lượt mua lấy lô mới (không theo FEFO) | +3,4% | 11,2% / 10,1% | 6,1% / 4,6% | 4,1% / 2,3% | 4,8% / 2,6% |
-| 50% lượt mua lấy lô mới (không theo FEFO) | +2,3% | 11,4% / 10,5% | 6,1% / 4,7% | 4,1% / 2,3% | 4,9% / 2,7% |
+| Store Manager chỉ duyệt 60% đề xuất | +1,1% | 11,1% / 11,1% | 6,1% / 5,0% | 4,1% / 3,4% | 4,8% / 3,5% |
+| 20% lượt mua lấy lô mới (không theo FEFO) | +3,4% | 11,2% / 10,2% | 6,1% / 4,6% | 4,1% / 2,3% | 4,8% / 2,6% |
+| 50% lượt mua lấy lô mới (không theo FEFO) | +2,3% | 11,4% / 10,5% | 6,1% / 4,6% | 4,1% / 2,3% | 4,9% / 2,6% |
 | Cách so sánh cũ (A không giảm giá, khách phản ứng đúng giả định) | +10,5% | 11,8% / 8,6% | 6,2% / 4,3% | 4,5% / 2,3% | 5,0% / 2,4% |
 
 **Đổi so với bản trước.** Bản trước (commit `db6628d`) ghi tham chiếu +13,6% lợi nhuận, hủy 11,0% / 6,5%, hết hàng 5,6% / 7,3%: B lãi hơn nhờ để thiếu hàng nhiều hơn người làm tay. Ba thay đổi làm số đổi:
 
 1. **Sàn mức phục vụ (N6):** hàng kéo khách 95%, nhóm A 90%, còn lại 50%. Ở tham chiếu B hết hàng 4,6% so với 6,1% của A (hàng kéo khách 2,3% so với 4,1%, nhóm A 2,6% so với 4,8%); B không hết hàng nhiều hơn A ở mọi dòng trừ dòng cố ý tắt sàn. Dòng "B không có sàn mức phục vụ" tái hiện cách đặt cũ: +12,8% lợi nhuận nhưng hết hàng 7,4% so với 6,1%.
-2. **Giờ giảm giá theo khung bán (N10):** thế giới giả lập giờ có khung giờ bán theo nhóm hàng (cơm hộp bán chủ yếu buổi trưa, bánh mì buổi sáng). Giờ vàng cố định 18h vì thế kém tác dụng với hàng tươi, cho cả A (luôn giảm lúc 18h) và B. Dòng "giờ giảm giá cố định 18h" cho thấy riêng việc đặt giờ giảm theo nhóm đóng góp khoảng 2 điểm lợi nhuận (+4,2% so với +1,9%) và hạ tỷ lệ hủy của B từ 11,1% xuống 9,8%.
+2. **Giờ giảm giá theo khung bán (N10):** thế giới giả lập giờ có khung giờ bán theo nhóm hàng (cơm hộp bán chủ yếu buổi trưa, bánh mì buổi sáng). Giờ vàng cố định 18h vì thế kém tác dụng với hàng tươi, cho cả A (luôn giảm lúc 18h) và B. Dòng "giờ giảm giá cố định 18h" cho thấy riêng việc đặt giờ giảm theo nhóm đóng góp khoảng 2 điểm lợi nhuận (+4,2% so với +1,8%) và hạ tỷ lệ hủy của B từ 11,1% xuống 9,9%.
 3. **Lịch nghỉ Tết của đại lý (N7):** giai đoạn khởi động 200 ngày nay đi qua Tết 2026 với lịch nghỉ, nên trạng thái kho lúc bắt đầu so sánh khác trước; số của A cũng đổi nhẹ.
 
-Con số nên trích dẫn là **lợi nhuận gộp khoảng +3–5% (tham chiếu +4,2%; hai chuỗi nhu cầu khác +2,7% và +4,9%), hết hàng thấp hơn baseline (4,6% so với 6,1%), tỷ lệ hủy thấp hơn khoảng 1,3 điểm**. Lợi ích nhỏ hơn hẳn bản trước, đúng như rủi ro đã nêu trong plan; đây là kết quả trung thực hơn vì B không còn "mua" lợi nhuận bằng cách để kệ trống.
+Con số nên trích dẫn là **lợi nhuận gộp khoảng +3–5% (tham chiếu +4,2%; hai chuỗi nhu cầu khác +2,7% và +4,9%), hết hàng thấp hơn baseline (4,6% so với 6,1%), tỷ lệ hủy thấp hơn khoảng 1,2 điểm**. Lợi ích nhỏ hơn hẳn bản trước, đúng như rủi ro đã nêu trong plan; đây là kết quả trung thực hơn vì B không còn "mua" lợi nhuận bằng cách để kệ trống.
 
 Dòng "sàn nhóm A 80%" cho thấy sàn là một nút chỉnh chứ không phải hằng số: hạ sàn thì lợi nhuận +6,7% và hết hàng 5,3%, vẫn dưới A. Mức sàn là chính sách của cửa hàng, nên giữ mức trong plan thay vì chọn mức cho số đẹp nhất trên bảng này.
 

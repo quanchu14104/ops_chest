@@ -69,9 +69,9 @@ def _purchase_order(db: Session, p: Proposal, user: User) -> dict:
             "email_to": sup.email, "message_id": msg_id, "expected_date": expected.isoformat()}
 
 
-def _active_lot(db: Session, lot_id: int) -> Lot:
+def _active_lot(db: Session, lot_id: int, statuses: tuple[str, ...] = ("ACTIVE",)) -> Lot:
     lot = db.get(Lot, lot_id)
-    if not lot or lot.status != "ACTIVE" or lot.qty_remaining <= 0:
+    if not lot or lot.status not in statuses or lot.qty_remaining <= 0:
         raise ExecutionError(f"Lô {lot_id} không còn hàng hoặc đã được xử lý.")
     return lot
 
@@ -92,10 +92,15 @@ def _markdown(db: Session, p: Proposal, user: User) -> dict:
             policies.check_markdown(pol, lot.product.category, pct)
         except policies.MarkdownPolicyError as e:
             raise ExecutionError(str(e)) from e
-        if pct <= lot.markdown_pct:  # tem da dan: khong tang gia tro lai
-            kept.append({"lot_id": lot.id, "sku": it["sku"], "markdown_pct": lot.markdown_pct})
+        evening = it.get("timing") == "EVENING"
+        current = max(lot.markdown_pct, lot.evening_markdown_pct) if evening else lot.markdown_pct
+        if pct <= current:  # tem da dan: khong tang gia tro lai
+            kept.append({"lot_id": lot.id, "sku": it["sku"], "markdown_pct": current})
             continue
-        lot.markdown_pct = pct
+        if evening:  # gio vang: chi phan con du cuoi ngay ban cuoi; muc giam ca ngay (neu co) van giu tu sang
+            lot.evening_markdown_pct = pct
+        else:
+            lot.markdown_pct = pct
         done.append({"lot_id": lot.id, "sku": it["sku"], "markdown_pct": pct, "timing": it.get("timing")})
     if not done:
         raise ExecutionError("Không còn lô nào cần giảm thêm: các lô được chọn đã ở mức giảm bằng hoặc sâu hơn.")
@@ -172,7 +177,9 @@ def _dispose(db: Session, p: Proposal, user: User) -> dict:
         else:
             if q <= 0:
                 continue
-            lot = _active_lot(db, it["lot_id"])
+            # Bao huy (vo, hong...) van ghi duoc khi lo vua bi rut ke vi het han: hang bao huy da de rieng, khong
+            # nam trong so thuc go, nen de xuat ghi huy het han (cho bao huy nay xong) chi con phan da go
+            lot = _active_lot(db, it["lot_id"], ("ACTIVE", "PULLED"))
             if q > lot.qty_remaining:
                 raise ExecutionError(f"Lô {lot.id} chỉ còn {lot.qty_remaining}, không hủy được {q}.")
             lot.qty_remaining -= q
@@ -207,10 +214,15 @@ def _demand_hypothesis(db: Session, p: Proposal, user: User) -> dict:
     start, end = date.fromisoformat(pl["start_date"]), date.fromisoformat(pl["end_date"])
     try:
         H.validate(db, float(pl["factor"]), start, end, pl["reason"], pl["category"], pl["sku"])
+        products, _, _ = H.matching_products(db, pl["category"], pl["sku"])
     except H.HypothesisError as e:
         raise ExecutionError(str(e)) from e
+    # Chot pham vi va du bao nen TAI LUC DUYET: de xuat co the cho vai ngay, du lieu va danh muc da doi.
+    # Cham dung/sai ve sau dung dung tap mat hang nay, khong lay lai theo danh muc luc cham.
+    pv = H.preview(db, products, float(pl["factor"]), start, end)
     row = DemandHypothesis(category=pl["category"], sku=pl["sku"], factor=float(pl["factor"]), start_date=start,
-                           end_date=end, reason=pl["reason"], status="ACTIVE", baseline_total=float(pl["baseline_total"]),
+                           end_date=end, reason=pl["reason"], status="ACTIVE", baseline_total=float(pv["baseline_total"]),
+                           scope_product_ids=[x.id for x in products],
                            proposal_id=p.id, created_by=user.username, created_at=now().replace(tzinfo=None))
     db.add(row)
     db.flush()

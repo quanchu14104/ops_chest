@@ -28,9 +28,15 @@ def _still_open():
                 or_(Proposal.expires_at.is_(None), Proposal.expires_at >= _now()))
 
 
-def _existing(db: Session, key: str) -> Proposal | None:
+SCAN_ACTOR = "job"  # quet tu dong (job 06:30/17:00 va nut "Quet lai"), khac voi SM yeu cau qua chat
+
+
+def _existing(db: Session, key: str, include_rejected: bool = False) -> Proposal | None:
+    """De xuat cung khoa con hieu luc. include_rejected: quet tu dong khong tao lai viec SM vua tu choi (khoa co ngay,
+    nen chi chan trong ngay do); SM chu dong yeu cau lai qua chat thi van tao moi."""
+    done = ["APPROVED", "EXECUTED"] + (["REJECTED"] if include_rejected else [])
     return db.scalar(select(Proposal).where(Proposal.dedupe_key == key,
-                                            or_(Proposal.status.in_(["APPROVED", "EXECUTED"]), _still_open())))
+                                            or_(Proposal.status.in_(done), _still_open())))
 
 
 def _open_by_lot(db: Session, type: str) -> dict[int, Proposal]:
@@ -47,7 +53,7 @@ def _create(db: Session, *, type: str, title: str, rationale: str, payload: dict
             est_value: int | None, created_by: str, dedupe_key: str | None = None,
             expires_at: datetime | None = None, chat_session_id: int | None = None) -> tuple[Proposal, bool]:
     if dedupe_key:
-        ex = _existing(db, dedupe_key)
+        ex = _existing(db, dedupe_key, include_rejected=created_by == SCAN_ACTOR)
         if ex:
             return ex, False
     p = Proposal(type=type, status="PENDING", title=title, rationale=rationale, evidence=evidence,
@@ -124,11 +130,31 @@ def _lot_items(db: Session, lot_ids: list[int] | None, days: int, action: str) -
     return out
 
 
+def _markdown_taken(db: Session, with_rejected_today: bool) -> dict[int, Proposal]:
+    """Lo dang nam trong de xuat giam gia con mo (va, voi quet tu dong, lo SM da tu choi giam trong hom nay).
+    Khoa dedupe gom ca tap lo, nen job sang va job 17h ra hai tap khac nhau van trung lo neu khong chan theo lo."""
+    cond = _still_open()
+    if with_rejected_today:
+        cond = or_(cond, and_(Proposal.status == "REJECTED", Proposal.created_at >= datetime.combine(today(), time())))
+    out: dict[int, Proposal] = {}
+    for p in db.scalars(select(Proposal).where(Proposal.type == "MARKDOWN", cond).order_by(Proposal.id)):
+        for it in p.payload["items"]:
+            if it.get("include") is not False:
+                out.setdefault(it["lot_id"], p)
+    return out
+
+
 def markdown(db: Session, created_by: str, lot_ids: list[int] | None = None, days: int = 3,
              evening_only: bool = False, chat_session_id: int | None = None) -> tuple[Proposal | None, bool]:
     items = _lot_items(db, lot_ids, days, "MARKDOWN")
     if evening_only:
         items = [i for i in items if i["days_left"] <= 0]
+    taken = _markdown_taken(db, with_rejected_today=created_by == SCAN_ACTOR)
+    fresh = [i for i in items if i["lot_id"] not in taken]
+    if items and not fresh:  # moi lo da co de xuat: tra ve de xuat dang mo (neu co) thay vi tao trung
+        ex = next((taken[i["lot_id"]] for i in items if taken[i["lot_id"]].status != "REJECTED"), None)
+        return ex, False
+    items = fresh
     if not items:
         return None, False
     t = today()

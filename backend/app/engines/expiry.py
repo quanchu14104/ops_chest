@@ -22,8 +22,14 @@ class LotRisk:
     expected_waste: float
 
 
+OVERDUE = "Quá ngày bán cuối"  # lo da qua ngay ban cuoi (sell_by) ma con tren so: can rut ke
+BUCKET_ORDER = (OVERDUE, "Hết hạn hôm nay", "1-3 ngày", "4-7 ngày", "> 7 ngày")
+
+
 def bucket(days_left: int) -> str:
-    if days_left <= 0:
+    if days_left < 0:
+        return OVERDUE
+    if days_left == 0:
         return "Hết hạn hôm nay"
     if days_left <= 3:
         return "1-3 ngày"

@@ -87,6 +87,19 @@ def is_large_gap(system_qty: int, diff: int) -> bool:
 def diffs(db: Session, counted: dict[str, int]) -> list[dict]:
     if not counted:
         raise StockCountError("Chưa có dòng nào được đếm.")
+    # Gop theo SKU chuan hoa (hoa/thuong, khoang trang): "abc01" va "ABC01" la mot mat hang. Neu khong, moi dang
+    # sinh mot dong chenh lech rieng so voi CUNG ton tren so va duyet xong ton bi dieu chinh hai lan.
+    merged: dict[str, int] = {}
+    for sku, qty in counted.items():
+        key = str(sku).strip().upper()
+        try:
+            v = int(qty)
+        except (TypeError, ValueError):
+            raise StockCountError(f"Số đếm của {sku} không hợp lệ: {qty!r}") from None
+        if key in merged and merged[key] != v:
+            raise StockCountError(f"SKU {key} được nhập hai lần với số khác nhau ({merged[key]} và {v}).")
+        merged[key] = v
+    counted = merged
     if any(int(v) < 0 for v in counted.values()):
         raise StockCountError("Số đếm không được âm.")
     products = {p.sku: p for p in db.scalars(select(Product).where(Product.sku.in_([s.upper() for s in counted])))}

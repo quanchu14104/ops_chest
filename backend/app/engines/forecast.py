@@ -46,8 +46,11 @@ class Forecast:
     def at(self, offset: int) -> float:
         if offset < 0:
             offset = 0
-        if offset < len(self.daily):
+        n = len(self.daily)
+        if offset < n:
             return self.daily[offset]
+        if n >= 7:  # ngoai tam du bao: lap lai tuan cuoi (giu he so thu), khong keo dai mot ngay
+            return self.daily[n - 7 + (offset - n) % 7]
         return self.daily[-1] if self.daily else 0.0
 
 

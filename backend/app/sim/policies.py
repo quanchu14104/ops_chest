@@ -19,7 +19,8 @@ from app.engines.forecast import baseline_demand, estimate_event_factors
 from app.engines.forecast_router import forecast as route_forecast
 from app.sim.frn import holiday_of as frn_holiday_of
 from app.config import service_floors
-from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, review_period, schedule,
+from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, forecast_horizon,
+                                       review_period, schedule,
                                        service_floor)
 from app.sim.catalog import ProductSpec, category_policy
 from app.sim.demand import _rng
@@ -229,15 +230,14 @@ class OpsChestPolicy(Policy):
                 self._habit.order_supplier(sim, d, code, sup)
                 continue
             arrival, R = schedule(d, sup.lead_time_days, sup.order_weekdays, sup.delivery_weekdays, sup.is_closed)
-            L = sup.lead_time_days
-            lead = (arrival - d).days
+            lead = (arrival - d).days  # thoi gian cho that theo lich giao (nhu app), khong phai lead time danh nghia
             lines = []
             for p in sim.by_supplier[code]:
                 if p.sku in sim.delisted:
                     continue
                 cell = self.classes.get(p.sku, "BY")
                 inp = build_input(
-                    p, d, L, R, self._forecast(sim, p, d, lead + R + min(p.shelf_life_days, 30) + 2),
+                    p, d, lead, R, self._forecast(sim, p, d, forecast_horizon(lead, R, p.shelf_life_days)),
                     [LotState(l.qty, l.expiry) for l in sim.lots[p.sku]],
                     [Incoming(o.qty, o.arrival, o.arrival + timedelta(days=p.shelf_life_days - 1))
                      for o in sim.incoming(p.sku)],

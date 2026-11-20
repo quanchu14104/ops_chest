@@ -74,6 +74,7 @@ class DispositionInput:
     markdown_steps: tuple[float, ...] = (0.2, 0.3, 0.5)
     daily_demand: float | None = None  # nhu cau du bao ca ngay (de tinh gio vang)
     current_markdown: float = 0.0  # muc giam dang ap cho lo: chi xet muc sau hon, khong tang gia tro lai
+    current_evening: float = 0.0  # muc gio vang da duyet cho ngay ban cuoi (de xuat gio vang phai sau hon)
     # So don vi khach toi von mua gia goc neu khong co gio vang. None = suy tu nhu cau ca ngay.
     evening_full_price_units: float | None = None
     # So ngay toi HSD in tren bao bi (dieu khoan tra NCC tinh theo HSD). None = bang days_left.
@@ -129,7 +130,10 @@ def evaluate(inp: DispositionInput) -> list[Option]:
             # Truoc gio vang ban gia goc; sau do nguoi vao mua them, nhung khach von tra gia goc cung duoc giam
             extra = min(waste_full, day_demand * share * inp.elasticity * p)
             return sold_full + extra, value_full + extra * (price * (1 - p) + disposal) - evening_buyers * price * p
-        sold = min(q, sold_full * (1 + inp.elasticity * p))
+        # Giam gia keo THEM khach cho ca mat hang (nhu hai bo mo phong: them ~ nhu cau x co gian x muc giam moi ngay),
+        # khong ty le voi phan lo nay tu ban duoc gia goc: lo dung sau trong FEFO (sold_full ~ 0) van day duoc hang
+        window = inp.daily_demand * (inp.days_left + 1) if inp.daily_demand is not None else sold_full
+        sold = min(q, sold_full + window * inp.elasticity * p)
         return sold, sold * price * (1 - p) - (q - sold) * disposal
 
     p0 = inp.current_markdown
@@ -139,8 +143,9 @@ def evaluate(inp: DispositionInput) -> list[Option]:
         Option("KEEP", "Giữ nguyên giá" if p0 <= 0 else f"Giữ mức giảm {int(p0 * 100)}%", p0, sold_keep, 0.0, waste_keep,
                keep_value, 0.0, True, "Không làm gì, phần không bán được sẽ bị hủy."),
     ]
+    floor = max(p0, inp.current_evening) if last_day else p0
     for p in inp.markdown_steps:
-        if p <= p0 or not inp.markdown_allowed or p > inp.max_markdown + 1e-9:
+        if p <= floor or not inp.markdown_allowed or p > inp.max_markdown + 1e-9:
             continue
         sold, value = outcome(p)
         if last_day:

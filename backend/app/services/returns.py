@@ -37,6 +37,7 @@ def split_for_return(db: Session, lot: Lot, qty: int) -> Lot:
     lot.qty_remaining -= qty
     part = Lot(product_id=lot.product_id, qty_received=qty, qty_remaining=qty, received_date=lot.received_date,
                expiry_date=lot.expiry_date, unit_cost=lot.unit_cost, markdown_pct=lot.markdown_pct,
+               evening_markdown_pct=lot.evening_markdown_pct,
                po_line_id=lot.po_line_id, status="RETURN_PENDING")
     db.add(part)
     db.flush()
@@ -105,12 +106,45 @@ def pick_up(db: Session, rid: int, picked: dict[int, int], user: User) -> Suppli
 
 
 def mark_credited(db: Session, rid: int, user: User, amount: int | None = None) -> SupplierReturn:
+    """NCC da hoan tien. `amount`: so tien thuc nhan; khac so ghi luc lay hang thi ghi them dong dieu chinh RETURN
+    (so luong 0, chi gia tri) vao ngay nhan tien, de KPI "NCC hoan tien" dung so that ma khong sua so lieu cu."""
     r = _get(db, rid, ("PICKED_UP",))
-    r.status, r.credited_date = "CREDITED", today()
-    if amount is not None and int(amount) != r.credit_value:
-        r.note = f"NCC hoàn {int(amount):,}đ, khác số ghi nhận {r.credit_value:,}đ".replace(",", ".")
-    audit.log(db, user.username, "RETURN_CREDITED", "supplier_return", r.id, {"code": r.code, "amount": amount})
+    t = today()
+    booked = int(r.credit_value or 0)
+    if amount is not None:
+        amount = int(amount)
+        if amount < 0:
+            raise ReturnError("Số tiền NCC hoàn không được âm.")
+        diff = amount - booked
+        if diff:
+            parts = _split_by_product(db, r, diff)
+            for pid, v in parts.items():
+                db.add(StockMovement(product_id=pid, lot_id=None, date=t, type="RETURN", qty=0, unit_cost=0, value=v,
+                                     ref=r.code, note="Điều chỉnh theo số NCC hoàn thực tế"))
+            r.note = f"NCC hoàn {amount:,}đ, khác số ghi nhận lúc lấy hàng {booked:,}đ".replace(",", ".")
+            r.credit_value = amount
+    r.status, r.credited_date = "CREDITED", t
+    audit.log(db, user.username, "RETURN_CREDITED", "supplier_return", r.id,
+              {"code": r.code, "amount": amount, "booked": booked})
     return r
+
+
+def _split_by_product(db: Session, r: SupplierReturn, diff: int) -> dict[int, int]:
+    """Chia phan chenh lech theo ty trong tien hoan cua tung mat hang trong phieu (lam tron, don phan du vao dong lon nhat)."""
+    w: dict[int, float] = {}
+    for it in r.items:
+        lot = db.get(Lot, it["lot_id"])
+        if lot is None:
+            continue
+        q = int(it.get("picked_qty", it.get("qty", 0)) or 0)
+        w[lot.product_id] = w.get(lot.product_id, 0.0) + q * lot.unit_cost
+    if not w:
+        raise ReturnError("Phiếu không còn dòng hàng nào để ghi nhận tiền hoàn.")
+    total = sum(w.values())
+    out = {pid: int(round(diff * (v / total if total else 1 / len(w)))) for pid, v in w.items()}
+    big = max(w, key=w.get)
+    out[big] += diff - sum(out.values())
+    return {pid: v for pid, v in out.items() if v}
 
 
 def refuse(db: Session, rid: int, reason: str, user: User) -> tuple[SupplierReturn, list[int]]:

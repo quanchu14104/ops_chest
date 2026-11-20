@@ -5,14 +5,14 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.agent.orchestrator import run_turn
 from app.auth import current_user
 from app.clock import now
 from app.db import SessionLocal, get_db
-from app.models import ChatSession, User
+from app.models import ChatSession, Proposal, User
 from app.services import quick as quick_svc
 
 router = APIRouter(prefix="/api/chat")
@@ -58,6 +58,9 @@ def get_session(sid: int, db: Session = Depends(get_db), user: User = Depends(cu
 @router.delete("/sessions/{sid}")
 def delete_session(sid: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     s = _own(db, sid, user)
+    # De xuat tao tu hoi thoai van la ho so duyet (audit): giu lai, chi bo lien ket. Khoa ngoai khong co ON DELETE,
+    # nen tren Postgres xoa thang phien se loi rang buoc (SQLite mac dinh khong kiem tra nen test khong bat duoc).
+    db.execute(update(Proposal).where(Proposal.chat_session_id == s.id).values(chat_session_id=None))
     db.delete(s)
     db.commit()
     return {"ok": True}

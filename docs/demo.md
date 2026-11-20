@@ -34,7 +34,7 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
   - **Mô hình được chọn theo lãi, không theo độ chính xác.** Bộ chọn (`decision_gate.json`) học từ backtest FRN hai việc:
     - nhóm hàng × quy mô điểm bán nào dùng LightGBM;
     - độ bất định nào dùng để đặt hàng.
-  - Ở cửa hàng demo, cả 164 mặt hàng dùng **dự báo điểm của LightGBM**, nhưng tồn an toàn tính theo **σ của engine EWMA**. Lý do: khoảng dự báo của LightGBM rộng hơn, đi qua sàn mức phục vụ 90–95% thì thành đặt dư.
+  - Ở cửa hàng demo, 127/164 mặt hàng (bán chạy và bán vừa) dùng **dự báo điểm của LightGBM**, nhưng tồn an toàn tính theo **σ của engine EWMA**. Lý do: khoảng dự báo của LightGBM rộng hơn, đi qua sàn mức phục vụ 90–95% thì thành đặt dư. 37 mặt hàng bán ít giữ engine EWMA, vì ở nhóm này LightGBM không lãi hơn.
 - Vào **Phân tích → Dự báo nhu cầu bằng LightGBM trên dữ liệu thật**:
   - bảng 5 phương pháp: LightGBM WAPE 30,2% so với EWMA 35,1%, độ phủ khoảng 80% là 81% so với 73%;
   - bảng theo nhóm hàng, có nhãn "Dùng ML" / "Giữ engine cũ" theo sai số dự báo. Đây là bộ chọn cũ; app nay chọn theo lãi (mục 7);
@@ -85,9 +85,9 @@ Vào **Phân tích → Backtest A/B trên các điểm FRN**. Các chính sách 
 
 Nói thẳng kết quả ([ml-frn.md](ml-frn.md), mục 5.6):
 - Ops Chest lãi hơn cách làm theo kinh nghiệm khoảng **+4%** (trung vị) và giảm hết hàng; với hàng kéo khách, hết hàng giảm từ 8,7% xuống 2,7%.
-- **LightGBM dự báo chính xác hơn nhưng không lãi hơn EWMA**: chỉ thắng ở 34% số điểm, thua ở điểm bán nhỏ. Nó giảm hết hàng nhưng đặt dư hơn nên hủy nhiều hơn.
+- **LightGBM dự báo chính xác hơn nhưng không lãi hơn EWMA**: chỉ thắng ở 38% số điểm, thua ở điểm bán nhỏ. Nó giảm hết hàng nhưng đặt dư hơn nên hủy nhiều hơn.
 - Đổi cách dùng mô hình thì khác ([ml-frn.md](ml-frn.md), mục 5.7). Lấy dự báo điểm của LightGBM, σ của EWMA, chọn theo lãi và đo ngoài mẫu:
-  - B-gate hơn B-EWMA **+0,8%** (trung vị, khoảng tứ phân vị +0,1% đến +1,4%), thắng ở **78%** số điểm;
+  - B-gate hơn B-EWMA **+0,8%** (trung vị, khoảng tứ phân vị +0,0% đến +1,5%), thắng ở **76%** số điểm; lợi ích đến từ điểm bán lớn, ở điểm nhỏ chỉ hòa;
   - hủy giảm từ 5,2% còn 4,8%.
 - Đặt hàng thẳng theo khoảng của LightGBM thì lỗ: phân vị lệch −2,2%. Khoảng rộng đi qua sàn mức phục vụ cao thành đặt dư.
 - Nói rõ giới hạn: biến thể này được thêm vào sau khi đã thấy kết quả chẩn đoán trên chính 50 điểm này, nên +0,8% hơi lạc quan.

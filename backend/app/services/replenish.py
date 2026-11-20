@@ -11,7 +11,8 @@ from app.fmt import vnd
 from app.clock import today
 from app.engines.abc_xyz import Z_BY_CLASS
 from app.config import service_floors
-from app.engines.replenishment import Incoming, LotState, ReplenishmentInput, compute_order, service_floor
+from app.engines.replenishment import (Incoming, LotState, ReplenishmentInput, compute_order, forecast_horizon,
+                                       service_floor)
 from app.models import Product, Supplier
 from app.services.history import abc_xyz_classes, forecast_for
 from app.services.inventory import active_lots, on_order
@@ -51,8 +52,9 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
     """Dat buoi sang truoc gio ban: nhu cau hom nay van phai tru vao ton hien co."""
     t = order_date or today()
     agr = supplier.agreement_on(t)
-    L = supplier.lead_time_days
     arrival, R = supplier.schedule(t)
+    # Thoi gian cho THAT den chuyen giao (lich giao, ngay nghi cua NCC), khong phai lead time danh nghia:
+    # ton an toan hang ben phu z*sigma*sqrt(L+R) cho dung khoang khong duoc bo sung
     lead = (arrival - t).days
     products = db.scalars(
         select(Product).where(Product.supplier_id == supplier.id, Product.status == "ACTIVE").order_by(Product.sku)
@@ -67,10 +69,10 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
     for p in products:
         pull = p.pull_days_before_expiry or 0
         life = max(1, p.shelf_life_days - pull)  # so ngay ban duoc cua lo moi
-        fc = forecast_for(db, p, horizon=lead + R + min(life, 30) + 2, start=t)
+        fc = forecast_for(db, p, horizon=forecast_horizon(lead, R, life), start=t)
         cell = classes[p.sku].cell if p.sku in classes else "BY"
         res = compute_order(ReplenishmentInput(
-            today=t, first_demand_day=t, lead_time_days=L, review_period_days=R, arrival_date=arrival,
+            today=t, first_demand_day=t, lead_time_days=lead, review_period_days=R, arrival_date=arrival,
             shelf_life_days=life, forecast=fc,
             lots=[LotState(l.qty_remaining, l.sell_by) for l in lots.get(p.id, []) if l.sell_by >= t],
             incoming=[Incoming(q, po.expected_date, po.expected_date + timedelta(days=life - 1))
@@ -130,7 +132,7 @@ def suggest_po(db: Session, supplier: Supplier, order_date: date | None = None) 
     return {
         "supplier_id": supplier.id, "supplier_code": supplier.code, "supplier_name": supplier.name,
         "supplier_email": supplier.email, "order_date": t.isoformat(),
-        "expected_date": arrival.isoformat(), "review_period_days": R, "lead_time_days": L,
+        "expected_date": arrival.isoformat(), "review_period_days": R, "lead_time_days": supplier.lead_time_days,
         "lines": lines, "total_value": total, "min_order_value": supplier.min_order_value, "warnings": warnings,
         "min_order": min_order,
     }

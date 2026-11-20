@@ -76,3 +76,27 @@ def test_markdown_sales_do_not_count_as_demand(db, restore_clock):
     h = load_history(db)
     r = max(rows, key=lambda x: x.discounted_qty)
     assert h.demand[r.product_id][-1] < h.sales[r.product_id][-1]
+
+
+def test_all_day_markdown_still_applies_on_the_last_sale_day(db, restore_clock):
+    """Tem giam ca ngay dan tu hom truoc van giu suot ngay ban cuoi (nhu StoreSim), khong tro ve gia goc."""
+    from app.sim.advance import set_clock
+
+    last = db.scalar(select(func.max(DailySales.date)))  # test truoc da tua: ngay co doanh so thi bi bo qua
+    set_clock(db, last + timedelta(days=1))
+    t = today()
+    top = db.scalars(select(DailySales).join(Product, Product.id == DailySales.product_id)
+                     .where(DailySales.date == last, Product.status == "ACTIVE")
+                     .order_by(DailySales.qty_sold.desc())).first()
+    p = db.get(Product, top.product_id)
+    for lot in db.scalars(select(Lot).where(Lot.product_id == p.id, Lot.status == "ACTIVE")):
+        lot.qty_remaining, lot.status = 0, "SOLD"
+    lot = Lot(product_id=p.id, qty_received=500, qty_remaining=500, received_date=t - timedelta(days=1),
+              expiry_date=t + timedelta(days=p.pull_days_before_expiry or 0), unit_cost=p.unit_cost, markdown_pct=0.3,
+              status="ACTIVE")
+    db.add(lot)
+    db.commit()
+    assert lot.sell_by == t
+    advance(db, 1, "quanly")
+    row = db.get(DailySales, (p.id, t))
+    assert row.qty_sold > 0 and row.discounted_qty > 0 and row.discount_pct == pytest.approx(0.3)
