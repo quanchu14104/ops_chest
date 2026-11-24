@@ -1,10 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Proposal } from "../api";
+import { api, getUser, type Proposal } from "../api";
 import ProposalCard from "./ProposalCard";
+import EmptyState, { Skeleton } from "./ui/EmptyState";
+
+// Phát sự kiện này để mở ngăn Hộp duyệt từ bất kỳ đâu (vd dòng "đề xuất chờ duyệt" trong bản tin)
+export const OPEN_INBOX_EVENT = "opschest:open-inbox";
 
 // Gấp trước (sắp hết hiệu lực), rồi đến giá trị lớn. Đề xuất không có hạn xếp sau.
-function byUrgency(a: Proposal, b: Proposal): number {
+export function byUrgency(a: Proposal, b: Proposal): number {
   const ea = a.expires_at ? Date.parse(a.expires_at) : Infinity;
   const eb = b.expires_at ? Date.parse(b.expires_at) : Infinity;
   if (ea !== eb) return ea - eb;
@@ -19,24 +24,29 @@ export default function InboxPanel({ onNavigate }: { onNavigate?: () => void }) 
     refetchInterval: 30_000,
   });
   const list = [...(q.data ?? [])].sort(byUrgency);
+  const isManager = getUser()?.role === "manager";
+  // Ngăn kéo hẹp: mỗi lúc chỉ mở một thẻ, mặc định gập hết để thấy cả danh sách
+  const [openId, setOpenId] = useState<number | null>(null);
   return (
     <section className="inbox" aria-label="Hộp đề xuất">
-      <div className="row" style={{ marginBottom: 12 }}>
-        <span className="secondary">{list.length > 0 ? `${list.length} đề xuất chờ anh/chị` : "Không có đề xuất nào chờ"}</span>
+      <div className="row mb-3">
+        <span className="secondary">
+          {list.length > 0 ? `${list.length} đề xuất chờ ${isManager ? "anh/chị" : "Store Manager"} duyệt` : "Không có đề xuất nào chờ"}
+        </span>
         <span className="spacer" />
         <Link to="/approvals" className="small" onClick={onNavigate}>Xem tất cả và lịch sử →</Link>
       </div>
-      {q.isLoading && <p className="muted small">Đang tải…</p>}
+      {q.isLoading && <Skeleton rows={4} />}
       {q.error && <div className="alert error">{(q.error as Error).message}</div>}
       {q.data && list.length === 0 && (
-        <div className="card" style={{ textAlign: "center", padding: "40px 16px" }}>
-          <h2>Hộp duyệt trống</h2>
-          <p className="muted small">Ops Chest quét tự động lúc 06:30 và 17:00, hoặc anh/chị có thể nhờ trong chat.</p>
+        <div className="card">
+          <EmptyState title="Hộp duyệt trống">Ops Chest quét tự động lúc 06:30 và 17:00, hoặc anh/chị có thể nhờ trong chat.</EmptyState>
         </div>
       )}
       <div className="inbox-list">
         {list.map((p) => (
-          <ProposalCard key={`${p.id}-${p.status}`} p={p} compact />
+          <ProposalCard key={`${p.id}-${p.status}`} p={p} compact expanded={openId === p.id}
+            onToggle={() => setOpenId(openId === p.id ? null : p.id)} />
         ))}
       </div>
     </section>

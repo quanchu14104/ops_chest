@@ -1,9 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getUser, openPdf, type Proposal } from "../api";
 import ExpiryPhoto from "../components/ExpiryPhoto";
 import SupplierReturns from "../components/SupplierReturns";
+import DateField from "../components/ui/DateField";
+import EmptyState, { Skeleton } from "../components/ui/EmptyState";
+import PageHeader from "../components/ui/PageHeader";
+import Segmented from "../components/ui/Segmented";
+import { CardTitle, Chips, Icon, Stepper, Switch } from "../components/ui/controls";
 import { dateVi, money, num } from "../format";
 
 type PO = { id: number; code: string; supplier: string; status: string; order_date: string; expected_date: string; total_value: number; proposal_id: number | null; has_pdf: boolean; overdue_days: number };
@@ -17,11 +22,16 @@ type PODetail = PO & {
 type ReceiveResult = { code: string; lots: { sku: string; qty: number }[]; shortages: { sku: string; name: string; ordered: number; short: number }[]; warnings: string[] };
 type Supplier = { code: string; name: string };
 
+export type { PO };
 const PO_STATUS: Record<string, string> = { SENT: "Chờ giao", RECEIVED: "Đã nhận", CANCELLED: "Đã huỷ" };
 const PO_BADGE: Record<string, string> = { SENT: "PENDING", RECEIVED: "EXECUTED", CANCELLED: "REJECTED" };
 
-function CancelPO({ po, onDone }: { po: PO; onDone: () => void }) {
+// Lý do huỷ hay gặp: bấm chip là xong
+const CANCEL_REASONS = ["NCC báo không giao được", "Quá hạn giao, không chờ nữa", "Đặt nhầm"];
+
+export function CancelPO({ po, onDone }: { po: Pick<PO, "id" | "code" | "supplier">; onDone: () => void }) {
   const [reason, setReason] = useState("");
+  const [pick, setPick] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const m = useMutation({
     mutationFn: () => api(`/purchase-orders/${po.id}/cancel`, { method: "POST", body: { reason } }),
@@ -29,13 +39,17 @@ function CancelPO({ po, onDone }: { po: PO; onDone: () => void }) {
     onError: (e: Error) => setErr(e.message),
   });
   return (
-    <div className="card" style={{ marginTop: 12 }}>
-      <h2>Huỷ đơn {po.code} · {po.supplier}</h2>
-      <p className="small secondary">Chỉ huỷ khi nhà cung cấp không giao nữa. Hệ thống không tự báo cho nhà cung cấp, anh/chị cần báo trực tiếp.</p>
-      <input style={{ width: "100%" }} autoFocus placeholder="Lý do huỷ (bắt buộc)" value={reason} onChange={(e) => setReason(e.target.value)} />
-      {err && <div className="alert error" style={{ marginTop: 8 }}>{err}</div>}
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="danger" disabled={!reason.trim() || m.isPending} onClick={() => m.mutate()}>Xác nhận huỷ đơn</button>
+    <div className="card mt-3">
+      <CardTitle title={`Huỷ đơn ${po.code} · ${po.supplier}`}
+        info="Chỉ huỷ khi nhà cung cấp không giao nữa. Hệ thống không tự báo cho nhà cung cấp, anh/chị cần báo trực tiếp." />
+      <Chips label="Lý do huỷ" value={pick} onChange={(v) => { setPick(v); setReason(v === "__other__" ? "" : v); }}
+        options={[...CANCEL_REASONS.map((r) => ({ value: r, label: r, tone: "bad" as const })), { value: "__other__", label: "Khác…", tone: "bad" as const }]} />
+      {pick === "__other__" && (
+        <input className="mt-2" style={{ width: "100%" }} autoFocus placeholder="Lý do huỷ" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Lý do huỷ" />
+      )}
+      {err && <div className="alert error mt-2">{err}</div>}
+      <div className="row mt-3">
+        <button className="danger-solid" disabled={!reason.trim() || m.isPending} onClick={() => m.mutate()}><Icon name="x" /> Xác nhận huỷ đơn</button>
         <button className="ghost" onClick={onDone}>Đóng</button>
       </div>
     </div>
@@ -45,12 +59,17 @@ function CancelPO({ po, onDone }: { po: PO; onDone: () => void }) {
 type LotIn = { qty: string; exp: string };
 type LineIn = { lots: LotIn[]; rejected: string; reason: string; cost: string; acceptShort: boolean; acceptOver: boolean };
 
-function Receive({ id, onDone }: { id: number; onDone: () => void }) {
+export function Receive({ id, onDone }: { id: number; onDone: () => void }) {
   const q = useQuery({ queryKey: ["po", id], queryFn: () => api<PODetail>(`/purchase-orders/${id}`) });
   const [inp, setInp] = useState<Record<number, LineIn>>({});
   const [err, setErr] = useState<string | null>(null);
   const [res, setRes] = useState<ReceiveResult | null>(null);
   const isManager = getUser()?.role === "manager";
+  // Form nhận hàng mở dưới bảng đơn: cuộn tới để người nhận thấy ngay
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (q.data) ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [q.data]);
   const get = (l: PODetail["lines"][number]): LineIn =>
     inp[l.line_id] ?? { lots: [{ qty: String(l.qty), exp: "" }], rejected: "", reason: "", cost: "", acceptShort: false, acceptOver: false };
   const set = (lineId: number, v: LineIn) => setInp((cur) => ({ ...cur, [lineId]: v }));
@@ -76,11 +95,11 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
     onSuccess: (r) => setRes(r),
     onError: (e: Error) => setErr(e.message),
   });
-  if (!q.data) return <p className="muted">Đang tải…</p>;
+  if (!q.data) return <div className="card mt-3"><Skeleton rows={5} /></div>;
   const d = q.data;
   if (res)
     return (
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card mt-3" ref={ref}>
         <h2>Đã nhận hàng {res.code}</h2>
         <p>Ghi {res.lots.length} lô vào kho.</p>
         {res.shortages.length > 0 && (
@@ -88,18 +107,14 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
             Giao thiếu: {res.shortages.map((s) => `${s.name} thiếu ${s.short}/${s.ordered}`).join("; ")}. Lần đặt sau hệ thống tự tính lại, không tạo đơn bù.
           </div>
         )}
-        {res.warnings.map((w) => <div key={w} className="alert warn" style={{ marginTop: 6 }}>⚠ {w}</div>)}
-        <div className="row" style={{ marginTop: 10 }}><button onClick={onDone}>Đóng</button></div>
+        {res.warnings.map((w) => <div key={w} className="alert warn mt-1">⚠ {w}</div>)}
+        <div className="row mt-3"><button onClick={onDone}>Đóng</button></div>
       </div>
     );
   return (
-    <div className="card" style={{ marginTop: 12 }}>
-      <h2>Nhận hàng {d.code} · {d.supplier}</h2>
-      <p className="small secondary">
-        Bắt buộc ghi <b>hạn sử dụng in trên bao bì</b> cho từng lô; một thùng trộn nhiều HSD thì bấm <b>+ HSD</b> để tách lô.
-        Hàng móp, date ngắn, sai hàng thì <b>từ chối tại cửa</b>: sau khi ký nhận, rủi ro thuộc về cửa hàng.
-        Lô còn ít hạn hơn chuẩn nhận hàng hoặc giao dư nhiều chỉ Store Manager được xác nhận nhận.
-      </p>
+    <div className="card mt-3" ref={ref}>
+      <CardTitle title={`Nhận hàng ${d.code} · ${d.supplier}`}
+        info="Bắt buộc ghi hạn sử dụng in trên bao bì cho từng lô; một thùng trộn nhiều HSD thì bấm + để tách lô. Hàng móp, date ngắn, sai hàng thì từ chối tại cửa: sau khi ký nhận, rủi ro thuộc về cửa hàng. Lô còn ít hạn hơn chuẩn hoặc giao dư nhiều chỉ Store Manager được xác nhận nhận." />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Hàng</th><th className="num">Đặt</th><th>Nhận: số lượng · HSD</th><th>Từ chối</th><th className="num">Giá hóa đơn</th></tr></thead>
@@ -109,35 +124,36 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
               const setLot = (i: number, patch: Partial<LotIn>) => set(l.line_id, { ...v, lots: v.lots.map((y, j) => (j === i ? { ...y, ...patch } : y)) });
               return (
                 <tr key={l.line_id}>
-                  <td>{l.sku} · {l.name}<div className="muted small">Chuẩn: còn ≥ {l.min_remaining_days}/{l.shelf_life_days} ngày</div></td>
+                  <td title={`${l.sku} · chuẩn nhận: còn ≥ ${l.min_remaining_days}/${l.shelf_life_days} ngày`}>{l.name}</td>
                   <td className="num">{num(l.qty)}</td>
                   <td>
                     {v.lots.map((x, i) => (
-                      <div className="row" key={i} style={{ marginBottom: 4, flexWrap: "nowrap" }}>
-                        <input className="qty" type="number" min={0} value={x.qty} aria-label={`Số lượng lô ${i + 1} ${l.name}`} onChange={(e) => setLot(i, { qty: e.target.value })} />
-                        <input type="date" value={x.exp} aria-label={`HSD lô ${i + 1} ${l.name}`} onChange={(e) => setLot(i, { exp: e.target.value })} />
+                      <div className="row lot-in" key={i}>
+                        <Stepper value={x.qty === "" ? "" : Number(x.qty)} step={l.pack_size || 1} label={`Số lượng lô ${i + 1} ${l.name}`}
+                          onChange={(n) => setLot(i, { qty: n === "" ? "" : String(n) })} />
+                        <DateField value={x.exp} label={`HSD lô ${i + 1} ${l.name}`} onChange={(iso) => setLot(i, { exp: iso })} suggest={l.default_expiry} />
                         <ExpiryPhoto sku={l.sku} onRead={(iso) => setLot(i, { exp: iso })} />
                         {v.lots.length > 1 && (
-                          <button className="sm ghost" aria-label="Bỏ lô" onClick={() => set(l.line_id, { ...v, lots: v.lots.filter((_, j) => j !== i) })}>✕</button>
+                          <button className="icon sm ghost" aria-label="Bỏ lô" title="Bỏ lô" onClick={() => set(l.line_id, { ...v, lots: v.lots.filter((_, j) => j !== i) })}><Icon name="x" /></button>
                         )}
                       </div>
                     ))}
-                    <button className="sm ghost" onClick={() => set(l.line_id, { ...v, lots: [...v.lots, { qty: "0", exp: "" }] })}>+ HSD</button>
+                    <button className="sm ghost" title="Tách lô theo HSD khác" onClick={() => set(l.line_id, { ...v, lots: [...v.lots, { qty: "0", exp: "" }] })}><Icon name="plus" /> HSD</button>
                     {isManager && (
-                      <div className="small">
-                        <label><input type="checkbox" checked={v.acceptShort} onChange={(e) => set(l.line_id, { ...v, acceptShort: e.target.checked })} /> SM xác nhận nhận lô date ngắn</label>{" "}
-                        <label><input type="checkbox" checked={v.acceptOver} onChange={(e) => set(l.line_id, { ...v, acceptOver: e.target.checked })} /> SM xác nhận nhận dư (quá {l.over_tolerance})</label>
+                      <div className="row mt-1">
+                        <Switch checked={v.acceptShort} onChange={(c) => set(l.line_id, { ...v, acceptShort: c })} label="Nhận date ngắn" />
+                        <Switch checked={v.acceptOver} onChange={(c) => set(l.line_id, { ...v, acceptOver: c })} label={`Nhận dư (>${l.over_tolerance})`} />
                       </div>
                     )}
                   </td>
                   <td>
-                    <input className="qty" type="number" min={0} placeholder="0" value={v.rejected} aria-label={`Số từ chối ${l.name}`}
-                      onChange={(e) => set(l.line_id, { ...v, rejected: e.target.value })} />
+                    <Stepper value={v.rejected === "" ? "" : Number(v.rejected)} placeholder="0" label={`Số từ chối ${l.name}`}
+                      onChange={(n) => set(l.line_id, { ...v, rejected: n === "" || n === 0 ? "" : String(n) })} />
                     {Number(v.rejected) > 0 && (
-                      <select value={v.reason} onChange={(e) => set(l.line_id, { ...v, reason: e.target.value })} aria-label={`Lý do từ chối ${l.name}`}>
-                        <option value="">Lý do…</option>
-                        {Object.entries(d.reject_reasons).map(([k, t]) => <option key={k} value={k}>{t}</option>)}
-                      </select>
+                      <div className="mt-1">
+                        <Chips label={`Lý do từ chối ${l.name}`} value={v.reason} onChange={(r) => set(l.line_id, { ...v, reason: r })}
+                          options={Object.entries(d.reject_reasons).map(([k, t]) => ({ value: k, label: t, tone: "bad" as const }))} />
+                      </div>
                     )}
                   </td>
                   <td className="num">
@@ -150,9 +166,9 @@ function Receive({ id, onDone }: { id: number; onDone: () => void }) {
           </tbody>
         </table>
       </div>
-      {err && <div className="alert error" style={{ marginTop: 8 }}>{err}</div>}
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="primary" disabled={m.isPending} onClick={() => { setErr(null); m.mutate(); }}>Xác nhận nhận hàng</button>
+      {err && <div className="alert error mt-2">{err}</div>}
+      <div className="row mt-3">
+        <button className="ok lg" disabled={m.isPending} onClick={() => { setErr(null); m.mutate(); }}><Icon name="check" /> Xác nhận nhận hàng</button>
         <button className="ghost" onClick={onDone}>Đóng</button>
       </div>
     </div>
@@ -176,29 +192,21 @@ export default function Orders() {
   });
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Đặt &amp; nhận hàng</h1>
-          <div className="muted">Đơn chỉ được gửi sau khi Store Manager duyệt đề xuất. Nhận hàng tại đây để ghi lô và HSD.</div>
-        </div>
-      </div>
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h2>Đề xuất đặt hàng ngoài lịch</h2>
+      <PageHeader title="Đặt & nhận hàng" desc="Đơn chỉ được gửi sau khi Store Manager duyệt đề xuất. Nhận hàng tại đây để ghi lô và HSD." />
+      <div className="card tight mb-4">
         <div className="row">
-          <select value={sup} onChange={(e) => setSup(e.target.value)} aria-label="Nhà cung cấp">
+          <b>Đặt ngoài lịch</b>
+          <select className="grow" style={{ maxWidth: 360 }} value={sup} onChange={(e) => setSup(e.target.value)} aria-label="Nhà cung cấp">
             <option value="">Chọn nhà cung cấp…</option>
-            {sups.data?.map((s) => <option key={s.code} value={s.code}>{s.code} · {s.name}</option>)}
+            {sups.data?.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
           </select>
-          <button disabled={!sup || create.isPending} onClick={() => create.mutate()}>{create.isPending ? "Đang tính…" : "Tính & tạo đề xuất"}</button>
+          <button className="primary" disabled={!sup || create.isPending} onClick={() => create.mutate()}><Icon name="plus" /> {create.isPending ? "Đang tính…" : "Tạo đề xuất"}</button>
         </div>
-        {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} style={{ marginTop: 10 }}>{msg.text} {msg.ok && <Link to="/approvals">Mở hộp duyệt →</Link>}</div>}
+        {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text} {msg.ok && <Link to="/approvals">Mở hộp duyệt →</Link>}</div>}
       </div>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <div className="seg">
-          {Object.entries(PO_STATUS).map(([k, l]) => (
-            <button key={k} className={status === k ? "on" : ""} onClick={() => setStatus(k)}>{l}</button>
-          ))}
-        </div>
+      <div className="row mb-3">
+        <Segmented label="Trạng thái đơn" value={status} onChange={setStatus}
+          options={Object.entries(PO_STATUS).map(([value, label]) => ({ value, label }))} />
       </div>
       <div className="card">
         <div className="table-wrap">
@@ -207,22 +215,23 @@ export default function Orders() {
             <tbody>
               {pos.data?.map((po) => (
                 <tr key={po.id}>
-                  <td>{po.code}{po.proposal_id && <span className="badge accent" style={{ marginLeft: 6 }}>từ đề xuất #{po.proposal_id}</span>}</td>
+                  <td>{po.code}{po.proposal_id && <span className="badges"><span className="badge accent">từ đề xuất #{po.proposal_id}</span></span>}</td>
                   <td>{po.supplier}</td>
                   <td>{dateVi(po.order_date)}</td>
-                  <td>{dateVi(po.expected_date)}{po.overdue_days > 0 && <span className="badge st-FAILED" style={{ marginLeft: 6 }}>trễ {po.overdue_days} ngày</span>}</td>
+                  <td>{dateVi(po.expected_date)}{po.overdue_days > 0 && <span className="badges"><span className="badge st-FAILED">trễ {po.overdue_days} ngày</span></span>}</td>
                   <td className="num">{money(po.total_value)}</td>
                   <td><span className={`badge st-${PO_BADGE[po.status]}`}><span className="dot" />{PO_STATUS[po.status]}</span></td>
                   <td className="row" style={{ justifyContent: "flex-end" }}>
                     {po.has_pdf && <button className="sm" onClick={() => openPdf(po.id).catch((e) => alert(e.message))}>PDF</button>}
-                    {po.status === "SENT" && <button className="sm" onClick={() => { setCancelling(null); setReceiving(po.id); }}>Nhận hàng</button>}
+                    {po.status === "SENT" && <button className="sm ok" onClick={() => { setCancelling(null); setReceiving(po.id); }}><Icon name="truck" /> Nhận hàng</button>}
                     {po.status === "SENT" && isManager && <button className="sm danger" onClick={() => { setReceiving(null); setCancelling(po); }}>Huỷ đơn</button>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {pos.data?.length === 0 && <p className="muted">Không có đơn nào.</p>}
+          {pos.isLoading && <Skeleton rows={4} />}
+          {pos.data?.length === 0 && <EmptyState title={`Không có đơn ${PO_STATUS[status].toLowerCase()}`}>Đơn đặt hàng xuất hiện ở đây sau khi Store Manager duyệt đề xuất.</EmptyState>}
         </div>
       </div>
       {cancelling && <CancelPO key={cancelling.id} po={cancelling} onDone={() => { setCancelling(null); qc.invalidateQueries(); }} />}

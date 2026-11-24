@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { api, streamChat, type ChartSpec, type ChatEvent, type Proposal, type TurnMetrics, type WidgetSpec } from "../api";
+import { api, runCommand, streamChat, type ChartSpec, type ChatEvent, type Proposal, type TurnMetrics, type WidgetSpec } from "../api";
 import ChartView from "../components/ChartView";
 import ProposalCard, { ASK_EVENT, type AskDetail } from "../components/ProposalCard";
 import Briefing from "../components/Briefing";
 import Widget from "../components/Widgets";
+import { TaskMenu, openTask } from "../components/Tasks";
 
 type ToolCall = { id: string; name: string; ok?: boolean; error?: string | null };
 type Block =
@@ -46,6 +47,20 @@ const TOOL_LABEL: Record<string, string> = {
   list_proposals: "Xem đề xuất",
   get_kpi_dashboard: "Xem KPI",
   open_receive_form: "Mở form nhận hàng",
+  open_approval_inbox: "Mở thẻ duyệt",
+  open_expiring_panel: "Mở thẻ hàng cận date",
+  open_purchase_orders: "Mở đơn chờ giao",
+  open_supplier_returns: "Mở phiếu trả NCC",
+  open_stock_count_form: "Mở phiếu kiểm kê",
+  open_date_check_form: "Mở phiếu kiểm date",
+  open_pull_form: "Mở phiếu rút kệ",
+  list_supplier_returns: "Xem phiếu trả NCC",
+  get_supplier_scorecard: "Xem điểm NCC",
+  propose_write_off: "Tạo đề xuất báo hủy",
+  propose_demand_hypothesis: "Ghi giả thuyết nhu cầu",
+  list_demand_hypotheses: "Xem giả thuyết nhu cầu",
+  get_order_edit_patterns: "Xem thói quen sửa đơn",
+  propose_order_adjustment: "Đề xuất hệ số đặt hàng",
   build_chart: "Vẽ biểu đồ",
   propose_purchase_order: "Tạo đề xuất đặt hàng",
   propose_markdown: "Tạo đề xuất giảm giá",
@@ -55,15 +70,8 @@ const TOOL_LABEL: Record<string, string> = {
   revise_proposal: "Sửa đề xuất (tạo bản mới)",
 };
 
-// `quick` = khóa truy vấn nhanh (/chat/quick/<khóa>): dùng làm dự phòng khi LLM lỗi, không cần LLM
-const SUGGESTIONS: { text: string; quick?: string }[] = [
-  { text: "Tình hình kho hôm nay thế nào? Có gì cần tôi xử lý không?", quick: "inventory" },
-  { text: "Vẽ biểu đồ nhập/xuất kho nhóm hàng bán chạy nhất 30 ngày qua theo tuần" },
-  { text: "Hàng nào sắp hết hạn trong tuần này, nên xử lý thế nào?", quick: "expiring7" },
-  { text: "Chi phí hàng hủy tháng vừa rồi nằm ở nhóm nào nhiều nhất?", quick: "kpi" },
-  { text: "Lên đơn đặt hàng cho nhà cung cấp NCC01", quick: "reorder:NCC01" },
-  { text: "Có mặt hàng nào nên ngừng nhập không? Giải thích lý do" },
-];
+// Menu Công việc và popup từng việc: components/Tasks.tsx. Sự kiện dưới đây vẫn cho phép chèn thẻ vào luồng chat.
+export const COMMAND_EVENT = "opschest:command";
 
 // Bo truong `type` cua su kien SSE, phan con lai la WidgetSpec
 function widgetSpec(e: { type: "widget" } & WidgetSpec): WidgetSpec {
@@ -86,9 +94,11 @@ function fromServer(msgs: ServerMsg[]): Turn[] {
       turns.push(cur);
     }
     if (m.role === "assistant") {
-      if (m.name) cur.model = m.name;
+      // Lệnh nhanh (name = "command") không qua LLM: không hiện tên model hay chip "đang tra dữ liệu"
+      const isCommand = m.name === "command";
+      if (m.name && !isCommand) cur.model = m.name;
       if (m.content) cur.blocks.push({ kind: "text", text: m.content });
-      if (m.tool_calls.length) {
+      if (m.tool_calls.length && !isCommand) {
         const calls = m.tool_calls.map((t) => (toolIndex[t.id] = { id: t.id, name: t.name }));
         cur.blocks.push({ kind: "tools", calls });
       }
@@ -344,6 +354,44 @@ export default function Chat({ home = false }: { home?: boolean }) {
     }
   };
 
+  // Lệnh nhanh: thẻ hiện ngay (không chờ LLM) và được backend ghi vào hội thoại như một lượt tra dữ liệu
+  const command = async (key: string) => {
+    if (busy) return;
+    setBusy(true);
+    let id = sessionId;
+    try {
+      if (!id) {
+        const s = await api<{ id: number }>("/chat/sessions", { method: "POST", body: {} });
+        id = s.id;
+        nav(`/chat/${id}`, { replace: true });
+      }
+      const r = await runCommand(id, key);
+      const blocks: Block[] = [];
+      for (const e of r.ui) {
+        if (e.type === "widget") blocks.push({ kind: "widget", spec: widgetSpec(e) });
+        else if (e.type === "proposal") blocks.push({ kind: "proposal", proposal: e.proposal });
+        else if (e.type === "chart") blocks.push({ kind: "chart", spec: e.spec });
+      }
+      if (r.error && !blocks.length) blocks.push({ kind: "text", text: `⚠️ ${r.error}` });
+      setTurns((t) => [...t, { role: "user", blocks: [{ kind: "text", text: `▸ ${r.label}` }] }, { role: "assistant", blocks }]);
+    } catch (e) {
+      setTurns((t) => [...t, { role: "assistant", blocks: [{ kind: "text", text: `⚠️ ${(e as Error).message}` }] }]);
+    } finally {
+      setBusy(false);
+      qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+      qc.invalidateQueries({ queryKey: ["pending-count"] });
+      qc.invalidateQueries({ queryKey: ["proposals", "inbox"] });
+    }
+  };
+  // Nơi khác (bản tin, thẻ) mở việc trong chat qua sự kiện này
+  const commandRef = useRef(command);
+  commandRef.current = command;
+  useEffect(() => {
+    const on = (e: Event) => commandRef.current((e as CustomEvent<string>).detail);
+    window.addEventListener(COMMAND_EVENT, on);
+    return () => window.removeEventListener(COMMAND_EVENT, on);
+  }, []);
+
   const del = async (id: number) => {
     await api(`/chat/sessions/${id}`, { method: "DELETE" });
     qc.invalidateQueries({ queryKey: ["chat-sessions"] });
@@ -377,7 +425,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
       </div>
       <div className="messages">
         <div className="col">
-          {turns.length === 0 && home && <Briefing onAsk={send} disabled={busy} />}
+          {turns.length === 0 && home && <Briefing onAsk={send} onCommand={openTask} disabled={busy} />}
           {turns.length === 0 && !home && (
             <div className="hello">
               <h1>Ops Chest có thể giúp gì hôm nay?</h1>
@@ -387,7 +435,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
           <div className="thread">
             {turns.map((t, i) =>
               t.role === "user" ? (
-                <div key={i} className="msg user">
+                <div key={i} className={`msg user ${(t.blocks[0] as { text: string }).text.startsWith("▸ ") ? "cmd" : ""}`}>
                   {(t.blocks[0] as { text: string }).text}
                 </div>
               ) : (
@@ -400,15 +448,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
       </div>
       <div className="composer-wrap">
         <div className="composer-in">
-          {turns.length === 0 && (
-            <div className="suggestions">
-              {SUGGESTIONS.map((s) => (
-                <button key={s.text} onClick={() => send(s.text, s.quick)} disabled={busy} title={s.text}>
-                  {s.text}
-                </button>
-              ))}
-            </div>
-          )}
+          <TaskMenu />
           <form
             className="composer"
             onSubmit={(e) => {

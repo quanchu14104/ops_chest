@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, getUser } from "../api";
 import { dateVi, money, num } from "../format";
+import { CardTitle } from "./ui/controls";
 
 export type ReturnItem = { lot_id: number; sku: string; name: string; qty: number; unit_cost: number; expiry_date: string; picked_qty?: number };
 export type SupplierReturn = {
@@ -100,17 +101,15 @@ function ReturnRow({ r }: { r: SupplierReturn }) {
 export default function SupplierReturns() {
   const q = useQuery({ queryKey: ["supplier-returns"], queryFn: () => api<SupplierReturn[]>("/supplier-returns") });
   return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <h2>Phiếu trả nhà cung cấp</h2>
-      <p className="small secondary">
-        Duyệt đề xuất trả hàng chỉ tách hàng khỏi kệ và gửi email. Tiền hoàn hoặc hàng đổi được ghi khi NCC thực lấy hàng; trong lúc chờ, hàng vẫn nằm ở cửa hàng.
-      </p>
+    <div className="card mt-3">
+      <CardTitle title="Phiếu trả nhà cung cấp"
+        info="Duyệt đề xuất trả hàng chỉ tách hàng khỏi kệ và gửi email. Tiền hoàn hoặc hàng đổi được ghi khi NCC thực lấy hàng; trong lúc chờ, hàng vẫn nằm ở cửa hàng." />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Phiếu</th><th>NCC</th><th>Hình thức</th><th>Hàng</th><th className="num">Hoàn</th><th>Trạng thái</th><th /></tr></thead>
           <tbody>{q.data?.map((r) => <ReturnRow key={r.id} r={r} />)}</tbody>
         </table>
-        {q.data?.length === 0 && <p className="muted">Chưa có phiếu trả nào.</p>}
+        {q.data?.length === 0 && <p className="muted small">Chưa có phiếu trả.</p>}
       </div>
     </div>
   );

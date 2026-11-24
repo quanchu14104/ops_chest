@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type CountLine, type Proposal } from "../api";
+import { Icon, InfoTip, Stepper } from "./ui/controls";
 
 // Đếm mù: phiếu không hiện số trên sổ. Nhìn thấy số thì người đếm có xu hướng đếm cho khớp.
 export default function StockCountForm({ lines, title, note }: { lines: (CountLine & { reason?: string })[]; title: string; note?: string | null }) {
@@ -28,9 +29,9 @@ export default function StockCountForm({ lines, title, note }: { lines: (CountLi
   });
   return (
     <div className="card tight widget">
-      <div className="widget-title">{title}</div>
+      <div className="widget-title row">{title}{note && <InfoTip text={note} />}</div>
       <div className="widget-scroll">
-        <table>
+        <table className="stack-sm">
           <thead>
             <tr>
               <th>Hàng</th>
@@ -41,28 +42,21 @@ export default function StockCountForm({ lines, title, note }: { lines: (CountLi
           <tbody>
             {lines.map((l) => (
               <tr key={l.sku}>
-                <td>{l.sku} · {l.name}{l.reason && <div className="muted small">{l.reason}</div>}</td>
-                <td className="muted small">{l.category}</td>
-                <td className="num">
-                  <input
-                    className="qty"
-                    type="number"
-                    min={0}
-                    value={counts[l.sku] ?? ""}
-                    onChange={(e) => setCounts({ ...counts, [l.sku]: e.target.value })}
-                    aria-label={`Số đếm ${l.name}`}
-                  />
+                <td className="cell-main" title={l.sku}>{l.name}{l.reason && <span className="badges"><InfoTip text={l.reason} /></span>}</td>
+                <td data-label="Nhóm" className="muted small">{l.category}</td>
+                <td data-label="Số đếm" className="num">
+                  <Stepper value={(counts[l.sku] ?? "") === "" ? "" : Number(counts[l.sku])} placeholder="–" label={`Số đếm ${l.name}`}
+                    onChange={(v) => setCounts({ ...counts, [l.sku]: v === "" ? "" : String(v) })} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {note && <div className="small muted" style={{ marginTop: 6 }}>{note}</div>}
-      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} style={{ marginTop: 8 }}>{msg.text}</div>}
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="primary" disabled={filled.length === 0 || m.isPending} onClick={() => m.mutate()}>
-          {m.isPending ? "Đang ghi…" : `Xác nhận số đếm (${filled.length})`}
+      {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text}</div>}
+      <div className="row mt-3">
+        <button className="primary lg" disabled={filled.length === 0 || m.isPending} onClick={() => m.mutate()}>
+          <Icon name="check" /> {m.isPending ? "Đang ghi…" : `Xác nhận ${filled.length} mặt hàng`}
         </button>
       </div>
     </div>
