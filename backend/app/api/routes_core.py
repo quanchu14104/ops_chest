@@ -76,7 +76,7 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user))
 
 @router.get("/briefing")
 def briefing(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return briefing_svc.build(db)
+    return briefing_svc.build(db, role=user.role)
 
 
 @router.get("/inventory/summary")

@@ -57,8 +57,11 @@ def test_kpi_tool_emits_comparison(db):
 def test_search_and_list_proposals_emit_tables(db):
     s = toolmod.REGISTRY["search_products"].fn(_ctx(db), query="Coca")
     assert _widgets(s) and _widgets(s)[0]["kind"] == "table"
+    # De xuat cho duyet hien the duyet song (duyet ngay trong chat); trang thai khac van la bang
     p = toolmod.REGISTRY["list_proposals"].fn(_ctx(db), status="PENDING")
-    assert _widgets(p)[0]["kind"] == "table"
+    assert _widgets(p)[0]["kind"] == "panel" and _widgets(p)[0]["panel"] == "inbox"
+    done = toolmod.REGISTRY["list_proposals"].fn(_ctx(db), status="EXECUTED")
+    assert _widgets(done)[0]["kind"] == "table"
 
 
 def test_widget_never_sent_to_llm():

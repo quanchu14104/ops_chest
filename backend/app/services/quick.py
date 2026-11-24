@@ -21,6 +21,9 @@ QUICK: dict[str, tuple[str, str, dict]] = {
     "pending": ("Đề xuất đang chờ duyệt", "list_proposals", {"status": "PENDING"}),
     "pull": ("Rút kệ cuối ngày", "open_pull_form", {}),
     "date_check": ("Kiểm date hôm nay", "open_date_check_form", {}),
+    "count_due": ("Kiểm kê đến lịch", "open_stock_count_form", {"due": True}),
+    "oos": ("Mặt hàng đang hết", "search_products", {"out_of_stock": True, "limit": 20}),
+    "hypotheses": ("Giả thuyết nhu cầu", "list_demand_hypotheses", {}),
 }
 REORDER_PREFIX = "reorder:"
 

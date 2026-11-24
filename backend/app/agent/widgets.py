@@ -39,5 +39,12 @@ def form(form_id: str, title: str, lines: list[dict], submit: dict, *, note: str
             "lines": lines, "submit": submit, "note": note}
 
 
+def panel(panel_id: str, title: str, params: dict | None = None) -> dict:
+    """The tac vu SONG trong chat: UI tu tai du lieu hien tai qua REST (co kiem quyen) va hien nut thao tac
+    (duyet, chon lo, nhan hang...). Khac bang/form: khong chup so lieu luc tao, nen mo lai hoi thoai cu
+    van thao tac tren so lieu dung. panel_id: inbox | lots | orders | returns."""
+    return {"type": "widget", "kind": "panel", "panel": panel_id, "title": title, "params": params or {}}
+
+
 def kpi(label: str, value: Any, fmt: str = "num", prev: Any = None, lower_is_better: bool = False) -> dict:
     return {"label": label, "value": value, "fmt": fmt, "prev": prev, "lower_is_better": lower_is_better}

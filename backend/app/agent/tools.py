@@ -282,10 +282,14 @@ def _list_props(ctx: ToolContext, status: str = "PENDING", type: str | None = No
     rows = [{"id": p.id, "type": p.type, "status": p.status, "title": p.title, "est_value": p.est_value,
              "created_at": p.created_at.isoformat(), "decided_by": p.decided_by,
              "decision_note": p.decision_note} for p in ctx.db.scalars(q)]
-    ui = [W.table(f"Đề xuất ({status.upper()})", [
-        W.col("id", "#", "num"), W.col("type", "Loại", "ptype"), W.col("title", "Nội dung"),
-        W.col("est_value", "Giá trị", "money"), W.col("created_at", "Tạo lúc", "date")], rows,
-        empty="Không có đề xuất nào.")]
+    if status.upper() == "PENDING":
+        # De xuat cho duyet: hien the duyet ngay trong chat thay vi bang chi de doc
+        ui = [W.panel("inbox", "Đề xuất chờ duyệt", {"type": type.upper() if type else None})]
+    else:
+        ui = [W.table(f"Đề xuất ({status.upper()})", [
+            W.col("id", "#", "num"), W.col("type", "Loại", "ptype"), W.col("title", "Nội dung"),
+            W.col("est_value", "Giá trị", "money"), W.col("created_at", "Tạo lúc", "date")], rows,
+            empty="Không có đề xuất nào.")]
     return ToolOutput(rows, ui=ui)
 
 
@@ -389,6 +393,53 @@ def _open_pull_form(ctx: ToolContext) -> ToolOutput:
     return ToolOutput({"form_shown": True, "lots": len(lines),
                        "message": "Đã hiện danh sách rút kệ. Nhân viên ghi số thực gỡ rồi bấm xác nhận; "
                                   "bút toán ghi hủy vẫn chờ Store Manager duyệt."}, ui=[form])
+
+
+# ---------------- THE TAC VU (song) ----------------
+# Cac tool duoi day CHI hien the trong chat; moi thao tac that (duyet, tao de xuat tu lo da chon, nhan hang,
+# huy don, xac nhan NCC lay hang) do nguoi dung bam trong the, di qua REST co kiem quyen.
+
+@tool("open_approval_inbox", "read", "Show the PENDING proposals as cards in the chat, where the manager approves, rejects or edits quantities. Use this whenever the user wants to see, review or approve proposals. This only displays them; nothing is approved.",
+      {"type": {"type": "string", "enum": ["PURCHASE_ORDER", "MARKDOWN", "RETURN", "DISPOSE", "DELIST",
+                                          "DEMAND_HYPOTHESIS", "ORDER_ADJUST", "STOCK_ADJUST"]}})
+def _open_inbox(ctx: ToolContext, type: str | None = None) -> ToolOutput:
+    q = select(Proposal).where(Proposal.status.in_(("PENDING", "FAILED"))).order_by(Proposal.id.desc())
+    if type:
+        q = q.where(Proposal.type == type.upper())
+    rows = [{"id": p.id, "type": p.type, "title": p.title, "est_value": p.est_value} for p in ctx.db.scalars(q)]
+    return ToolOutput({"cards_shown": len(rows), "proposals": rows[:20],
+                       "message": "Đã hiện thẻ duyệt trong chat. Store Manager tự bấm Duyệt/Từ chối."},
+                      ui=[W.panel("inbox", "Đề xuất chờ duyệt", {"type": type.upper() if type else None})])
+
+
+@tool("open_expiring_panel", "read", "Show near-expiry lots as a card in the chat with checkboxes: the user picks lots and presses Markdown / Return to supplier / Write-off to create proposals. Use this when the user wants to handle near-expiry stock. This only displays the card.",
+      {"days": {"type": "integer", "default": 3}})
+def _open_expiring(ctx: ToolContext, days: int = 3) -> ToolOutput:
+    days = max(0, min(int(days), 60))
+    r = inventory.expiring_lots(ctx.db, days=days, with_options=False)
+    risky = [l for l in r["lots"] if l["status"] != "OK"]
+    return ToolOutput({"lots_at_risk": len(risky), "value_at_risk": sum(l["value_at_risk"] for l in risky),
+                       "message": "Đã hiện thẻ chọn lô cận date trong chat; người dùng chọn lô rồi bấm tạo đề xuất."},
+                      ui=[W.panel("lots", f"Hàng cận date · {days} ngày", {"days": days})])
+
+
+@tool("open_purchase_orders", "read", "Show purchase orders awaiting delivery as a card in the chat, with a Receive button (opens the goods-receipt form) and, for the manager, Cancel. Use this when goods arrive or the user asks about orders in transit. This only displays the card.")
+def _open_pos(ctx: ToolContext) -> ToolOutput:
+    pos = ctx.db.scalars(select(PurchaseOrder).options(joinedload(PurchaseOrder.supplier))
+                         .where(PurchaseOrder.status == "SENT").order_by(PurchaseOrder.expected_date)).all()
+    rows = [{"code": p.code, "supplier": p.supplier.name, "expected_date": p.expected_date.isoformat()} for p in pos]
+    return ToolOutput({"orders_awaiting_delivery": rows,
+                       "message": "Đã hiện thẻ đơn chờ giao; người nhận bấm Nhận hàng trên đơn tương ứng."},
+                      ui=[W.panel("orders", "Đơn chờ giao")])
+
+
+@tool("open_supplier_returns", "read", "Show return-to-supplier slips as a card in the chat, with buttons to record supplier confirmation / pickup / refusal. This only displays the card.")
+def _open_returns(ctx: ToolContext) -> ToolOutput:
+    open_ = [returns.view(r) for r in ctx.db.scalars(
+        select(SupplierReturn).where(SupplierReturn.status.in_(("REQUESTED", "CONFIRMED"))).order_by(SupplierReturn.id))]
+    return ToolOutput({"open_slips": [{k: r[k] for k in ("code", "supplier", "status_label", "days_open")} for r in open_],
+                       "message": "Đã hiện thẻ phiếu trả NCC trong chat."},
+                      ui=[W.panel("returns", "Phiếu trả nhà cung cấp")])
 
 
 # ---------------- CHART ----------------

@@ -13,6 +13,7 @@ from app.auth import current_user
 from app.clock import now
 from app.db import SessionLocal, get_db
 from app.models import ChatSession, Proposal, User
+from app.services import commands as commands_svc
 from app.services import quick as quick_svc
 
 router = APIRouter(prefix="/api/chat")
@@ -93,6 +94,20 @@ def send(sid: int, body: MessageIn, db: Session = Depends(get_db), user: User = 
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+class CommandIn(BaseModel):
+    key: str
+
+
+@router.post("/sessions/{sid}/command")
+def command(sid: int, body: CommandIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Lenh nhanh: mo the tac vu trong chat ngay, khong qua LLM; ghi vao hoi thoai (xem services/commands.py)."""
+    s = _own(db, sid, user)
+    try:
+        return commands_svc.run(db, s, user, body.key.strip())
+    except commands_svc.CommandError as e:
+        raise HTTPException(404, str(e))
 
 
 @router.get("/quick/{key}")

@@ -15,20 +15,23 @@ from app.models import Proposal, PurchaseOrder, Supplier
 from app.services import datecheck, hypotheses, inventory, receiving, replenish, returns, shelf, stockcount
 
 
-def build(db: Session) -> dict:
+def build(db: Session, role: str = "manager") -> dict:
+    """`role`: chỉ Store Manager (manager) được duyệt, nên nhân viên thấy mục đề xuất ở dạng thông tin."""
     summ = inventory.inventory_summary(db)
     exp = inventory.expiring_lots(db, days=3, with_options=False)
     risky = [l for l in exp["lots"] if l["status"] != "OK"]
     expired = [l for l in risky if l["status"] == "EXPIRED"]
     pending = db.scalars(select(Proposal).where(Proposal.status == "PENDING")).all()
     due = replenish.suppliers_due(db)
+    is_manager = role == "manager"
 
     items: list[dict] = []
     if pending:
         total = sum(p.est_value or 0 for p in pending if p.type == "PURCHASE_ORDER")
         extra = f" (đơn đặt hàng tổng {vnd(total)})" if total else ""
-        items.append({"id": "pending", "level": "action", "count": len(pending),
-                      "text": f"{len(pending)} đề xuất đang chờ anh/chị duyệt{extra}",
+        who = "anh/chị" if is_manager else "Store Manager"
+        items.append({"id": "pending", "level": "action" if is_manager else "info", "count": len(pending),
+                      "text": f"{len(pending)} đề xuất đang chờ {who} duyệt{extra}",
                       "prompt": "Liệt kê các đề xuất đang chờ duyệt và cho biết cái nào nên xử lý trước", "quick": "pending"})
     if expired:
         items.append({"id": "expired", "level": "action", "count": len(expired),
@@ -74,13 +77,17 @@ def build(db: Session) -> dict:
                       "prompt": "Nhà cung cấp nào hay giao thiếu?"})
     near = [l for l in risky if l["status"] != "EXPIRED"]
     if near:
+        # Cộng đúng các lô được đếm (không lẫn lô trạng thái OK) để số lô và số tiền cùng một tập
+        at_risk = sum(l["value_at_risk"] for l in near)
         items.append({"id": "expiring", "level": "warn", "count": len(near),
-                      "text": f"{len(near)} lô có nguy cơ hủy trong 3 ngày tới, giá vốn rủi ro {vnd(exp['total_value_at_risk'])}",
+                      "text": f"{len(near)} lô có nguy cơ hủy trong 3 ngày tới, giá vốn rủi ro {vnd(at_risk)}",
                       "prompt": "Hàng nào sắp hết hạn trong 3 ngày tới, nên xử lý thế nào?", "quick": "expiring"})
     if due:
-        names = ", ".join(s.name for s in due)
-        items.append({"id": "due", "level": "info", "count": len(due),
-                      "text": f"Hôm nay đến lịch đặt hàng: {names}",
+        # Một dòng ngắn; tên từng NCC nằm trong `detail` để giao diện mở ra khi cần
+        text = (f"Hôm nay đến lịch đặt hàng: {due[0].name}" if len(due) == 1
+                else f"{len(due)} nhà cung cấp đến lịch đặt hàng hôm nay")
+        items.append({"id": "due", "level": "info", "count": len(due), "text": text,
+                      "detail": [s.name for s in due],
                       "prompt": f"Lên đơn đặt hàng cho {due[0].name}", "quick": f"reorder:{due[0].code}"})
     for s in db.scalars(select(Supplier).order_by(Supplier.code)):
         c = replenish.upcoming_closure(s, today(), within_days=14)
