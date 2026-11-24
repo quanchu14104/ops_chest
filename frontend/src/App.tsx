@@ -3,7 +3,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, clearSession, getToken, getUser, saveSession, type User } from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
-import InboxPanel from "./components/InboxPanel";
+import InboxPanel, { OPEN_INBOX_EVENT } from "./components/InboxPanel";
+import { TaskDialog } from "./components/Tasks";
+import { useMediaQuery, useStoredState } from "./components/ui/hooks";
 import { dateVi } from "./format";
 import Approvals from "./pages/Approvals";
 import Audit from "./pages/Audit";
@@ -45,14 +47,14 @@ export function Logo({ size = 40 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden>
       <defs>
-        <linearGradient id={g("bl")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0E4A5E" /><stop offset="1" stopColor="#033142" /></linearGradient>
-        <linearGradient id={g("br")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2A93A8" /><stop offset="1" stopColor="#16616F" /></linearGradient>
-        <linearGradient id={g("gl")} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#E1E5F2" /><stop offset="1" stopColor="#7FC4D6" /></linearGradient>
-        <linearGradient id={g("ll")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#5FB6C8" /><stop offset="1" stopColor="#1F7A8C" /></linearGradient>
-        <linearGradient id={g("lr")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#2E97AB" /><stop offset="1" stopColor="#145C6B" /></linearGradient>
-        <linearGradient id={g("lt")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#FFFFFF" /><stop offset="1" stopColor="#BFDBF7" /></linearGradient>
+        <linearGradient id={g("bl")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#16307a" /><stop offset="1" stopColor="#0a1a4a" /></linearGradient>
+        <linearGradient id={g("br")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#4f74f0" /><stop offset="1" stopColor="#1f4fe0" /></linearGradient>
+        <linearGradient id={g("gl")} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#E1E5F2" /><stop offset="1" stopColor="#8fa8ff" /></linearGradient>
+        <linearGradient id={g("ll")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#7391ff" /><stop offset="1" stopColor="#2f5ef0" /></linearGradient>
+        <linearGradient id={g("lr")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#4f74f0" /><stop offset="1" stopColor="#1a3fb8" /></linearGradient>
+        <linearGradient id={g("lt")} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#FFFFFF" /><stop offset="1" stopColor="#c7d4ff" /></linearGradient>
       </defs>
-      <ellipse cx="24" cy="45" rx="15" ry="2.6" fill="#022B3A" opacity=".28" />
+      <ellipse cx="24" cy="45" rx="15" ry="2.6" fill="#0c1424" opacity=".28" />
       <polygon points="10,27 24,34 24,44 10,37" fill={`url(#${g("bl")})`} />
       <polygon points="24,34 38,27 38,37 24,44" fill={`url(#${g("br")})`} />
       <polygon points="24,20 38,27 24,34 10,27" fill={`url(#${g("gl")})`} />
@@ -63,7 +65,7 @@ export function Logo({ size = 40 }: { size?: number }) {
       <polyline points="10,27 24,34 38,27" fill="none" stroke="#fff" strokeOpacity=".25" strokeWidth=".8" strokeLinejoin="round" />
       <polygon points="28,33.5 32,31.5 32,36.5 28,38.5" fill="#E1E5F2" />
       <polygon points="28,33.5 32,31.5 32,32.6 28,34.6" fill="#fff" opacity=".7" />
-      <path d="M24 1.5l1.1 2.6 2.6 1.1-2.6 1.1L24 8.9l-1.1-2.6-2.6-1.1 2.6-1.1z" fill="#BFDBF7" />
+      <path d="M24 1.5l1.1 2.6 2.6 1.1-2.6 1.1L24 8.9l-1.1-2.6-2.6-1.1 2.6-1.1z" fill="#c7d4ff" />
     </svg>
   );
 }
@@ -135,9 +137,24 @@ const ICON: Record<string, string> = {
   "/reports": "M4 20V10M10 20V4M16 20v-7M22 20H2",
   "/catalog": "M4 7h16v13H4zM8 7V4h8v3",
   "/audit": "M6 3h12v18H6zM9 8h6M9 12h6M9 16h3",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
+  down: "M6 9l6 6 6-6",
+  collapse: "M15 6l-6 6 6 6M20 4v16",
+  expand: "M9 6l6 6-6 6M4 4v16",
 };
 
-function NavIcon({ to }: { to: string }) {
+// Chat là nơi làm mọi việc (thẻ tác vụ trong luồng chat). Các trang dữ liệu chỉ để tra cứu / dự phòng khi LLM lỗi,
+// nên nằm trong nhóm "Tra cứu" thu gọn.
+const NAV: { section: string; items: [string, string][]; lookup?: boolean }[] = [
+  { section: "Làm việc", items: [["/", "Trợ lý"], ["/approvals", "Hộp duyệt"]] },
+  { section: "Tra cứu", lookup: true, items: [["/expiring", "Hàng cận date"], ["/orders", "Đặt & nhận hàng"], ["/stockcount", "Kiểm kê"],
+    ["/stats", "Tổng quan"], ["/reports", "Phân tích"], ["/catalog", "Hàng hóa & NCC"], ["/audit", "Nhật ký"]] },
+];
+// Điện thoại: Trợ lý và Duyệt ở thanh đáy, trang tra cứu trong "Thêm"
+const TABBAR: [string, string][] = [["/", "Trợ lý"], ["/approvals", "Duyệt"]];
+const PAGE_TITLE: Record<string, string> = Object.fromEntries(NAV.flatMap((g) => g.items));
+
+function NavIcon({ to }: { to: keyof typeof ICON }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
       <path d={ICON[to]} />
@@ -212,36 +229,48 @@ function Shell({ user }: { user: User }) {
     refetchInterval: 30_000,
   });
   const pendingN = pending.data?.length ?? 0;
-  // Chat là cửa vào; các trang dữ liệu là đường dự phòng và để xem tổng quan
-  const main: [string, string, number?][] = [
-    ["/", "Trợ lý", undefined],
-    ["/approvals", "Hộp duyệt", pendingN],
-  ];
-  const data: [string, string][] = [
-    ["/stats", "Số liệu tổng quan"],
-    ["/expiring", "Hàng cận date"],
-    ["/orders", "Đặt & nhận hàng"],
-    ["/stockcount", "Kiểm kê"],
-    ["/reports", "Phân tích"],
-    ["/catalog", "Hàng hóa & NCC"],
-    ["/audit", "Nhật ký"],
-  ];
+  const [more, setMore] = useState(false);
+  // Thanh bên: màn rộng (>=1280px) mở sẵn có chữ, màn hẹp hơn chỉ còn icon; người dùng bấm thu/mở thì nhớ lựa chọn
+  const wide = useMediaQuery("(min-width: 1280px)");
+  const [railPref, setRailPref] = useStoredState<"open" | "closed">("opschest_rail");
+  const railOpen = railPref ? railPref === "open" : wide;
+  const [lookupOpen, setLookupOpen] = useStoredState<"open" | "closed">("opschest_lookup");
   const onAssistant = location.pathname === "/" || location.pathname.startsWith("/chat");
-  useEffect(() => setDrawer(false), [location.pathname]);
+  const pageTitle = onAssistant ? null : PAGE_TITLE[location.pathname];
   useEffect(() => {
-    if (!drawer) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    setDrawer(false);
+    setMore(false);
+  }, [location.pathname]);
+  useEffect(() => {
+    if (!drawer && !more) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setDrawer(false);
+      setMore(false);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [drawer]);
+  }, [drawer, more]);
+  // Bản tin (trong trang Trợ lý) mở ngăn Hộp duyệt qua sự kiện này
+  useEffect(() => {
+    const open = () => setDrawer(true);
+    window.addEventListener(OPEN_INBOX_EVENT, open);
+    return () => window.removeEventListener(OPEN_INBOX_EVENT, open);
+  }, []);
 
-  const link = (to: string, label: string, count?: number) => (
-    <NavLink key={to} to={to} end={to === "/"} className={to === "/" ? (onAssistant ? "active" : "") : undefined} title={label}>
-      <NavIcon to={to} />
-      <span className="nav-label">{label}</span>
-      {count ? <span className="count">{count}</span> : null}
-    </NavLink>
-  );
+  const countOf = (to: string) => (to === "/approvals" ? pendingN : 0);
+  const link = (to: string, label: string, cls = "") => {
+    const count = countOf(to);
+    return (
+      <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `${cls} ${(to === "/" ? onAssistant : isActive) ? "active" : ""}`}
+        title={railOpen ? undefined : label} aria-label={count ? `${label} (${count} chờ duyệt)` : label}>
+        <NavIcon to={to} />
+        <span className="nav-label">{label}</span>
+        {count > 0 && <span className="count">{count}</span>}
+      </NavLink>
+    );
+  };
+  const moreActive = !onAssistant && !TABBAR.some(([to]) => to === location.pathname);
 
   const routes = (
     <ErrorBoundary resetKey={location.pathname}>
@@ -263,29 +292,50 @@ function Shell({ user }: { user: User }) {
   );
 
   return (
-    <div className="app">
+    <div className={`app ${railOpen ? "rail-open" : "rail-closed"}`}>
       <aside className="rail" aria-label="Điều hướng">
         <div className="brand">
-          <Logo />
+          <Logo size={36} />
           <div className="nav-label">
             <Wordmark />
             <small>{meta.data?.store_name ?? "…"}</small>
           </div>
         </div>
         <nav className="nav">
-          {main.map(([to, label, count]) => link(to, label, count))}
-          <div className="nav-section">Dữ liệu</div>
-          {data.map(([to, label]) => link(to, label))}
+          {NAV.map((g) => {
+            // Nhóm "Tra cứu" gập sẵn; tự mở khi đang ở một trang trong nhóm
+            const inGroup = g.items.some(([to]) => to === location.pathname);
+            const shown = !g.lookup || lookupOpen === "open" || inGroup;
+            return (
+              <div key={g.section} className={`nav-group ${g.lookup ? "lookup" : ""}`} role="group" aria-label={g.section}>
+                {g.lookup ? (
+                  <button className="nav-section nav-fold" onClick={() => setLookupOpen(shown ? "closed" : "open")} aria-expanded={shown}
+                    title={shown ? "Thu gọn trang tra cứu" : "Mở trang tra cứu"}>
+                    <NavIcon to={shown ? "down" : "more"} /><span className="nav-label">{g.section}</span>
+                  </button>
+                ) : (
+                  <div className="nav-section">{g.section}</div>
+                )}
+                {shown && g.items.map(([to, label]) => link(to, label))}
+              </div>
+            );
+          })}
         </nav>
+        <button className="ghost rail-toggle" onClick={() => setRailPref(railOpen ? "closed" : "open")}
+          aria-label={railOpen ? "Thu gọn thanh bên" : "Mở rộng thanh bên"} title={railOpen ? "Thu gọn" : "Mở rộng"}>
+          <NavIcon to={railOpen ? "collapse" : "expand"} />
+          <span className="nav-label">Thu gọn</span>
+        </button>
       </aside>
       <div className="stage">
         <header className="topbar">
           <div className="crumb">
-            {meta.data?.store_name ?? "Ops Chest"}
-            <span className="hide-xs">{weekdayDate(meta.data?.today)}</span>
+            <span className="crumb-store">{meta.data?.store_name ?? "Ops Chest"}</span>
+            {pageTitle && <span className="crumb-page">{pageTitle}</span>}
+            <span className="crumb-date hide-xs">{weekdayDate(meta.data?.today)}</span>
           </div>
           <span className="spacer" />
-          <button onClick={() => setDrawer(true)} aria-haspopup="dialog">
+          <button onClick={() => setDrawer(true)} aria-haspopup="dialog" className="inbox-btn">
             Hộp duyệt {pendingN > 0 && <span className="count-pill">{pendingN}</span>}
           </button>
           <UserMenu user={user} meta={meta.data} theme={theme} setTheme={setTheme} />
@@ -293,7 +343,27 @@ function Shell({ user }: { user: User }) {
         <main className={`main ${onAssistant ? "chat-mode" : ""}`}>{onAssistant ? routes : <div className="page">{routes}</div>}</main>
       </div>
 
-      <div className={`scrim ${drawer ? "on" : ""}`} onClick={() => setDrawer(false)} />
+      <nav className="tabbar" aria-label="Điều hướng nhanh">
+        {TABBAR.map(([to, label]) => link(to, label, "tab"))}
+        <button className={`tab ${moreActive || more ? "active" : ""}`} onClick={() => setMore((m) => !m)} aria-expanded={more} aria-haspopup="dialog">
+          <NavIcon to="more" />
+          <span className="nav-label">Thêm</span>
+        </button>
+      </nav>
+      <div className={`sheet ${more ? "on" : ""}`} role="dialog" aria-label="Các trang khác" aria-hidden={!more}>
+        {NAV.map((g) => {
+          const rest = g.items.filter(([to]) => !TABBAR.some(([t]) => t === to));
+          return rest.length ? (
+            <div key={g.section} className="nav-group">
+              <div className="nav-section">{g.section}</div>
+              {rest.map(([to, label]) => link(to, label, "sheet-link"))}
+            </div>
+          ) : null;
+        })}
+      </div>
+
+      <TaskDialog />
+      <div className={`scrim ${drawer || more ? "on" : ""}`} onClick={() => { setDrawer(false); setMore(false); }} />
       <aside className={`drawer ${drawer ? "on" : ""}`} aria-label="Hộp duyệt" aria-hidden={!drawer}>
         <div className="drawer-head">
           <h2>Hộp duyệt</h2>

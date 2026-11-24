@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getUser, type Proposal } from "../api";
 import { dateVi, money, num, pct } from "../format";
+import { CardTitle, InfoTip, Switch } from "./ui/controls";
 
 type Hypothesis = {
   id: number; scope: string; factor: number; start_date: string; end_date: string; reason: string; status: string;
@@ -30,21 +31,21 @@ export function Hypotheses() {
   const rows = (q.data ?? []).filter((h) => h.status !== "CANCELLED").slice(0, 6);
   return (
     <div className="card">
-      <h2>Giả thuyết nhu cầu</h2>
-      <p className="small secondary">Nói trong chat, ví dụ: "Thứ Bảy này có trận bóng, bia bán gấp rưỡi". Dự báo chỉ đổi sau khi anh/chị duyệt, và được chấm đúng/sai khi sự kiện qua đi.</p>
-      {rows.length === 0 ? <p className="muted">Chưa có giả thuyết nào.</p> : (
+      <CardTitle title="Giả thuyết nhu cầu"
+        info={"Nói trong chat, ví dụ: \"Thứ Bảy này có trận bóng, bia bán gấp rưỡi\". Dự báo chỉ đổi sau khi anh/chị duyệt, và được chấm đúng/sai khi sự kiện qua đi."} />
+      {rows.length === 0 ? <p className="muted small">Chưa có.</p> : (
         <div className="table-wrap">
           <table>
             <thead><tr><th>Phạm vi</th><th className="num">Hệ số</th><th>Thời gian</th><th>Kết quả</th><th /></tr></thead>
             <tbody>
               {rows.map((h) => (
                 <tr key={h.id}>
-                  <td>{h.scope}<div className="small muted">{h.reason}</div></td>
+                  <td title={h.reason}>{h.scope}</td>
                   <td className="num">×{num(h.factor, 2)}</td>
                   <td>{dateVi(h.start_date)} – {dateVi(h.end_date)}</td>
                   <td>
                     {h.status === "ACTIVE" ? <span className="badge accent">Đang áp dụng</span> : <span className="badge">{h.verdict_label}</span>}
-                    {h.ratio != null && <div className="small muted">thực tế ×{num(h.ratio, 2)} so với dự báo nền</div>}
+                    {h.ratio != null && <span className="small muted" title="Thực tế so với dự báo nền"> ×{num(h.ratio, 2)}</span>}
                   </td>
                   <td>{isManager && h.status === "ACTIVE" && <button className="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(h.id)}>Huỷ</button>}</td>
                 </tr>
@@ -74,12 +75,11 @@ export function LearnedAdjustments() {
   const d = q.data;
   return (
     <div className="card">
-      <h2>Học từ cách anh/chị sửa đơn</h2>
-      <p className="small secondary">Chỉ gợi ý khi có ít nhất 5 lần sửa trên 3 đơn, cùng chiều và lệch từ 15% trở lên.</p>
-      {d && d.patterns.length === 0 && d.active.length === 0 && <p className="muted">Chưa thấy thói quen sửa nào đủ rõ.</p>}
+      <CardTitle title="Học từ cách sửa đơn" info="Chỉ gợi ý khi có ít nhất 5 lần sửa trên 3 đơn, cùng chiều và lệch từ 15% trở lên." />
+      {d && d.patterns.length === 0 && d.active.length === 0 && <p className="muted small">Chưa có thói quen sửa nào đủ rõ.</p>}
       {d?.patterns.map((p) => (
         <div className="row" key={p.category} style={{ borderTop: "1px solid var(--grid)", padding: "8px 0" }}>
-          <div><b>{p.category}</b><div className="small muted">{p.edits} lần sửa trên {p.proposals} đơn, thường chốt bằng {pct(p.median_ratio, 0)} đề xuất</div></div>
+          <b title={`${p.edits} lần sửa trên ${p.proposals} đơn, thường chốt bằng ${pct(p.median_ratio, 0)} đề xuất`}>{p.category}</b>
           <span className="spacer" />
           <button className="sm" disabled={propose.isPending} onClick={() => propose.mutate(p.category)}>Đề xuất ×{num(p.factor, 2)}</button>
         </div>
@@ -113,14 +113,11 @@ export function FastForward() {
   if (getUser()?.role !== "manager") return null;
   const r = run.data;
   return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <h2>Tua nhanh (chỉ cho demo)</h2>
-      <p className="small secondary">
-        Giả lập hàng về và khách mua trong những ngày tới. Không tự duyệt, đặt hàng hay ghi hủy: đề xuất không ai duyệt sẽ hết hiệu lực và thấy được hậu quả trên kệ.
-      </p>
-      <div className="row">
-        {[1, 3, 7].map((d) => <button key={d} disabled={run.isPending} onClick={() => run.mutate(d)}>Tua {d} ngày</button>)}
-        <label className="small secondary"><input type="checkbox" checked={realize} onChange={(e) => setRealize(e.target.checked)} /> Giả thuyết đang áp dụng xảy ra đúng</label>
+    <details className="card more mt-3">
+      <summary>Tua nhanh (demo) <InfoTip text="Giả lập hàng về và khách mua trong những ngày tới. Không tự duyệt, đặt hàng hay ghi hủy: đề xuất không ai duyệt sẽ hết hiệu lực và thấy được hậu quả trên kệ." /></summary>
+      <div className="row mt-2">
+        {[1, 3, 7].map((d) => <button key={d} disabled={run.isPending} onClick={() => run.mutate(d)}>+{d} ngày</button>)}
+        <Switch checked={realize} onChange={setRealize} label="Giả thuyết xảy ra đúng" />
         <span className="spacer" />
         <button className="ghost" disabled={samples.isPending} onClick={() => samples.mutate()}>Nạp lịch sử sửa mẫu</button>
         {run.isPending && <span className="muted">Đang giả lập…</span>}
@@ -136,6 +133,6 @@ export function FastForward() {
           {r.hypotheses_evaluated.map((h) => <div key={h.id}>Giả thuyết "{h.reason}": <b>{h.verdict_label}</b> (thực tế ×{num(h.ratio, 2)} so với dự báo nền, dự đoán ×{num(h.factor, 2)}).</div>)}
         </div>
       )}
-    </div>
+    </details>
   );
 }

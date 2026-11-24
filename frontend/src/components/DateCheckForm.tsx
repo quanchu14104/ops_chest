@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type DateCheckLine, type Proposal } from "../api";
 import { dateVi } from "../format";
+import DateField from "./ui/DateField";
+import { Icon, InfoTip, Stepper } from "./ui/controls";
 
 // Kiểm date: đếm theo từng HSD nhìn thấy trên kệ. Phiếu chỉ hiện các HSD sổ đang có, KHÔNG hiện số lượng (đếm mù).
 // Mặt hàng đã nhập ít nhất một số thì các HSD để trống được gửi là 0: người đếm đã xem hết kệ của mặt hàng đó.
@@ -30,15 +32,18 @@ export default function DateCheckForm({ lines, title, note }: { lines: DateCheck
     },
     onError: (e: Error) => setMsg({ ok: false, text: e.message }),
   });
+  // Ô thêm HSD chỉ mở cho mặt hàng người đếm bấm "+ HSD khác", để mỗi mặt hàng gọn một dòng
+  const [adding, setAdding] = useState<string | null>(null);
   const addDate = (sku: string) => {
     const d = newDate[sku];
     if (!d) return;
     setExtra({ ...extra, [sku]: [...new Set([...(extra[sku] ?? []), d])] });
     setNewDate({ ...newDate, [sku]: "" });
+    setAdding(null);
   };
   return (
     <div className="card tight widget">
-      <div className="widget-title">{title}</div>
+      <div className="widget-title row">{title}{note && <InfoTip text={note} />}</div>
       <div className="widget-scroll">
         <table>
           <thead>
@@ -49,37 +54,53 @@ export default function DateCheckForm({ lines, title, note }: { lines: DateCheck
             </tr>
           </thead>
           <tbody>
-            {lines.map((l) =>
-              datesOf(l).map((d, i) => (
-                <tr key={key(l.sku, d)}>
-                  <td>{i === 0 ? `${l.sku} · ${l.name}` : ""}</td>
+            {lines.map((l) => {
+              const ds = datesOf(l);
+              const rows = ds.map((d, i) => (
+                <tr key={key(l.sku, d)} className={i === 0 ? "group-start" : "group-cont"}>
+                  <td>
+                    {i === 0 && (
+                      <>
+                        <span title={l.sku}>{l.name}</span>
+                        {adding !== l.sku && (
+                          <button className="icon sm ghost add-date" onClick={() => setAdding(l.sku)} aria-label={`Thêm HSD khác cho ${l.name}`} title="Thêm HSD khác"><Icon name="plus" /></button>
+                        )}
+                      </>
+                    )}
+                  </td>
                   <td>
                     {dateVi(d)}
-                    {!l.dates.includes(d) && <span className="badge accent" style={{ marginLeft: 6 }}>mới thêm</span>}
+                    {!l.dates.includes(d) && <span className="badges"><span className="badge accent">mới thêm</span></span>}
                   </td>
                   <td className="num">
-                    <input className="qty" type="number" min={0} value={counts[key(l.sku, d)] ?? ""}
-                      onChange={(e) => setCounts({ ...counts, [key(l.sku, d)]: e.target.value })} aria-label={`Số đếm ${l.name} HSD ${dateVi(d)}`} />
+                    <Stepper value={(counts[key(l.sku, d)] ?? "") === "" ? "" : Number(counts[key(l.sku, d)])} placeholder="–"
+                      onChange={(v) => setCounts({ ...counts, [key(l.sku, d)]: v === "" ? "" : String(v) })} label={`Số đếm ${l.name} HSD ${dateVi(d)}`} />
                   </td>
                 </tr>
-              )).concat(
-                <tr key={`${l.sku}-add`}>
-                  <td />
-                  <td colSpan={2} className="small">
-                    <input type="date" value={newDate[l.sku] ?? ""} onChange={(e) => setNewDate({ ...newDate, [l.sku]: e.target.value })} aria-label={`Thêm HSD ${l.name}`} />{" "}
-                    <button className="sm ghost" disabled={!newDate[l.sku]} onClick={() => addDate(l.sku)}>Thêm HSD</button>
-                  </td>
-                </tr>,
-              ),
-            )}
+              ));
+              if (adding === l.sku) {
+                rows.push(
+                  <tr key={`${l.sku}-add`} className="group-cont">
+                    <td />
+                    <td colSpan={2} className="small">
+                      <span className="row">
+                        <DateField value={newDate[l.sku] ?? ""} onChange={(v) => setNewDate({ ...newDate, [l.sku]: v })} label={`Thêm HSD ${l.name}`} />
+                        <button className="sm" disabled={!newDate[l.sku]} onClick={() => addDate(l.sku)}>Thêm</button>
+                        <button className="sm ghost" onClick={() => setAdding(null)}>Huỷ</button>
+                      </span>
+                    </td>
+                  </tr>,
+                );
+              }
+              return rows;
+            })}
           </tbody>
         </table>
       </div>
-      {note && <div className="small muted" style={{ marginTop: 6 }}>{note}</div>}
-      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} style={{ marginTop: 8 }}>{msg.text}</div>}
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="primary" disabled={touched.length === 0 || m.isPending} onClick={() => m.mutate()}>
-          {m.isPending ? "Đang ghi…" : `Xác nhận kiểm date (${touched.length} mặt hàng)`}
+      {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text}</div>}
+      <div className="row mt-3">
+        <button className="primary lg" disabled={touched.length === 0 || m.isPending} onClick={() => m.mutate()}>
+          <Icon name="check" /> {m.isPending ? "Đang ghi…" : `Xác nhận ${touched.length} mặt hàng`}
         </button>
       </div>
     </div>

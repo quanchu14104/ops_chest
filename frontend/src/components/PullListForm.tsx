@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type Proposal, type PullLine } from "../api";
 import { dateVi } from "../format";
+import { Icon, InfoTip, Stepper } from "./ui/controls";
 
 // Rút kệ cuối ngày: việc bắt buộc của ca làm, không chờ duyệt. Nhân viên ghi số THỰC gỡ (phiếu không hiện số trên sổ).
 // Store Manager chỉ duyệt bút toán ghi hủy được tạo sau đó.
@@ -28,12 +29,12 @@ export default function PullListForm({ lines, title, note }: { lines: PullLine[]
   });
   return (
     <div className="card tight widget">
-      <div className="widget-title">{title}</div>
+      <div className="widget-title row">{title}{note && <InfoTip text={note} />}</div>
       {lines.length === 0 ? (
         <p className="muted small">Không có lô nào cần rút kệ.</p>
       ) : (
         <div className="widget-scroll">
-          <table>
+          <table className="stack-sm">
             <thead>
               <tr>
                 <th>Hàng</th>
@@ -45,15 +46,15 @@ export default function PullListForm({ lines, title, note }: { lines: PullLine[]
             <tbody>
               {lines.map((l) => (
                 <tr key={l.lot_id}>
-                  <td>{l.sku} · {l.name} <span className="muted small">lô #{l.lot_id}</span></td>
-                  <td>{dateVi(l.expiry_date)}</td>
-                  <td>
+                  <td className="cell-main" title={`${l.sku} · lô #${l.lot_id}`}>{l.name}</td>
+                  <td data-label="HSD">{dateVi(l.expiry_date)}</td>
+                  <td data-label="Bán đến">
                     {dateVi(l.sell_by)}
-                    {l.overdue_days > 0 && <span className="badge st-FAILED" style={{ marginLeft: 6 }}>quá {l.overdue_days} ngày</span>}
+                    {l.overdue_days > 0 && <span className="badges"><span className="badge bad">quá {l.overdue_days} ngày</span></span>}
                   </td>
-                  <td className="num">
-                    <input className="qty" type="number" min={0} value={qty[l.lot_id] ?? ""}
-                      onChange={(e) => setQty({ ...qty, [l.lot_id]: e.target.value })} aria-label={`Số gỡ ${l.name}`} />
+                  <td data-label="Số thực gỡ" className="num">
+                    <Stepper value={qty[l.lot_id] === undefined || qty[l.lot_id] === "" ? "" : Number(qty[l.lot_id])} placeholder="–"
+                      onChange={(v) => setQty({ ...qty, [l.lot_id]: v === "" ? "" : String(v) })} label={`Số gỡ ${l.name}`} />
                   </td>
                 </tr>
               ))}
@@ -61,12 +62,11 @@ export default function PullListForm({ lines, title, note }: { lines: PullLine[]
           </table>
         </div>
       )}
-      {note && <div className="small muted" style={{ marginTop: 6 }}>{note}</div>}
-      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} style={{ marginTop: 8 }}>{msg.text}</div>}
+      {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text}</div>}
       {lines.length > 0 && (
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="primary" disabled={filled.length === 0 || m.isPending} onClick={() => m.mutate()}>
-            {m.isPending ? "Đang ghi…" : `Xác nhận đã gỡ (${filled.length} lô)`}
+        <div className="row mt-3">
+          <button className="primary lg" disabled={filled.length === 0 || m.isPending} onClick={() => m.mutate()}>
+            <Icon name="check" /> {m.isPending ? "Đang ghi…" : `Đã gỡ ${filled.length} lô`}
           </button>
         </div>
       )}

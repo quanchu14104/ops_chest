@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { api, type WidgetFmt, type WidgetSpec } from "../api";
 import { STATUS_LABEL, TYPE_LABEL, dateVi, money, num, pct } from "../format";
 import ExpiryPhoto from "./ExpiryPhoto";
+import Panel from "./Panels";
 import DateCheckForm from "./DateCheckForm";
 import PullListForm from "./PullListForm";
 import StockCountForm from "./StockCountForm";
@@ -228,6 +229,7 @@ function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { form: "receive_po" 
 }
 
 export default function Widget({ spec }: { spec: WidgetSpec }) {
+  if (spec.kind === "panel") return <Panel spec={spec} />;
   if (spec.kind === "table") return <TableWidget w={spec} />;
   if (spec.kind === "form" && spec.form === "stock_count") return <StockCountForm lines={spec.lines} title={spec.title} note={spec.note} />;
   if (spec.kind === "form" && spec.form === "date_check") return <DateCheckForm lines={spec.lines} title={spec.title} note={spec.note} />;

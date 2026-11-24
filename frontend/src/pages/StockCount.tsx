@@ -1,8 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, type CountLine, type DateCheckLine } from "../api";
 import DateCheckForm from "../components/DateCheckForm";
 import StockCountForm from "../components/StockCountForm";
+import { Skeleton } from "../components/ui/EmptyState";
+import PageHeader from "../components/ui/PageHeader";
+import Segmented from "../components/ui/Segmented";
+import { Chips, InfoTip } from "../components/ui/controls";
 
 const CLASS_LABEL: Record<string, string> = { FRESH: "Hàng tươi (mỗi ngày)", SHORT: "Hàng ngắn ngày (thứ Hai)", LONG: "Hàng dài ngày (ngày 1 hằng tháng)" };
 
@@ -16,14 +21,14 @@ function DateCheck() {
   const lines = (q.data?.lines ?? []).filter((l) => (cls ? true : due.includes(l.freshness_class)));
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}>
-        <select value={cls} onChange={(e) => setCls(e.target.value)} aria-label="Nhóm vòng đời">
-          <option value="">Theo lịch hôm nay ({due.map((c) => CLASS_LABEL[c]?.split(" (")[0]).join(", ") || "…"})</option>
-          {Object.entries(CLASS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+      <div className="row mb-3">
+        <Chips label="Nhóm vòng đời" value={cls} onChange={(v) => setCls(v)} options={[
+          { value: "", label: "Lịch hôm nay" },
+          ...Object.entries(CLASS_LABEL).map(([k, v]) => ({ value: k, label: <span title={v}>{v.split(" (")[0]}</span> })),
+        ]} />
       </div>
       {q.error && <div className="alert error">{(q.error as Error).message}</div>}
-      {q.isLoading ? <p className="muted">Đang tải…</p> : (
+      {q.isLoading ? <div className="card"><Skeleton rows={6} /></div> : (
         <DateCheckForm key={cls} lines={lines} title="Phiếu kiểm date"
           note="Đếm số lượng theo từng HSD in trên bao bì. Gặp HSD phiếu chưa có thì bấm “Thêm HSD”. Mặt hàng đã nhập số thì HSD để trống được tính là 0." />
       )}
@@ -42,14 +47,14 @@ function SkuCount() {
   const lines = active === DUE ? (due.data ?? []) : (q.data ?? []).filter((l) => l.category === active);
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row mb-3">
         <select value={active} onChange={(e) => setCategory(e.target.value)} aria-label="Nhóm hàng">
-          <option value={DUE}>Đến lịch đếm (A mỗi tuần, B 2 tuần, C mỗi tháng) và nghi tồn ảo ({due.data?.length ?? "…"})</option>
+          <option value={DUE}>Đến lịch đếm ({due.data?.length ?? "…"})</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
       {q.error && <div className="alert error">{(q.error as Error).message}</div>}
-      {q.isLoading || due.isLoading ? <p className="muted">Đang tải…</p> : (
+      {q.isLoading || due.isLoading ? <div className="card"><Skeleton rows={6} /></div> : (
         <StockCountForm key={active} lines={lines} title={active === DUE ? "Phiếu đếm: đến lịch và nghi tồn ảo" : `Phiếu đếm: ${active}`}
           note={active === DUE ? "Nghi tồn ảo: mặt hàng bán đều nhưng nhiều ngày không bán trong khi sổ còn hàng (kệ có thể đã trống). Dòng để trống là chưa đếm." : "Dòng để trống là chưa đếm."} />
       )}
@@ -57,22 +62,22 @@ function SkuCount() {
   );
 }
 
+type Tab = "date" | "sku";
+
 export default function StockCount() {
-  const [tab, setTab] = useState<"date" | "sku">("date");
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "sku" ? "sku" : "date";
+  const setTab = (t: Tab) => setParams(t === "sku" ? { tab: "sku" } : {}, { replace: true });
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Kiểm kê</h1>
-          <div className="muted">
-            Phiếu cố ý không hiện số trên sổ để người đếm không đếm cho khớp. Chênh lệch chỉ được ghi sau khi Store Manager duyệt.
-            Kiểm date đếm theo từng HSD để sổ theo lô khớp với kệ; kiểm kê theo SKU dùng cho hàng còn xa hạn.
-          </div>
-        </div>
-        <div className="seg">
-          <button className={tab === "date" ? "on" : ""} onClick={() => setTab("date")}>Kiểm date theo HSD</button>
-          <button className={tab === "sku" ? "on" : ""} onClick={() => setTab("sku")}>Kiểm kê theo SKU</button>
-        </div>
+      <PageHeader title="Kiểm kê"
+        desc="Phiếu cố ý không hiện số trên sổ để người đếm không đếm cho khớp. Chênh lệch chỉ được ghi sau khi Store Manager duyệt." />
+      <div className="row mb-4">
+        <Segmented<Tab> label="Loại phiếu" value={tab} onChange={setTab} options={[
+          { value: "date", label: "Kiểm date" },
+          { value: "sku", label: "Kiểm kê SKU" },
+        ]} />
+        <InfoTip text={tab === "date" ? "Đếm theo từng HSD để sổ theo lô khớp với kệ." : "Dùng cho hàng còn xa hạn: đếm tổng theo mặt hàng."} />
       </div>
       {tab === "date" ? <DateCheck /> : <SkuCount />}
     </>

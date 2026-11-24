@@ -2,9 +2,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError, type ChartSpec, type Proposal } from "../api";
 import ChartView from "../components/ChartView";
+import Segmented from "../components/ui/Segmented";
+import { CardTitle, Chips, InfoTip } from "../components/ui/controls";
 import FrnBacktest, { type FrnBt } from "../components/FrnBacktest";
 import FrnModelReport from "../components/FrnModelReport";
+import PageHeader from "../components/ui/PageHeader";
+import { Skeleton } from "../components/ui/EmptyState";
 import { dateVi, money, pct } from "../format";
+
+type KpiCell = { label: string; value: string; hint: string };
 
 type Cost = {
   start: string; end: string; kpi: Record<string, number>; shrink_value: number;
@@ -63,60 +69,71 @@ export default function Reports() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Phân tích</h1>
-          <div className="muted">Biểu đồ, chi phí, ABC-XYZ, ứng viên ngừng nhập và mô phỏng hiệu quả.</div>
-        </div>
-        <div className="row">
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Khoảng thời gian">
-            {[30, 60, 90, 180, 365].map((d) => <option key={d} value={d}>{d} ngày gần nhất</option>)}
-          </select>
-          <select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Gom theo">
-            <option value="day">Theo ngày</option>
-            <option value="week">Theo tuần</option>
-            <option value="month">Theo tháng</option>
-          </select>
-        </div>
-      </div>
+      <PageHeader title="Phân tích" desc="Biểu đồ, chi phí, ABC-XYZ, ứng viên ngừng nhập và mô phỏng hiệu quả."
+        actions={<>
+          <Chips label="Khoảng thời gian" value={String(days)} onChange={(v) => v && setDays(Number(v))}
+            options={[30, 90, 180, 365].map((d) => ({ value: String(d), label: `${d} ngày` }))} />
+          <Segmented label="Gom theo" value={group} onChange={setGroup}
+            options={[{ value: "day", label: "Ngày" }, { value: "week", label: "Tuần" }, { value: "month", label: "Tháng" }]} />
+        </>} />
 
+      {!k && <div className="card mb-4"><Skeleton rows={3} height={18} /></div>}
       {k && (
-        <div className="grid kpis" style={{ marginBottom: 16 }}>
-          {[["Lợi nhuận gộp (sau hủy, hao hụt)", money(k.gross_profit)], ["GMROI (lãi gộp / tồn TB)", k.gmroi == null ? "—" : k.gmroi.toLocaleString("vi-VN")],
-            ["Giá vốn hàng hủy", money(k.waste_cost)], ["Tỷ lệ hủy", pct(k.waste_rate)], ["Tỷ lệ hết hàng", pct(k.oos_rate)],
-            ["Lãi mất do hết hàng", money(k.lost_margin)], ["Đã giảm giá", money(k.markdown_loss)], ["NCC hoàn tiền", money(k.return_credit)],
-            ["Số ngày tồn kho", `${k.inventory_days.toLocaleString("vi-VN")} ngày`], ["Hao hụt (kiểm kê, rút kệ)", money(cost.data?.shrink_value ?? 0)]].map(([l, v]) => (
-            <div className="card kpi" key={l}><div className="label">{l}</div><div className="value" style={{ fontSize: 20 }}>{v}</div></div>
+        <div className="kpi-groups mb-4">
+          {([
+            ["Hiệu quả", [
+              { label: "Lợi nhuận gộp", value: money(k.gross_profit), hint: "Doanh thu trừ giá vốn hàng bán, hàng hủy và hao hụt trong kỳ" },
+              { label: "GMROI", value: k.gmroi == null ? "—" : k.gmroi.toLocaleString("vi-VN", { maximumFractionDigits: 2 }), hint: "Lãi gộp chia giá trị tồn kho bình quân: mỗi đồng tồn kho sinh ra bao nhiêu đồng lãi gộp. Hàng tươi quay vòng nhanh nên số này rất cao." },
+              { label: "Lãi mất do hết hàng", value: money(k.lost_margin), hint: "Lãi gộp ước tính của phần nhu cầu không bán được vì kệ trống" },
+              { label: "Tỷ lệ hết hàng", value: pct(k.oos_rate), hint: "Tỷ lệ ngày-mặt hàng có lúc hết hàng trên kệ" },
+            ]],
+            ["Hủy & hao hụt", [
+              { label: "Giá vốn hàng hủy", value: money(k.waste_cost), hint: "Tổng giá vốn các lô đã ghi hủy trong kỳ" },
+              { label: "Tỷ lệ hủy", value: pct(k.waste_rate), hint: "Giá vốn hàng hủy / giá vốn hàng nhập trong kỳ" },
+              { label: "Hao hụt", value: money(cost.data?.shrink_value ?? 0), hint: "Chênh lệch âm phát hiện khi kiểm kê hoặc rút kệ" },
+              { label: "Đã giảm giá", value: money(k.markdown_loss), hint: "Phần doanh thu bỏ ra để giảm giá hàng cận date" },
+              { label: "NCC hoàn tiền", value: money(k.return_credit), hint: "Tiền nhà cung cấp hoàn khi lấy hàng trả" },
+            ]],
+            ["Tồn kho", [
+              { label: "Số ngày tồn kho", value: `${k.inventory_days.toLocaleString("vi-VN", { maximumFractionDigits: 2 })} ngày`, hint: "Tồn kho bình quân chia giá vốn bán ra mỗi ngày: hàng nằm kho bao lâu mới bán hết" },
+            ]],
+          ] as [string, KpiCell[]][]).map(([title, cells]) => (
+            <section key={title} className="kpi-group">
+              <h2 className="section-title">{title}</h2>
+              <div className="grid kpis">
+                {cells.map((c) => (
+                  <div className="card kpi" key={c.label}>
+                    <div className="label has-hint" title={c.hint}>{c.label}</div>
+                    <div className="value">{c.value}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <div className="seg" role="tablist">
-            {METRICS.map(([m, l]) => <button key={m} className={metric === m ? "on" : ""} onClick={() => setMetric(m)}>{l}</button>)}
-          </div>
+      <div className="card mb-4">
+        <div className="row mb-3">
+          <Segmented label="Biểu đồ" value={metric} onChange={setMetric} options={METRICS.map(([value, label]) => ({ value, label }))} />
         </div>
-        {chart.data ? <ChartView spec={chart.data} height={300} /> : <p className="muted">Đang tải…</p>}
+        {chart.data ? <ChartView spec={chart.data} height={300} /> : <Skeleton rows={6} />}
       </div>
 
       <div className="grid cols-2" style={{ marginBottom: 16 }}>
         {abc.data && <ChartView spec={abc.data} />}
         <div className="card">
-          <h2>Ứng viên ngừng nhập</h2>
-          <p className="small secondary">Ô C-Y/C-Z, hủy nhiều hoặc lỗ, không phải hàng kéo khách. Ngừng nhập là quyết định của Store Manager.</p>
+          <CardTitle title="Ứng viên ngừng nhập" info="Ô C-Y/C-Z, hủy nhiều hoặc lỗ, không phải hàng kéo khách. Ngừng nhập là quyết định của Store Manager." />
           {msg && <div className="alert ok" style={{ marginBottom: 8 }}>{msg}</div>}
           {cands.data?.length === 0 && <p className="muted">Không có ứng viên.</p>}
           {cands.data?.map((c) => (
             <div key={c.sku} style={{ borderTop: "1px solid var(--grid)", padding: "8px 0" }}>
               <div className="row">
-                <b>{c.name}</b> <span className="muted small">{c.sku} · {c.category}</span> <span className="badge">{c.cell}</span>
+                <b title={`${c.sku} · ${c.category}`}>{c.name}</b> <span className="badge">{c.cell}</span>
+                <InfoTip text={c.reasons.join(" · ")} />
                 <span className="spacer" />
-                <button className="sm" onClick={() => delist.mutate(c.sku)} disabled={delist.isPending}>Đề xuất ngừng nhập</button>
+                <button className="sm danger" onClick={() => delist.mutate(c.sku)} disabled={delist.isPending}>Ngừng nhập</button>
               </div>
-              <ul className="small secondary" style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                {c.reasons.map((r) => <li key={r}>{r}</li>)}
-              </ul>
             </div>
           ))}
         </div>
@@ -124,20 +141,18 @@ export default function Reports() {
 
       {cost.data && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h2>Top 10 mặt hàng hủy nhiều nhất ({dateVi(cost.data.start)} – {dateVi(cost.data.end)})</h2>
+          <h2 title={`${dateVi(cost.data.start)} – ${dateVi(cost.data.end)}`}>Hủy nhiều nhất</h2>
           <table>
             <thead><tr><th>SKU</th><th>Tên hàng</th><th className="num">SL hủy</th><th className="num">Giá vốn hủy</th></tr></thead>
             <tbody>{cost.data.top_waste_skus.map((s) => <tr key={s.sku}><td>{s.sku}</td><td>{s.name}</td><td className="num">{s.waste_qty}</td><td className="num">{money(s.waste_value)}</td></tr>)}</tbody>
           </table>
           <p className="small muted">{(k as unknown as { note_inventory?: string })?.note_inventory}</p>
-          <h2 style={{ marginTop: 16 }}>Hủy theo lý do</h2>
-          <p className="small secondary">Hết hạn thường là đặt dư; vỡ, hỏng do bảo quản hay lỗi nhà cung cấp là vấn đề khác và cần cách xử lý khác.</p>
+          <div className="mt-3"><CardTitle title="Hủy theo lý do" info="Hết hạn thường là đặt dư; vỡ, hỏng do bảo quản hay lỗi nhà cung cấp là vấn đề khác và cần cách xử lý khác." /></div>
           <table>
             <thead><tr><th>Lý do</th><th className="num">SL hủy</th><th className="num">Giá vốn hủy</th></tr></thead>
             <tbody>{cost.data.waste_by_reason.map((r) => <tr key={r.reason}><td>{r.label}</td><td className="num">{r.waste_qty}</td><td className="num">{money(r.waste_value)}</td></tr>)}</tbody>
           </table>
-          <h2 style={{ marginTop: 16 }}>Điểm nhà cung cấp</h2>
-          <p className="small secondary">Trên các đơn đến hạn giao trong kỳ: tỷ lệ giao đủ, giao đúng hẹn, số lần giao date ngắn và số đơn vị bị từ chối tại cửa.</p>
+          <div className="mt-3"><CardTitle title="Điểm nhà cung cấp" info="Trên các đơn đến hạn giao trong kỳ: tỷ lệ giao đủ, giao đúng hẹn, số lần giao date ngắn và số đơn vị bị từ chối tại cửa." /></div>
           <table>
             <thead><tr><th>NCC</th><th className="num">Số đơn</th><th className="num">Giao đủ</th><th className="num">Đúng hẹn</th><th className="num">Thiếu (đv)</th><th className="num">Date ngắn</th><th className="num">Từ chối (đv)</th></tr></thead>
             <tbody>{cost.data.supplier_scorecard.map((s) => (
@@ -148,6 +163,10 @@ export default function Reports() {
         </div>
       )}
 
+      {/* Phần kỹ thuật (mô hình dự báo, mô phỏng A/B): không cần cho việc hằng ngày nên gập sẵn */}
+      <details className="card more">
+        <summary>Mô hình dự báo & mô phỏng</summary>
+        <div className="mt-3">
       <FrnModelReport />
 
       {frnBt.data ? (
@@ -173,6 +192,8 @@ export default function Reports() {
         {sens.data && <Sensitivity d={sens.data} />}
       </div>
       )}
+        </div>
+      </details>
     </>
   );
 }

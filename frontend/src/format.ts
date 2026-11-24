@@ -58,4 +58,25 @@ export const STATUS_LABEL: Record<string, string> = {
   SUPERSEDED: "Đã có bản sửa",
 };
 
+// Ai làm: gộp các cách ghi khác nhau trong dữ liệu ("user:quanly" và "quanly" là một người)
+export function actorLabel(actor: string | null | undefined): string {
+  if (!actor) return "—";
+  if (actor === "agent") return "Ops Chest (chat)";
+  if (actor === "job") return "Ops Chest (quét tự động)";
+  if (actor === "system") return "Hệ thống";
+  if (actor === "sim") return "Mô phỏng (demo)";
+  return actor.replace(/^user:/, "");
+}
+
+// Nhãn giờ áp giá giảm: "giờ vàng" chỉ hợp với chiều tối; giảm từ trưa thì ghi thẳng giờ (L-17)
+export function markdownTimeLabel(hour: number | null | undefined): string {
+  const h = hour ?? 18;
+  return h >= 17 ? `giờ vàng từ ${h}h` : `giảm từ ${h}h`;
+}
+
+// Nhãn phương án từ backend ghi "giờ vàng" cả khi giảm từ 11h; đổi lời cho đúng giờ (L-17)
+export function optionLabel(label: string): string {
+  return label.replace(/giờ vàng (\d+%) \(từ (\d+)h\)/i, (all, p: string, h: string) => (Number(h) >= 17 ? all : `${p} từ ${h}h`));
+}
+
 export const WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];

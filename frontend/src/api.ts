@@ -117,6 +117,11 @@ export type TurnMetrics = {
   usage_reported: boolean;
 };
 
+// Lệnh nhanh: mở thẻ tác vụ trong chat ngay, không qua LLM; backend ghi vào hội thoại
+export type CommandResult = { key: string; label: string; tool: string; ui: ChatEvent[]; error: string | null };
+export const runCommand = (sessionId: number, key: string) =>
+  api<CommandResult>(`/chat/sessions/${sessionId}/command`, { method: "POST", body: { key } });
+
 export async function streamChat(sessionId: number, text: string, onEvent: (e: ChatEvent) => void) {
   const r = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
     method: "POST",
@@ -144,6 +149,7 @@ export async function streamChat(sessionId: number, text: string, onEvent: (e: C
 // ---------- Kieu du lieu dung chung ----------
 export type WidgetFmt = "text" | "num" | "money" | "pct" | "date" | "days" | "badge" | "ptype";
 export type WidgetSpec =
+  | { kind: "panel"; panel: "inbox" | "lots" | "orders" | "returns"; title: string; params: Record<string, unknown> }
   | {
       kind: "table";
       title: string;
