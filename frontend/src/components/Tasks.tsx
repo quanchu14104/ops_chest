@@ -6,10 +6,16 @@ import Panel, { type PanelSpec } from "./Panels";
 import Widget from "./Widgets";
 import { Skeleton } from "./ui/EmptyState";
 import { Icon } from "./ui/controls";
+import { openInbox } from "./InboxPanel";
 
 // Mở một việc trong popup từ bất kỳ đâu (menu Công việc, bản tin): window.dispatchEvent(new CustomEvent(OPEN_TASK_EVENT, {detail: key}))
 export const OPEN_TASK_EVENT = "opschest:task";
-export const openTask = (key: string) => window.dispatchEvent(new CustomEvent<string>(OPEN_TASK_EVENT, { detail: key }));
+// "pending[:TYPE]" (duyệt) luôn mở ngăn Hộp duyệt, không mở popup riêng: chỉ một nơi để duyệt
+export const openTask = (key: string) => {
+  const [name, arg] = key.split(":");
+  if (name === "pending") return openInbox(arg ?? "");
+  window.dispatchEvent(new CustomEvent<string>(OPEN_TASK_EVENT, { detail: key }));
+};
 
 type IconName = "check" | "tag" | "trash" | "scan" | "truck" | "note" | "chat" | "plus";
 // Thẻ sống (panel) tự tải dữ liệu; việc còn lại lấy qua /chat/quick (chỉ đọc, không ghi gì, không qua LLM)

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { openInbox } from "./InboxPanel";
 import { api, getUser, type Proposal } from "../api";
 import { dateVi, money, num, pct } from "../format";
 import { CardTitle, Switch } from "./ui/controls";
@@ -91,7 +91,7 @@ export function LearnedAdjustments() {
           {isManager && <button className="sm" disabled={off.isPending} onClick={() => off.mutate(a.id)}>Tắt</button>}
         </div>
       ))}
-      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} style={{ marginTop: 8 }}>{msg.text} {msg.ok && <Link to="/approvals">Mở hộp duyệt →</Link>}</div>}
+      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} style={{ marginTop: 8 }}>{msg.text} {msg.ok && <button className="linklike" onClick={() => openInbox()}>Mở hộp duyệt →</button>}</div>}
     </div>
   );
 }

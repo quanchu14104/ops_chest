@@ -25,7 +25,7 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
 - Trang chủ **Trợ lý** hiện **bản tin đầu ngày**, chia ba nhóm *Cần quyết*, *Cần để ý*, *Việc trong ngày*: đề xuất chờ duyệt, lô cận date, nhà cung cấp đến lịch đặt, đơn đang chờ giao, hàng hết… Nhấn mạnh: bản tin dựng từ dữ liệu thật, **không qua LLM**, nên không thể bịa số.
 - Bấm một dòng của bản tin, ví dụ *lô cận date*: việc đó mở trong popup (không qua LLM). Thẻ lô cận date cho tick chọn lô rồi bấm Giảm giá / Trả NCC / Ghi hủy để tạo đề xuất. Nút bong bóng chat ở cuối dòng thì hỏi Ops Chest về mục đó.
 - Bấm nút **Công việc** cạnh ô chat: lưới việc của ca (Chờ duyệt, Cận date, Rút kệ, Kiểm date, Kiểm kê, Nhận hàng, Trả NCC, Hàng hết, KPI) kèm số đếm. Đây là cách làm việc hằng ngày, không cần vào các trang trong nhóm *Tra cứu*.
-- Trong menu **Công việc**, bấm **Quét đề xuất** (chỉ Store Manager thấy; cũng có nút **"Quét & tạo đề xuất ngay"** ở Hộp duyệt; ô **Quét giảm giá** cạnh đó chạy việc của job 17:00). Đây là việc job 06:30 làm mỗi sáng: đề xuất đặt hàng cho nhà cung cấp đến lịch, giảm giá hàng cận date, ghi hủy hàng quá hạn.
+- Trong menu **Công việc**, bấm **Quét đề xuất** (chỉ Store Manager thấy; ô **Quét giảm giá** cạnh đó chạy việc của job 17:00). Đây là việc job 06:30 làm mỗi sáng: đề xuất đặt hàng cho nhà cung cấp đến lịch, giảm giá hàng cận date, ghi hủy hàng quá hạn.
 - Nhấn mạnh: **chưa có gì được gửi đi.**
 - Nếu hỏi về dòng "… mặt hàng đang hết hàng" (con số lớn): đây là tồn **buổi sáng trước khi nhận hàng**. Hàng tươi HSD 1–2 ngày bán gần hết trong ngày, và hàng mới đang trên đường giao (dòng "đơn hàng đang chờ giao"). Lịch sử 90 ngày được vận hành bằng chính sách "kinh nghiệm", nên hết hàng khoảng 30% số ngày–mặt hàng, sát với thực tế FRN (44% số ngày có giờ hết hàng).
 
@@ -46,7 +46,7 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
 
 ## 3. Hộp duyệt: HITL (2 phút)
 
-- Mở **Hộp duyệt** (menu bên trái, hoặc nói *"cho tôi xem các đề xuất chờ duyệt"* để agent mở thẻ hộp duyệt ngay trong chat).
+- Mở **Hộp duyệt** (ngăn kéo bên phải: bấm nút Hộp duyệt ở thanh trên hoặc menu bên trái, hoặc nói *"cho tôi xem các đề xuất chờ duyệt"* để agent mở thẻ hộp duyệt ngay trong chat).
 - Trong thẻ đặt hàng: cột *Dự báo phủ*, *Đề xuất*, phân loại ABC-XYZ của từng dòng. Đơn dài mặc định lọc còn các dòng cần chú ý (bộ lọc *Cần xem / Đã sửa / Tất cả*, kèm ô tìm SKU).
 - **Sửa bằng lời:** nói với agent *"giảm mỗi món còn một nửa"* hoặc *"đặt thêm 50 <tên hàng>"*, hoặc bấm **Hỏi lại** trên thẻ. Agent tạo đề xuất **mới** chờ duyệt, bản cũ chuyển sang "Đã có bản sửa". Agent không tự duyệt.
 - **Sửa bằng tay:** đổi số lượng một dòng bằng nút +/− (dòng được tô vàng, tổng tiền ở đầu thẻ cập nhật theo), rồi bấm **Duyệt (đã sửa)** trên thanh duyệt ở cuối thẻ. Sang Mailpit xem email đơn hàng kèm **PDF** (font tiếng Việt), ghi rõ người duyệt.
