@@ -21,7 +21,7 @@ def test_overrides_rename_reprice_and_keep_cost_ratio(tmp_path):
     path.write_text(json.dumps({
         "format": "ops-catalog-overrides", "version": 1,
         "products": {"F0004": {"name": "MEATDELI Thịt Nạc vai heo (S)", "unit_price": 168_900}},
-        "suppliers": {"NCC01": {"name": "Kho tổng WinMart – Thịt (demo)", "email": "dathang@khotong-demo.test"}},
+        "suppliers": {"NCC01": {"name": "Nhà cung cấp Thanh Lam Mart – Thịt (demo)", "email": "dathang@khotong-demo.test"}},
     }, ensure_ascii=False), encoding="utf-8")
     sups, prods = _catalog()
     old_ratio = prods[0].unit_cost / prods[0].unit_price
@@ -37,7 +37,7 @@ def test_overrides_rename_reprice_and_keep_cost_ratio(tmp_path):
     assert (prods[1].name, prods[1].unit_price, prods[1].unit_cost) == ("Mặt hàng 5 · nhóm 6.4", 14_000, 9_900)
 
     s = sups[0]
-    assert (s.name, s.email) == ("Kho tổng WinMart – Thịt (demo)", "dathang@khotong-demo.test")
+    assert (s.name, s.email) == ("Nhà cung cấp Thanh Lam Mart – Thịt (demo)", "dathang@khotong-demo.test")
     # Engine khong doi: lead time, lich giao, don toi thieu, thoa thuan tra hang giu nguyen
     assert (s.lead_time_days, s.order_weekdays, s.min_order_value) == (1, ALL_DAYS, 300_000)
     assert (s.accepts_return, s.return_min_days, s.return_credit_pct) == (True, 1, 0.5)

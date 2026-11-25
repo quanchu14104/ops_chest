@@ -39,7 +39,7 @@ docker compose up -d --build
   docker compose exec backend python -m app.sim.seed --reset
   ```
 
-- **Ghi đè danh mục lúc seed (tùy chọn, mặc định tắt):** đặt `CATALOG_OVERRIDES_PATH` trỏ tới file JSON `{"products": {sku: {name, unit_price}}, "suppliers": {code: {name, email}}}`. Lúc seed FRN, hàng được đổi tên và giá bán (giá vốn tính lại theo đúng tỷ lệ giá vốn/giá bán cũ), NCC được đổi tên và email, trước khi sinh 90 ngày lịch sử nên lịch sử dùng giá mới. Không đổi nhóm hàng, lead time, lịch giao, đơn tối thiểu hay thỏa thuận trả hàng. Dùng cho bản demo nối Ops Chest với kiosk Retail-AI (thư mục `bridge/` ở cấp workspace).
+- **Ghi đè danh mục lúc seed (tùy chọn, mặc định tắt):** đặt `CATALOG_OVERRIDES_PATH` trỏ tới file JSON `{"products": {sku: {name, unit_price}}, "suppliers": {code: {name, email}}}`. Lúc seed FRN, hàng được đổi tên và giá bán (từ danh mục thực tế xin được ở **Thanh Lam Mart**, giá vốn tính lại theo đúng tỷ lệ giá vốn/giá bán cũ), NCC được đổi tên và email, trước khi sinh 90 ngày lịch sử nên lịch sử dùng giá mới. Không đổi nhóm hàng, lead time, lịch giao, đơn tối thiểu hay thỏa thuận trả hàng. Dùng cho bản demo nối Ops Chest với kiosk Retail-AI (thư mục `bridge/` ở cấp workspace).
 
 ## Chạy không cần Docker (backend)
 

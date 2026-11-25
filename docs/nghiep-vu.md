@@ -2,7 +2,7 @@
 
 ## 1. Phạm vi: cửa hàng tiện lợi độc lập
 
-Store Manager (SM) làm việc trực tiếp với đại lý, có toàn quyền nhập hoặc ngừng nhập mặt hàng. Mô hình này khác các chuỗi lớn (7-Eleven, FamilyMart, Circle K, GS25, WinMart+). Ở chuỗi, hợp đồng và danh mục hàng do tổng công ty quyết; cửa hàng chỉ đặt hàng về kho tổng (DC), hoặc đặt nhà cung cấp giao thẳng (DSD).
+Store Manager (SM) làm việc trực tiếp với đại lý, có toàn quyền nhập hoặc ngừng nhập mặt hàng — như tại cửa hàng **Thanh Lam Mart** (nơi nhóm xin bộ danh mục sản phẩm thực tế cho dự án). Mô hình này khác các chuỗi lớn (7-Eleven, FamilyMart, Circle K, GS25, WinMart+). Ở chuỗi, hợp đồng và danh mục hàng do tổng công ty quyết; cửa hàng chỉ đặt hàng về kho tổng (DC), hoặc đặt nhà cung cấp giao thẳng (DSD).
 
 ## 2. Các điều chỉnh so với ý tưởng ban đầu
 

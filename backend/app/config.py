@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     smtp_port: int = 1025
     smtp_from: str = "dathang@opschest-demo.test"
 
-    store_name: str = "Cửa hàng Tiện Lợi Ops Chest Demo"
+    store_name: str = "Thanh Lam Mart"
     store_address: str = "123 Nguyễn Văn Cừ, Q.5, TP.HCM"
     store_phone: str = "028 0000 0000"
     # File JSON ghi de ten/gia hang va ten/email NCC luc seed FRN (vd bridge sinh). De trong = khong ghi de.

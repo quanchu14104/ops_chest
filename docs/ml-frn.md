@@ -84,7 +84,7 @@ FRN chỉ cho nhu cầu. Các phần sau được tạo theo quy tắc cố đ�
 - nhà cung cấp: mỗi nhóm quản lý một nhà cung cấp hư cấu, giao hằng ngày, chờ hàng 1 ngày;
 - 5 mặt hàng bán nhiều nhất được coi là hàng kéo khách.
 
-Tùy chọn `CATALOG_OVERRIDES_PATH` (mặc định tắt, `apply_catalog_overrides` trong cùng file) đổi tên và giá bán của hàng, tên và email của NCC ngay sau bước trên, trước khi sinh lịch sử 90 ngày. Giá vốn tính lại theo đúng tỷ lệ giá vốn/giá bán cũ. Nhóm hàng, lead time, lịch giao, đơn tối thiểu và thỏa thuận trả hàng không đổi. Phần ghi đè chỉ áp cho cửa hàng demo lúc seed; nhu cầu vẫn là của FRN, và các kết quả ở mục 5 (Kaggle, backtest) không dùng nó. Dùng cho demo nối với kiosk Retail-AI.
+Tùy chọn `CATALOG_OVERRIDES_PATH` (mặc định tắt, `apply_catalog_overrides` trong cùng file) đổi tên và giá bán của hàng (theo danh mục thực tế xin được từ **Thanh Lam Mart**), tên và email của NCC ngay sau bước trên, trước khi sinh lịch sử 90 ngày. Giá vốn tính lại theo đúng tỷ lệ giá vốn/giá bán cũ. Nhóm hàng, lead time, lịch giao, đơn tối thiểu và thỏa thuận trả hàng không đổi. Phần ghi đè chỉ áp cho cửa hàng demo lúc seed; nhu cầu vẫn là của FRN, và các kết quả ở mục 5 (Kaggle, backtest) không dùng nó. Dùng cho demo nối với kiosk Retail-AI.
 
 Phần vận hành (lô, đơn, sổ sách 90 ngày) được mô phỏng bằng chính sách "kinh nghiệm" trên nhu cầu thật.
 
@@ -282,7 +282,7 @@ A là luật do nhóm tự viết (`backend/app/sim/policies.py`: tồn mục ti
 - Nhu cầu ngày hết hàng là ước tính (WAPE khôi phục 20,5%, độ lệch −0,1%, mục 5.1).
 - Dingdong là kho giao hàng online 30 phút, mục tiêu vận hành khác cửa hàng tiện lợi.
 - A thắng Dingdong một phần có thể vì bộ giả lập dễ hơn thực tế, ví dụ nhà cung cấp luôn giao đủ và đúng hạn. Điều này nâng mọi chính sách như nhau, nên không đổi thứ tự A/B nhưng làm mức hết hàng tuyệt đối trong backtest lạc quan hơn thực tế.
-- WinMart (Masan/WinCommerce) không công bố tỷ lệ hao hụt hay hết hàng của hàng tươi, nên không dùng làm mốc được. Báo cáo thường niên 2024 của Masan chỉ nêu mục tiêu giảm hết hàng và hao hụt 10%.
+- Thanh Lam Mart chỉ chia sẻ bộ danh mục sản phẩm và giá bán chứ chưa có thống kê tỷ lệ hao hụt hay hết hàng lịch sử; các nhà bán lẻ lớn trong nước (như Masan/WinCommerce) cũng không công bố các chỉ số này cho hàng tươi, nên không dùng làm mốc được. Báo cáo thường niên 2024 của Masan chỉ nêu mục tiêu giảm hết hàng và hao hụt 10%.
 
 ## 6. Giới hạn cần nói rõ
 

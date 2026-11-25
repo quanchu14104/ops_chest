@@ -18,7 +18,7 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
    docker compose exec backend python -m app.sim.seed --reset
    ```
 
-5. Nếu seed với `CATALOG_OVERRIDES_PATH` (demo nối kiosk Retail-AI), tên hàng, giá và tên NCC là tên đã ghi đè, không còn dạng "Mặt hàng N". Các ví dụ tên hàng bên dưới viết theo bản không ghi đè.
+5. Nếu seed với `CATALOG_OVERRIDES_PATH` (demo nối kiosk Retail-AI), tên hàng và giá bán lấy từ danh mục thực tế của **Thanh Lam Mart**, tên NCC đổi thành `"Nhà cung cấp Thanh Lam Mart – … (demo)"`, không còn dạng "Mặt hàng N". Các ví dụ tên hàng bên dưới viết theo bản không ghi đè.
 
 ## 1. Buổi sáng của Store Manager (2 phút)
 
