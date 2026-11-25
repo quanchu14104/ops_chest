@@ -146,7 +146,8 @@ const ICON: Record<string, string> = {
 // Chat là nơi làm mọi việc (thẻ tác vụ trong luồng chat). Các trang dữ liệu chỉ để tra cứu / dự phòng khi LLM lỗi,
 // nên nằm trong nhóm "Tra cứu" thu gọn.
 const NAV: { section: string; items: [string, string][]; lookup?: boolean }[] = [
-  { section: "Làm việc", items: [["/", "Trợ lý"], ["/approvals", "Hộp duyệt"]] },
+  // Hộp duyệt không nằm ở thanh bên: mở bằng nút ở thanh trên (máy tính) hoặc ô "Duyệt" ở thanh đáy (điện thoại)
+  { section: "Làm việc", items: [["/", "Trợ lý"]] },
   { section: "Tra cứu", lookup: true, items: [["/expiring", "Hàng cận date"], ["/orders", "Đặt & nhận hàng"], ["/stockcount", "Kiểm kê"],
     ["/reports", "Phân tích"], ["/catalog", "Hàng hóa & NCC"], ["/audit", "Nhật ký"]] },
 ];
