@@ -307,8 +307,8 @@ def delist(db: Session, sku: str, created_by: str, chat_session_id: int | None =
     cands = {c["sku"]: c for c in reports.delist_report(db, limit=500)}
     c = cands.get(p.sku)
     if c is None:
-        return None, False, (f"{p.sku} không nằm trong danh sách ứng viên ngừng nhập theo tiêu chí ABC-XYZ "
-                             "(nhóm C-Y/C-Z, hủy nhiều hoặc lỗ, không phải hàng kéo khách).")
+        return None, False, (f"{p.sku} không nằm trong danh sách ứng viên ngừng nhập "
+                             "(hàng bán chậm và không đều, hủy nhiều hoặc lỗ, không phải hàng kéo khách).")
     plan = sell_down_plan(db, p)
     rationale = " ".join(c["reasons"]) + " Hàng còn tồn vẫn bán tiếp đến hết, chỉ dừng đặt mới."
     rationale += (f" Còn {plan['on_hand']} đơn vị, dự kiến bán hết sau khoảng {plan['days_to_sell_out']} ngày"

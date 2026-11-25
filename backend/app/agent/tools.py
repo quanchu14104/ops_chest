@@ -268,8 +268,7 @@ def _preview(ctx: ToolContext, supplier: str) -> ToolOutput:
                   for l in s["lines"]]
     ui = [W.table(f"Dự kiến đặt {sup.name} (chỉ xem trước, chưa tạo đề xuất)", [
         W.col("name", "Hàng"), W.col("qty", "SL đặt", "num"), W.col("on_hand", "Tồn", "num"),
-        W.col("forecast_cover", "Dự báo phủ", "num"), W.col("line_value", "Thành tiền", "money"),
-        W.col("abc_xyz", "ABC-XYZ")], s["lines"])]
+        W.col("forecast_cover", "Dự báo phủ", "num"), W.col("line_value", "Thành tiền", "money")], s["lines"])]
     return ToolOutput(s, ui=ui)
 
 

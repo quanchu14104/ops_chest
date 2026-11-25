@@ -69,7 +69,7 @@ def build(db: Session, role: str = "manager") -> dict:
                       "prompt": "Mở phiếu kiểm kê các mặt hàng đến lịch đếm"})
     if len(due_count) > len(phantom):
         items.append({"id": "count_due", "level": "info", "count": len(due_count) - len(phantom),
-                      "text": f"{len(due_count) - len(phantom)} mặt hàng đến lịch kiểm kê (nhóm A mỗi tuần, B hai tuần, C mỗi tháng)",
+                      "text": f"{len(due_count) - len(phantom)} mặt hàng đến lịch kiểm kê (hàng chủ lực mỗi tuần, bán vừa 2 tuần, bán chậm mỗi tháng)",
                       "prompt": "Mở phiếu kiểm kê các mặt hàng đến lịch đếm"})
     for s in receiving.recent_shortages(db, days=3):
         items.append({"id": f"short-{s['code']}", "level": "warn", "count": s["lines"],

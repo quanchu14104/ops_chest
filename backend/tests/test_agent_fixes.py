@@ -155,6 +155,14 @@ def test_prompt_forbids_free_text_orders_invented_units_and_tool_names():
     assert '"tặng"' in p and 'never "bạn"' in p and "out_of_stock=true" in p
 
 
+def test_prompt_declines_off_topic_questions():
+    """Cau hoi ngoai nghiep vu: tu choi mot cau, khong goi tool (giu han muc LLM cho viec kho)."""
+    for role in ("manager", "staff"):
+        p = system_prompt("Trần Minh Anh", role)
+        assert "only this store's operations" in p and "call no tool" in p
+        assert "Em chỉ hỗ trợ việc kho và hạn sử dụng của cửa hàng" in p
+
+
 def test_revise_sku_add_adds_to_the_current_quantity(db):
     old = _mk_po(db)
     line = old.payload["lines"][0]

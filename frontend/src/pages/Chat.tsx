@@ -40,7 +40,7 @@ const TOOL_LABEL: Record<string, string> = {
   get_stock_flow: "Lấy số liệu nhập/xuất",
   get_sales_summary: "Lấy doanh số",
   get_cost_report: "Lập báo cáo chi phí",
-  get_abc_xyz: "Phân tích ABC-XYZ",
+  get_abc_xyz: "Phân nhóm hàng theo mức bán",
   get_delist_candidates: "Tìm ứng viên ngừng nhập",
   list_suppliers: "Xem nhà cung cấp",
   preview_reorder: "Tính thử số lượng đặt",

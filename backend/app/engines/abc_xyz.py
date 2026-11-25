@@ -17,6 +17,19 @@ Z_BY_CLASS = {
     "CX": 1.28, "CY": 1.04, "CZ": 0.84,
 }
 
+# Lời thường cho người dùng cửa hàng: ký hiệu ABC-XYZ là thuật ngữ phân tích, không hiện cho Store Manager / nhân viên
+PLAIN_ABC = {"A": "hàng chủ lực", "B": "hàng bán vừa", "C": "hàng bán chậm"}
+PLAIN_XYZ = {"X": "bán đều", "Y": "bán lúc nhiều lúc ít", "Z": "bán thất thường"}
+
+
+def plain_label(cell: str | None) -> str | None:
+    """'CZ' -> 'Hàng bán chậm, bán thất thường'. None/không hợp lệ -> None."""
+    if not cell or len(cell) != 2 or cell[0] not in PLAIN_ABC or cell[1] not in PLAIN_XYZ:
+        return None
+    s = f"{PLAIN_ABC[cell[0]]}, {PLAIN_XYZ[cell[1]]}"
+    return s[0].upper() + s[1:]
+
+
 POLICY_BY_CLASS = {
     "AX": "Hàng chủ lực ổn định: tồn an toàn cao (~98%), đặt đều theo lịch.",
     "AY": "Chủ lực, dao động: theo dõi sát mùa vụ/khuyến mãi, tồn an toàn ~95%.",
@@ -107,7 +120,7 @@ def delist_candidates(stats: list[SkuStats], classes: dict[str, SkuClass],
             continue
         if s.is_traffic_driver:
             continue
-        reasons = [f"Nhóm {c.cell}: {POLICY_BY_CLASS[c.cell]}"]
+        reasons = [POLICY_BY_CLASS[c.cell]]
         score = 1.0 if c.xyz == "Z" else 0.5
         if s.waste_rate >= waste_threshold:
             reasons.append(f"Tỷ lệ hủy {s.waste_rate:.0%} (ngưỡng {waste_threshold:.0%}).")
@@ -122,7 +135,7 @@ def delist_candidates(stats: list[SkuStats], classes: dict[str, SkuClass],
             score += 0.5
         else:
             reasons.append("Không có hàng thay thế: cân nhắc giảm tồn thay vì ngừng hẳn.")
-        res.append({"sku": s.sku, "name": s.name, "cell": c.cell, "score": round(score, 2),
+        res.append({"sku": s.sku, "name": s.name, "cell": c.cell, "label": plain_label(c.cell), "score": round(score, 2),
                     "margin_90d": round(s.gross_margin_after_waste), "waste_rate": round(s.waste_rate, 3),
                     "has_substitute": bool(s.substitutes), "reasons": reasons})
     return sorted(res, key=lambda r: r["score"], reverse=True)

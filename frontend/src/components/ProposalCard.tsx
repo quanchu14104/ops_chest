@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, getUser, type Proposal } from "../api";
-import { STATUS_LABEL, TYPE_LABEL, WASTE_REASON_LABEL, actorLabel, dateTimeVi, dateVi, markdownTimeLabel, money, num, pct } from "../format";
+import { STATUS_LABEL, TYPE_LABEL, WASTE_REASON_LABEL, abcLabel, actorLabel, dateTimeVi, dateVi, markdownTimeLabel, money, num, pct } from "../format";
 import Segmented from "./ui/Segmented";
 import { Chips, Icon, InfoTip, PctSlider, Stepper } from "./ui/controls";
 
@@ -39,7 +39,7 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// Dòng đáng để SM nhìn kỹ: bị chặn trần, có giả thuyết/hệ số, hàng nhóm A, hoặc đặt lệch nhiều so với dự báo
+// Dòng đáng để SM nhìn kỹ: bị chặn trần, có giả thuyết/hệ số, hàng chủ lực (nhóm A), hoặc đặt lệch nhiều so với dự báo
 function needsAttention(l: PoLine): boolean {
   const e = l.explain ?? {};
   if (e.capped_by_shelf_life || e.capped_by_capacity || (e.hypotheses?.length ?? 0) > 0 || e.order_adjustment) return true;
@@ -243,7 +243,7 @@ export default function ProposalCard({ p: initial, compact = false, expanded, on
                   const e = l.explain ?? {};
                   return (
                     <tr key={l.product_id} className={changed ? "row-edited" : undefined}>
-                      <td className="cell-main" title={`${l.sku}${l.abc_xyz ? ` · ${l.abc_xyz}` : ""}${(e.service_floor ?? 0) >= 0.9 ? ` · giữ mức phục vụ ≥${pct(e.service_floor, 0)}` : ""}`}>
+                      <td className="cell-main" title={`${l.sku}${abcLabel(l.abc_xyz) ? ` · ${abcLabel(l.abc_xyz, true)}` : ""}${(e.service_floor ?? 0) >= 0.9 ? ` · giữ mức phục vụ ≥${pct(e.service_floor, 0)}` : ""}`}>
                         {l.name}
                         <span className="badges">
                           {e.capped_by_shelf_life && <span className="badge" title="Bị chặn theo hạn sử dụng">trần HSD</span>}
@@ -530,7 +530,7 @@ function MinOrderPanel({ mo, lines, editable, ack, setAck, applyTopUp }: {
     <div className="alert warn mt-2">
       <b>Đơn thiếu {money(mo.shortfall)} so với giá trị tối thiểu.</b>
       <div className="small mt-1">
-        <b>Bù đơn:</b> kéo sớm {mo.top_up.lines.length} mặt hàng bền nhóm A/B ít ngày tồn nhất (+{money(mo.top_up.added_value)})
+        <b>Bù đơn:</b> kéo sớm {mo.top_up.lines.length} mặt hàng bền, bán chạy, ít ngày tồn nhất (+{money(mo.top_up.added_value)})
         {mo.top_up.reaches_min ? "" : ", vẫn chưa đủ mức tối thiểu"}: {topUp || "không có mặt hàng phù hợp"}.{" "}
         {editable && mo.top_up.lines.length > 0 && <button className="sm" onClick={applyTopUp}>Áp dụng bù đơn</button>}
       </div>
