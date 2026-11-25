@@ -63,7 +63,10 @@ export default function DateCheckForm({ lines, title, note }: { lines: DateCheck
                       <>
                         <span title={l.sku}>{l.name}</span>
                         {adding !== l.sku && (
-                          <button className="icon sm ghost add-date" onClick={() => setAdding(l.sku)} aria-label={`Thêm HSD khác cho ${l.name}`} title="Thêm HSD khác"><Icon name="plus" /></button>
+                          <button className="sm ghost add-date" onClick={() => setAdding(l.sku)} aria-label={`Có HSD khác trên kệ cho ${l.name}`}
+                            title="Kệ có hàng in hạn sử dụng khác với phiếu: thêm một dòng để đếm riêng (không sửa hạn của lô trên sổ)">
+                            <Icon name="plus" /> Có HSD khác trên kệ
+                          </button>
                         )}
                       </>
                     )}
@@ -84,8 +87,10 @@ export default function DateCheckForm({ lines, title, note }: { lines: DateCheck
                     <td />
                     <td colSpan={2} className="small">
                       <span className="row">
-                        <DateField value={newDate[l.sku] ?? ""} onChange={(v) => setNewDate({ ...newDate, [l.sku]: v })} label={`Thêm HSD ${l.name}`} />
-                        <button className="sm" disabled={!newDate[l.sku]} onClick={() => addDate(l.sku)}>Thêm</button>
+                        <span className="muted">HSD in trên bao bì:</span>
+                        <DateField value={newDate[l.sku] ?? ""} onChange={(v) => setNewDate({ ...newDate, [l.sku]: v })}
+                          label={`HSD in trên bao bì, ${l.name}`} />
+                        <button className="sm" disabled={!newDate[l.sku]} onClick={() => addDate(l.sku)}><Icon name="plus" /> Thêm dòng đếm</button>
                         <button className="sm ghost" onClick={() => setAdding(null)}>Huỷ</button>
                       </span>
                     </td>
@@ -98,7 +103,7 @@ export default function DateCheckForm({ lines, title, note }: { lines: DateCheck
         </table>
       </div>
       {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text}</div>}
-      <div className="row mt-3">
+      <div className="row form-actions">
         <button className="primary lg" disabled={touched.length === 0 || m.isPending} onClick={() => m.mutate()}>
           <Icon name="check" /> {m.isPending ? "Đang ghi…" : `Xác nhận ${touched.length} mặt hàng`}
         </button>

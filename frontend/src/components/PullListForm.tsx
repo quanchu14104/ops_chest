@@ -64,7 +64,7 @@ export default function PullListForm({ lines, title, note }: { lines: PullLine[]
       )}
       {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text}</div>}
       {lines.length > 0 && (
-        <div className="row mt-3">
+        <div className="row form-actions">
           <button className="primary lg" disabled={filled.length === 0 || m.isPending} onClick={() => m.mutate()}>
             <Icon name="check" /> {m.isPending ? "Đang ghi…" : `Đã gỡ ${filled.length} lô`}
           </button>

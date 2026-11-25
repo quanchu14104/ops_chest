@@ -54,7 +54,7 @@ export default function StockCountForm({ lines, title, note }: { lines: (CountLi
         </table>
       </div>
       {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text}</div>}
-      <div className="row mt-3">
+      <div className="row form-actions">
         <button className="primary lg" disabled={filled.length === 0 || m.isPending} onClick={() => m.mutate()}>
           <Icon name="check" /> {m.isPending ? "Đang ghi…" : `Xác nhận ${filled.length} mặt hàng`}
         </button>

@@ -218,7 +218,7 @@ function ReceiveFormWidget({ w }: { w: Extract<WidgetSpec, { form: "receive_po" 
       {result && <div className={`alert ${result.ok ? "ok" : "error"}`} style={{ marginTop: 8 }}>{result.text}</div>}
       {closed && !done && <div className="small muted" style={{ marginTop: 8 }}>Đơn này không còn ở trạng thái chờ giao (đã nhận hoặc đã huỷ).</div>}
       {!closed && (
-        <div className="row" style={{ marginTop: 10 }}>
+        <div className="row form-actions">
           <button className="primary" disabled={m.isPending} onClick={submit}>
             {m.isPending ? "Đang ghi…" : "Xác nhận nhận hàng"}
           </button>
