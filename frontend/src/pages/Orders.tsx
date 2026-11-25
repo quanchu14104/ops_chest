@@ -167,7 +167,7 @@ export function Receive({ id, onDone }: { id: number; onDone: () => void }) {
         </table>
       </div>
       {err && <div className="alert error mt-2">{err}</div>}
-      <div className="row mt-3">
+      <div className="row form-actions">
         <button className="ok lg" disabled={m.isPending} onClick={() => { setErr(null); m.mutate(); }}><Icon name="check" /> Xác nhận nhận hàng</button>
         <button className="ghost" onClick={onDone}>Đóng</button>
       </div>

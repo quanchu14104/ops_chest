@@ -373,7 +373,7 @@ def _open_date_check(ctx: ToolContext, freshness: str | None = None, category: s
                                       empty="Không có mặt hàng nào cần kiểm date.")])
     labels = ", ".join(datecheck.CLASS_LABEL[c] for c in classes)
     form = W.form("date_check", f"Kiểm date: {labels}", lines, {"method": "POST", "path": "/date-checks"},
-                  note="Đếm số lượng theo từng HSD in trên bao bì. HSD trên kệ mà phiếu chưa có thì bấm \"Thêm HSD\". "
+                  note="Đếm số lượng theo từng HSD in trên bao bì. HSD trên kệ mà phiếu chưa có thì bấm \"Có HSD khác trên kệ\" để thêm dòng đếm riêng. "
                        "Mặt hàng đã nhập số thì HSD để trống được tính là 0.", meta={"classes": classes})
     return ToolOutput({"form_shown": True, "classes": classes, "lines": len(lines),
                        "message": "Đã hiện phiếu kiểm date trong chat. Nhân viên đếm theo từng HSD rồi bấm xác nhận; "

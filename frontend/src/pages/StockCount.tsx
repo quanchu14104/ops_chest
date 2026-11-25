@@ -30,7 +30,7 @@ function DateCheck() {
       {q.error && <div className="alert error">{(q.error as Error).message}</div>}
       {q.isLoading ? <div className="card"><Skeleton rows={6} /></div> : (
         <DateCheckForm key={cls} lines={lines} title="Phiếu kiểm date"
-          note="Đếm số lượng theo từng HSD in trên bao bì. Gặp HSD phiếu chưa có thì bấm “Thêm HSD”. Mặt hàng đã nhập số thì HSD để trống được tính là 0." />
+          note="Đếm số lượng theo từng HSD in trên bao bì. Kệ có hàng in HSD mà phiếu chưa có thì bấm “Có HSD khác trên kệ” để thêm dòng đếm riêng (không sửa hạn của lô trên sổ). Mặt hàng đã nhập số thì HSD để trống được tính là 0." />
       )}
     </>
   );

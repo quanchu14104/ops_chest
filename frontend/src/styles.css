@@ -797,3 +797,9 @@ a.bi-main:hover, button.bi-main:hover { background: var(--surface-2); text-decor
 /* Màn rộng: có cột thì bỏ nút "Lịch sử hội thoại" ở góc phải */
 @media (min-width: 1101px) { .chat-head { display: none; } }
 @media (max-width: 1100px) { .chat-history { display: none; } }
+
+/* Nút xác nhận của phiếu dài (rút kệ, kiểm date, kiểm kê, nhận hàng) dính ở đáy vùng cuộn: không phải kéo hết danh sách */
+.form-actions {
+  position: sticky; bottom: 0; z-index: var(--z-sticky); margin-top: 12px; padding: 10px 0;
+  background: var(--surface-1); border-top: 1px solid var(--border); box-shadow: 0 -10px 14px -12px rgba(12, 20, 36, 0.35);
+}
