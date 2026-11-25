@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { openInbox } from "../components/InboxPanel";
 import { api, getUser, openPdf, type Proposal } from "../api";
 import ExpiryPhoto from "../components/ExpiryPhoto";
 import SupplierReturns from "../components/SupplierReturns";
@@ -202,7 +202,7 @@ export default function Orders() {
           </select>
           <button className="primary" disabled={!sup || create.isPending} onClick={() => create.mutate()}><Icon name="plus" /> {create.isPending ? "Đang tính…" : "Tạo đề xuất"}</button>
         </div>
-        {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text} {msg.ok && <Link to="/approvals">Mở hộp duyệt →</Link>}</div>}
+        {msg && <div className={`alert ${msg.ok ? "ok" : "error"} mt-2`}>{msg.text} {msg.ok && <button className="linklike" onClick={() => openInbox()}>Mở hộp duyệt →</button>}</div>}
       </div>
       <div className="row mb-3">
         <Segmented label="Trạng thái đơn" value={status} onChange={setStatus}

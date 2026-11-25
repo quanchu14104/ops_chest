@@ -763,3 +763,12 @@ a.bi-main:hover, button.bi-main:hover { background: var(--surface-2); text-decor
 .menu-item svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
 /* "Ops Chest học được gì" ở cuối trang Phân tích: 3 thẻ cạnh nhau, xuống dòng trên màn hẹp */
 .grid.cols-3-learn { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+/* Mục "Hộp duyệt" trong menu là nút mở ngăn kéo, trông giống các mục liên kết */
+.nav button.nav-link {
+  position: relative; display: flex; align-items: center; gap: 12px; height: 38px; min-height: 38px; padding: 0 11px; width: 100%;
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--rail-text); font-weight: 500; white-space: nowrap; justify-content: flex-start;
+}
+.nav button.nav-link svg { flex: none; width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.nav button.nav-link:hover { background: var(--rail-hover); color: #fff; }
+.nav button.nav-link.active { background: #1f4fe0; color: #fff; font-weight: 600; }
+.rail-closed .rail .nav button.nav-link { justify-content: center; padding: 0; }

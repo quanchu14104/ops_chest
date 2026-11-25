@@ -3,12 +3,11 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, clearSession, getToken, getUser, saveSession, type User } from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
-import InboxPanel, { OPEN_INBOX_EVENT } from "./components/InboxPanel";
+import InboxPanel, { OPEN_INBOX_EVENT, openInbox } from "./components/InboxPanel";
 import SettingsDialog from "./components/Settings";
 import { TaskDialog } from "./components/Tasks";
 import { useMediaQuery, useStoredState } from "./components/ui/hooks";
 import { dateVi } from "./format";
-import Approvals from "./pages/Approvals";
 import Audit from "./pages/Audit";
 import ModelReport from "./pages/ModelReport";
 import Catalog from "./pages/Catalog";
@@ -248,16 +247,31 @@ function Shell({ user }: { user: User }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [drawer, more]);
-  // Bản tin (trong trang Trợ lý) mở ngăn Hộp duyệt qua sự kiện này
+  // Mọi lối "duyệt" (menu, thanh đáy, menu Công việc, bản tin, địa chỉ cũ /approvals) đều mở ngăn này
+  const [inbox, setInbox] = useState({ n: 0, type: "" });
+  const openDrawer = (type = "") => {
+    setInbox((s) => ({ n: s.n + 1, type }));
+    setDrawer(true);
+  };
   useEffect(() => {
-    const open = () => setDrawer(true);
+    const open = (e: Event) => openDrawer((e as CustomEvent<{ type?: string }>).detail?.type ?? "");
     window.addEventListener(OPEN_INBOX_EVENT, open);
     return () => window.removeEventListener(OPEN_INBOX_EVENT, open);
   }, []);
 
-  const countOf = (to: string) => (to === "/approvals" ? pendingN : 0);
   const link = (to: string, label: string, cls = "") => {
-    const count = countOf(to);
+    const count = to === "/approvals" ? pendingN : 0;
+    // Hộp duyệt không còn là trang riêng: mục menu này mở ngăn kéo, giữ nguyên trang đang xem
+    if (to === "/approvals") {
+      return (
+        <button key={to} type="button" className={`nav-link ${cls} ${drawer ? "active" : ""}`} onClick={() => openDrawer()} aria-haspopup="dialog"
+          title={railOpen ? undefined : label} aria-label={count ? `${label} (${count} chờ duyệt)` : label}>
+          <NavIcon to={to} />
+          <span className="nav-label">{label}</span>
+          {count > 0 && <span className="count">{count}</span>}
+        </button>
+      );
+    }
     return (
       <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `${cls} ${(to === "/" ? onAssistant : isActive) ? "active" : ""}`}
         title={railOpen ? undefined : label} aria-label={count ? `${label} (${count} chờ duyệt)` : label}>
@@ -277,7 +291,8 @@ function Shell({ user }: { user: User }) {
         <Route path="/chat/:sid" element={<Home />} />
         {/* Trang Tổng quan cũ chỉ lặp lại thông tin trang khác: địa chỉ cũ chuyển sang Phân tích */}
         <Route path="/stats" element={<Navigate to="/reports" replace />} />
-        <Route path="/approvals" element={<Approvals />} />
+        {/* Trang Hộp duyệt cũ: chuyển về Trợ lý và mở ngăn Hộp duyệt (giữ bộ lọc ?type=) */}
+        <Route path="/approvals" element={<ApprovalsRedirect />} />
         <Route path="/expiring" element={<Expiring />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/stockcount" element={<StockCount />} />
@@ -372,11 +387,26 @@ function Shell({ user }: { user: User }) {
           </button>
         </div>
         <div className="drawer-body">
-          <InboxPanel onNavigate={() => setDrawer(false)} />
+          <InboxPanel key={inbox.n} initialType={inbox.type} />
         </div>
       </aside>
     </div>
   );
+}
+
+// Địa chỉ cũ /approvals[?type=...]: về trang Trợ lý rồi mở ngăn Hộp duyệt. Mở sau khi đổi trang,
+// vì đổi trang thì Shell đóng ngăn kéo.
+function ApprovalsRedirect() {
+  const nav = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    const type = new URLSearchParams(location.search).get("type") ?? "";
+    nav("/", { replace: true });
+    // Không huỷ hẹn giờ khi gỡ: component này bị gỡ ngay khi đổi trang, huỷ thì ngăn kéo không bao giờ mở
+    window.setTimeout(() => openInbox(type), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 // Doc lai phien moi lan route render (khong cache o App, neu khong sau dang nhap van thay user = null)
