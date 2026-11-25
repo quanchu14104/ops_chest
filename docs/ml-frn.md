@@ -84,6 +84,8 @@ FRN chỉ cho nhu cầu. Các phần sau được tạo theo quy tắc cố đ�
 - nhà cung cấp: mỗi nhóm quản lý một nhà cung cấp hư cấu, giao hằng ngày, chờ hàng 1 ngày;
 - 5 mặt hàng bán nhiều nhất được coi là hàng kéo khách.
 
+Tùy chọn `CATALOG_OVERRIDES_PATH` (mặc định tắt, `apply_catalog_overrides` trong cùng file) đổi tên và giá bán của hàng, tên và email của NCC ngay sau bước trên, trước khi sinh lịch sử 90 ngày. Giá vốn tính lại theo đúng tỷ lệ giá vốn/giá bán cũ. Nhóm hàng, lead time, lịch giao, đơn tối thiểu và thỏa thuận trả hàng không đổi. Phần ghi đè chỉ áp cho cửa hàng demo lúc seed; nhu cầu vẫn là của FRN, và các kết quả ở mục 5 (Kaggle, backtest) không dùng nó. Dùng cho demo nối với kiosk Retail-AI.
+
 Phần vận hành (lô, đơn, sổ sách 90 ngày) được mô phỏng bằng chính sách "kinh nghiệm" trên nhu cầu thật.
 
 ## 5. Kết quả
@@ -167,12 +169,14 @@ Tỷ trọng bán theo 4 khung giờ (6–11h, 11–14h, 14–17h, 17–22h), t�
 
 **Trung vị qua 50 điểm** (khoảng tứ phân vị trong ngoặc):
 
-| | A | B-EWMA | B-ML |
-|---|---|---|---|
-| Lãi gộp so với A | — | **+4,2%** (−0,1% đến +5,1%) | +3,6% (−1,1% đến +5,1%) |
-| Tỷ lệ hủy | 5,3% | 5,2% | 5,7% |
-| Tỷ lệ hết hàng | 14,5% | 13,6% | **13,1%** |
-| Hết hàng của hàng kéo khách | 8,7% | 3,9% | **2,7%** |
+| | Dingdong thật | A | B-EWMA | B-ML |
+|---|---|---|---|---|
+| Lãi gộp so với A | không có số liệu | — | **+4,2%** (−0,1% đến +5,1%) | +3,6% (−1,1% đến +5,1%) |
+| Tỷ lệ hủy | không có số liệu | 5,3% | 5,2% | 5,7% |
+| Tỷ lệ hết hàng | **19,3%** (17,7% đến 21,5%) | 14,5% | 13,6% | **13,1%** |
+| Hết hàng của hàng kéo khách | không tính | 8,7% | 3,9% | **2,7%** |
+
+Cột "Dingdong thật" là kết quả vận hành thật của Dingdong trên cùng 50 điểm và cùng 37 ngày, không phải mô phỏng. Cách tính và giới hạn ở mục 5.8.
 
 - B-ML lãi hơn A ở **68%** số điểm, và không hết hàng nhiều hơn A ở **94%** số điểm.
 - B-ML lãi hơn B-EWMA chỉ ở **38%** số điểm (trung vị −0,4%).
@@ -258,6 +262,27 @@ Mục 5.6 cho thấy dự báo tốt hơn chưa thành lãi nhiều hơn. Phần
    - Biến thể ewma_sigma ban đầu chỉ là chẩn đoán. Nó được đưa vào làm ứng viên **sau khi** đã thấy kết quả của nó trên chính 50 điểm này.
    - Kiểm chéo bảo vệ bước chọn nhóm và biến thể, nhưng không xóa được việc người làm đã nhìn kết quả trước khi thêm ứng viên. Vì vậy +0,8% nên đọc là ước lượng hơi lạc quan.
    - Muốn xác nhận cần các điểm FRN chưa dùng ở bước nào, hoặc một giai đoạn sau ngày 02/07/2024.
+
+### 5.8 Đối chiếu A với vận hành thật: A có phải "người rơm" không
+
+A là luật do nhóm tự viết (`backend/app/sim/policies.py`: tồn mục tiêu theo trung bình bán 28 ngày, giảm 30% giờ vàng). Các hệ số của nó không lấy từ cửa hàng thật. Để kiểm tra A có bị dựng yếu cho Ops Chest thắng hay không, A được đặt cạnh hai mốc đã kiểm chứng.
+
+**Hết hàng: so với chính Dingdong.**
+- FRN ghi lại những gì đã xảy ra thật ở các kho Dingdong, kể cả giờ hết hàng. Vì vậy tính được tỷ lệ hết hàng của nhà vận hành thật, theo đúng công thức `oos_rate` của OC (`backend/app/engines/kpi.py`): nhu cầu bị mất ÷ nhu cầu.
+- Cách tính: từ `backend/app/sim/data/frn/stores_daily.csv.gz`, lấy 50 điểm giữ lại, các ngày 27/05–02/07/2024 (đúng 37 ngày của backtest). Mỗi điểm: (Σ `demand` − Σ `sale`) ÷ Σ `demand`, trong đó `demand` là nhu cầu đã khôi phục (mục 3). Không có dòng nào `sale` vượt `demand`. Tỷ lệ không phụ thuộc hệ số K.
+- Kết quả: trung vị **19,3%** (tứ phân vị 17,7–21,5%); gộp cả 50 điểm 18,8%; điểm demo 18 là 18,7%.
+- **Đọc kết quả:** A hết hàng 14,5%, B-gate 14,1%, đều thấp hơn nhà vận hành thật. Về hết hàng, A không phải đối thủ yếu.
+
+**Hủy: so với nghiên cứu đã bình duyệt.**
+- Buzby và cộng sự (2015), *Estimated Fresh Produce Shrink and Food Loss in U.S. Supermarkets*, tạp chí Agriculture 5(3): hao hụt ở siêu thị Mỹ 2011–12 khoảng 12,6% với trái cây tươi và 11,6% với rau tươi (theo khối lượng, gồm cả mất trộm, nên là cận trên). Cùng bài trích số liệu của FMI: tổng hao hụt toàn cửa hàng khoảng 4,8% doanh thu.
+- A hủy 5,3% (theo giá vốn), ở mức thấp so với các mốc này. Đơn vị đo khác nhau nên chỉ so được về độ lớn: A không bị cho hủy quá tay.
+
+**Giới hạn của phép đối chiếu:**
+- Dingdong chỉ so được hết hàng; FRN không có số liệu hủy hay lãi.
+- Nhu cầu ngày hết hàng là ước tính (WAPE khôi phục 20,5%, độ lệch −0,1%, mục 5.1).
+- Dingdong là kho giao hàng online 30 phút, mục tiêu vận hành khác cửa hàng tiện lợi.
+- A thắng Dingdong một phần có thể vì bộ giả lập dễ hơn thực tế, ví dụ nhà cung cấp luôn giao đủ và đúng hạn. Điều này nâng mọi chính sách như nhau, nên không đổi thứ tự A/B nhưng làm mức hết hàng tuyệt đối trong backtest lạc quan hơn thực tế.
+- WinMart (Masan/WinCommerce) không công bố tỷ lệ hao hụt hay hết hàng của hàng tươi, nên không dùng làm mốc được. Báo cáo thường niên 2024 của Masan chỉ nêu mục tiêu giảm hết hàng và hao hụt 10%.
 
 ## 6. Giới hạn cần nói rõ
 
