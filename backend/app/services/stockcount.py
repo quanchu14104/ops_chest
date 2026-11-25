@@ -63,6 +63,7 @@ def phantom_stock(db: Session) -> list[dict]:
 
 def count_due(db: Session, d: date | None = None) -> list[dict]:
     """SKU den lich dem theo ABC (A 7 ngay, B 14, C 30) cong SKU nghi ton ao. Khong kem so ton (dem mu)."""
+    from app.engines.abc_xyz import PLAIN_ABC
     from app.services.history import abc_xyz_classes
 
     d = d or today()
@@ -74,7 +75,7 @@ def count_due(db: Session, d: date | None = None) -> list[dict]:
         if p.last_counted_date is None or (d - p.last_counted_date).days >= every:
             last = f"lần đếm trước {p.last_counted_date:%d/%m}" if p.last_counted_date else "chưa đếm lần nào"
             rows[p.sku] = {"sku": p.sku, "name": p.name, "category": p.category,
-                           "reason": f"Đến lịch đếm nhóm {abc} ({every} ngày), {last}"}
+                           "reason": f"Đến lịch đếm {PLAIN_ABC[abc]} (mỗi {every} ngày), {last}"}
     for x in phantom_stock(db):
         rows[x["sku"]] = x  # ton ao uu tien hien ly do nay
     return sorted(rows.values(), key=lambda r: (r["category"], r["sku"]))

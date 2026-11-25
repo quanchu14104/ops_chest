@@ -8,7 +8,7 @@ import FrnBacktest, { type FrnBt } from "../components/FrnBacktest";
 import FrnModelReport from "../components/FrnModelReport";
 import PageHeader from "../components/ui/PageHeader";
 import { Skeleton } from "../components/ui/EmptyState";
-import { dateVi, money, pct } from "../format";
+import { abcLabel, dateVi, money, pct } from "../format";
 
 type KpiCell = { label: string; value: string; hint: string };
 
@@ -69,7 +69,7 @@ export default function Reports() {
 
   return (
     <>
-      <PageHeader title="Phân tích" desc="Biểu đồ, chi phí, ABC-XYZ, ứng viên ngừng nhập và mô phỏng hiệu quả."
+      <PageHeader title="Phân tích" desc="Biểu đồ, chi phí, ứng viên ngừng nhập và mô phỏng hiệu quả."
         actions={<>
           <Chips label="Khoảng thời gian" value={String(days)} onChange={(v) => v && setDays(Number(v))}
             options={[30, 90, 180, 365].map((d) => ({ value: String(d), label: `${d} ngày` }))} />
@@ -120,16 +120,15 @@ export default function Reports() {
         {chart.data ? <ChartView spec={chart.data} height={300} /> : <Skeleton rows={6} />}
       </div>
 
-      <div className="grid cols-2" style={{ marginBottom: 16 }}>
-        {abc.data && <ChartView spec={abc.data} />}
+      <div className="grid mb-4">
         <div className="card">
-          <CardTitle title="Ứng viên ngừng nhập" info="Ô C-Y/C-Z, hủy nhiều hoặc lỗ, không phải hàng kéo khách. Ngừng nhập là quyết định của Store Manager." />
+          <CardTitle title="Ứng viên ngừng nhập" info="Hàng bán chậm và không đều, hủy nhiều hoặc lỗ, không phải hàng kéo khách. Ngừng nhập là quyết định của Store Manager." />
           {msg && <div className="alert ok" style={{ marginBottom: 8 }}>{msg}</div>}
           {cands.data?.length === 0 && <p className="muted">Không có ứng viên.</p>}
           {cands.data?.map((c) => (
             <div key={c.sku} style={{ borderTop: "1px solid var(--grid)", padding: "8px 0" }}>
               <div className="row">
-                <b title={`${c.sku} · ${c.category}`}>{c.name}</b> <span className="badge">{c.cell}</span>
+                <b title={`${c.sku} · ${c.category}`}>{c.name}</b> <span className="badge">{abcLabel(c.cell, true) ?? "Hàng mới"}</span>
                 <InfoTip text={c.reasons.join(" · ")} />
                 <span className="spacer" />
                 <button className="sm danger" onClick={() => delist.mutate(c.sku)} disabled={delist.isPending}>Ngừng nhập</button>
@@ -167,6 +166,8 @@ export default function Reports() {
       <details className="card more">
         <summary>Mô hình dự báo & mô phỏng</summary>
         <div className="mt-3">
+      {/* Ma trận ABC-XYZ: thuật ngữ phân tích dữ liệu, chỉ để trong phần kỹ thuật */}
+      {abc.data && <div className="mb-4"><ChartView spec={abc.data} /></div>}
       <FrnModelReport />
 
       {frnBt.data ? (

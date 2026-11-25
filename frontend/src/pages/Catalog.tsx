@@ -6,7 +6,7 @@ import EmptyState, { Skeleton } from "../components/ui/EmptyState";
 import PageHeader from "../components/ui/PageHeader";
 import Segmented from "../components/ui/Segmented";
 import { CardTitle, Chips, Switch } from "../components/ui/controls";
-import { WEEKDAYS, money, num, pct } from "../format";
+import { ABC_LABEL, WEEKDAYS, abcLabel, money, num, pct } from "../format";
 
 type Prod = { sku: string; name: string; category: string; status: string; freshness_class: string; shelf_life_days: number; unit_cost: number; unit_price: number; supplier: string; is_traffic_driver: boolean; abc_xyz: string | null; on_hand: number; is_new?: boolean };
 type Sup = { code: string; name: string; email: string; phone: string; lead_time_days: number; order_weekdays: number[]; min_order_value: number; agreement: { accepts_near_expiry_return: boolean; return_min_days_before_expiry: number; return_credit_pct: number; discount_pct: number; notes: string } | null };
@@ -36,7 +36,7 @@ export default function Catalog() {
   const filtered = !!(ql || abc || supplier || oos);
   return (
     <>
-      <PageHeader title="Hàng hóa & nhà cung cấp" desc="Danh mục, phân loại vòng đời, ABC-XYZ và điều khoản hợp đồng nguyên tắc với NCC."
+      <PageHeader title="Hàng hóa & nhà cung cấp" desc="Danh mục, vòng đời, mức bán và điều khoản hợp đồng nguyên tắc với NCC."
         actions={<Segmented<Tab> label="Danh mục" value={tab} onChange={setTab} options={[
           { value: "products", label: "Sản phẩm", count: prods.data?.length },
           { value: "suppliers", label: "Nhà cung cấp", count: sups.data?.length },
@@ -45,8 +45,8 @@ export default function Catalog() {
         <div className="card">
           <div className="row filters mb-3">
             <input type="search" className="grow" style={{ maxWidth: 320 }} placeholder="Tìm theo tên, SKU, nhóm…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Tìm hàng hóa" />
-            <Chips label="Lọc theo nhóm ABC" value={abc} onChange={setAbc} allowNone
-              options={[{ value: "A", label: "A" }, { value: "B", label: "B" }, { value: "C", label: "C" }, { value: "NEW", label: "Mới" }]} />
+            <Chips label="Lọc theo mức bán" value={abc} onChange={setAbc} allowNone
+              options={[...Object.entries(ABC_LABEL).map(([value, label]) => ({ value, label })), { value: "NEW", label: "Hàng mới" }]} />
             <select value={supplier} onChange={(e) => setSupplier(e.target.value)} aria-label="Lọc theo nhà cung cấp" style={{ maxWidth: 260 }}>
               <option value="">Mọi nhà cung cấp</option>
               {supplierNames.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -59,7 +59,7 @@ export default function Catalog() {
           {prods.data && rows.length === 0 && <EmptyState title="Không có mặt hàng nào khớp bộ lọc" />}
           <div className="table-wrap sticky-head">
             <table>
-              <thead><tr><th>SKU</th><th>Tên hàng</th><th>Nhóm</th><th>Vòng đời</th><th>ABC-XYZ</th><th className="num">Giá vốn</th><th className="num">Giá bán</th><th className="num">Tồn</th><th>NCC</th></tr></thead>
+              <thead><tr><th>SKU</th><th>Tên hàng</th><th>Nhóm</th><th>Vòng đời</th><th>Mức bán</th><th className="num">Giá vốn</th><th className="num">Giá bán</th><th className="num">Tồn</th><th>NCC</th></tr></thead>
               <tbody>
                 {rows.map((p) => (
                   <tr key={p.sku} className={p.status === "ACTIVE" ? undefined : "row-excluded"}>
@@ -74,7 +74,8 @@ export default function Catalog() {
                     </td>
                     <td className="small">{p.category}</td>
                     <td className="small">{FRESH[p.freshness_class]} · {p.shelf_life_days}n</td>
-                    <td>{p.is_new ? <span className="badge accent" title="Bán chưa đủ 8 tuần: chưa xếp ABC-XYZ, không xét ngừng nhập">hàng mới</span> : p.abc_xyz ?? "—"}</td>
+                    <td>{p.is_new ? <span className="badge accent" title="Bán chưa đủ 8 tuần: chưa xếp mức bán, không xét ngừng nhập">hàng mới</span>
+                      : <span className={`badge ${p.abc_xyz?.[0] === "A" ? "accent" : ""}`} title={abcLabel(p.abc_xyz, true) ?? undefined}>{abcLabel(p.abc_xyz) ?? "—"}</span>}</td>
                     <td className="num">{money(p.unit_cost)}</td>
                     <td className="num">{money(p.unit_price)}</td>
                     <td className="num">{num(p.on_hand)}</td>

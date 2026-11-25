@@ -74,6 +74,14 @@ export function markdownTimeLabel(hour: number | null | undefined): string {
   return h >= 17 ? `giờ vàng từ ${h}h` : `giảm từ ${h}h`;
 }
 
+// Ký hiệu ABC-XYZ là thuật ngữ phân tích: người dùng cửa hàng chỉ thấy lời thường (khớp backend engines/abc_xyz.plain_label)
+export const ABC_LABEL: Record<string, string> = { A: "Chủ lực", B: "Bán vừa", C: "Bán chậm" };
+const XYZ_LABEL: Record<string, string> = { X: "bán đều", Y: "lúc nhiều lúc ít", Z: "thất thường" };
+export function abcLabel(cell: string | null | undefined, withRhythm = false): string | null {
+  if (!cell || !ABC_LABEL[cell[0]]) return null;
+  return withRhythm && XYZ_LABEL[cell[1]] ? `${ABC_LABEL[cell[0]]}, ${XYZ_LABEL[cell[1]]}` : ABC_LABEL[cell[0]];
+}
+
 // Nhãn phương án từ backend ghi "giờ vàng" cả khi giảm từ 11h; đổi lời cho đúng giờ (L-17)
 export function optionLabel(label: string): string {
   return label.replace(/giờ vàng (\d+%) \(từ (\d+)h\)/i, (all, p: string, h: string) => (Number(h) >= 17 ? all : `${p} từ ${h}h`));
