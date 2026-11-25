@@ -398,7 +398,29 @@ export default function Chat({ home = false }: { home?: boolean }) {
     if (id === sessionId) nav("/chat");
   };
 
+  // Danh sách hội thoại: cột cố định bên trái (màn rộng) và nút thả xuống (màn hẹp) dùng chung
+  const historyList = (onPick?: () => void) => (
+    <>
+      <button className="primary new-chat" onClick={() => { onPick?.(); nav("/chat"); }}>+ Hội thoại mới</button>
+      {sessions.data?.length === 0 && <p className="muted small history-empty">Chưa có hội thoại nào.</p>}
+      {sessions.data?.map((s) => (
+        <div key={s.id} className={`item ${s.id === sessionId ? "on" : ""}`}>
+          <button className="title" onClick={() => { onPick?.(); nav(`/chat/${s.id}`); }} title={s.title}
+            aria-current={s.id === sessionId ? "page" : undefined}>
+            {s.title}
+          </button>
+          <button className="icon sm ghost del" onClick={() => del(s.id)} aria-label={`Xóa hội thoại ${s.title}`} title="Xóa hội thoại">✕</button>
+        </div>
+      ))}
+    </>
+  );
+
   return (
+    <div className="chat-shell">
+    <aside className="chat-history" aria-label="Lịch sử hội thoại">
+      <div className="section-title">Lịch sử hội thoại</div>
+      {historyList()}
+    </aside>
     <div className={`chat ${home ? "in-home" : ""}`}>
       <div className="chat-head">
         <button className="ghost sm" onClick={() => setHist((h) => !h)} aria-expanded={hist} aria-haspopup="true">
@@ -406,20 +428,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
         </button>
         {hist && (
           <div className="history" role="menu">
-            <button className="primary" style={{ width: "100%", marginBottom: 6 }} onClick={() => { setHist(false); nav("/chat"); }}>
-              + Hội thoại mới
-            </button>
-            {sessions.data?.length === 0 && <p className="muted small" style={{ padding: "6px 10px" }}>Chưa có hội thoại nào.</p>}
-            {sessions.data?.map((s) => (
-              <div key={s.id} className="item">
-                <button className={`title ${s.id === sessionId ? "on" : ""}`} onClick={() => { setHist(false); nav(`/chat/${s.id}`); }} title={s.title}>
-                  {s.title}
-                </button>
-                <button className="sm ghost" onClick={() => del(s.id)} aria-label="Xóa hội thoại">
-                  ✕
-                </button>
-              </div>
-            ))}
+            {historyList(() => setHist(false))}
           </div>
         )}
       </div>
@@ -477,6 +486,7 @@ export default function Chat({ home = false }: { home?: boolean }) {
           <div className="foot-note">Ops Chest chỉ đề xuất. Anh/chị là người quyết định cuối cùng.</div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
