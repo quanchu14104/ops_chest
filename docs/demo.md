@@ -46,7 +46,7 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
 
 ## 3. Hộp duyệt: HITL (2 phút)
 
-- Mở **Hộp duyệt** (ngăn kéo bên phải: bấm nút Hộp duyệt ở thanh trên hoặc menu bên trái, hoặc nói *"cho tôi xem các đề xuất chờ duyệt"* để agent mở thẻ hộp duyệt ngay trong chat).
+- Mở **Hộp duyệt** (ngăn kéo bên phải: bấm nút Hộp duyệt ở thanh trên, hoặc nói *"cho tôi xem các đề xuất chờ duyệt"* để agent mở thẻ hộp duyệt ngay trong chat).
 - Trong thẻ đặt hàng: cột *Dự báo phủ*, *Đề xuất*, phân loại ABC-XYZ của từng dòng. Đơn dài mặc định lọc còn các dòng cần chú ý (bộ lọc *Cần xem / Đã sửa / Tất cả*, kèm ô tìm SKU).
 - **Sửa bằng lời:** nói với agent *"giảm mỗi món còn một nửa"* hoặc *"đặt thêm 50 <tên hàng>"*, hoặc bấm **Hỏi lại** trên thẻ. Agent tạo đề xuất **mới** chờ duyệt, bản cũ chuyển sang "Đã có bản sửa". Agent không tự duyệt.
 - **Sửa bằng tay:** đổi số lượng một dòng bằng nút +/− (dòng được tô vàng, tổng tiền ở đầu thẻ cập nhật theo), rồi bấm **Duyệt (đã sửa)** trên thanh duyệt ở cuối thẻ. Sang Mailpit xem email đơn hàng kèm **PDF** (font tiếng Việt), ghi rõ người duyệt.
