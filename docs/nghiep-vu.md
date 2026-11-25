@@ -13,7 +13,7 @@ Store Manager (SM) làm việc trực tiếp với đại lý, có toàn quyền
 | "Quyết định abcxyz" | **Phân tích ABC-XYZ** (kỹ thuật có thật) | Ma trận 9 ô quyết định mức tồn an toàn và là cơ sở đề xuất ngừng nhập. |
 | Tự động gửi "hợp đồng" | Agent chỉ soạn **đơn đặt hàng (PO)** theo mẫu cố định, kèm PDF. **Hợp đồng nguyên tắc** được lưu dưới dạng dữ liệu (chiết khấu, lead time, đơn tối thiểu, điều khoản đổi trả). | Hợp đồng ký mỗi năm một lần; đơn hàng gửi hằng ngày. LLM không nên soạn văn bản pháp lý. |
 | Ngừng nhập dựa trên lịch sử bán | Chỉ xét ô C-Y/C-Z **và** (hủy ≥15% hoặc lỗ), **không bao giờ** đề xuất cắt hàng kéo khách (traffic driver), có kiểm tra hàng thay thế | Nước suối, mì gói lãi thấp nhưng thiếu là khách bỏ đi. |
-| LLM "ra quyết định" | **Mọi con số do engine tất định tính.** LLM chỉ gọi tool, giải thích và trò chuyện. | LLM tính sai và không lặp lại được kết quả; cách này cũng kiểm chứng được khi bảo vệ. |
+| LLM "ra quyết định" | **Mọi con số do engine tất định tính.** LLM chỉ gọi tool, giải thích và trò chuyện. Yêu cầu đặt hàng bằng lời cũng thành đề xuất do engine dựng, không thành thư tự do. | LLM tính sai và không lặp lại được kết quả; cách này cũng kiểm chứng được khi bảo vệ. |
 
 ## 3. Engine (`backend/app/engines/`)
 
@@ -140,6 +140,24 @@ Mọi bút toán hủy có `reason`: `EXPIRED` (hết hạn), `DAMAGED` (vỡ, m
 
 Model chỉ đọc chữ in trên bao bì; việc hiểu ngày (ngày trước tháng, chỉ có tháng/năm thì lấy cuối tháng) do code tất định làm. Không đọc được HSD thì trả rỗng và không bao giờ lấy NSX thay thế. Kết quả chỉ điền sẵn ô HSD, người nhận hàng vẫn phải đối chiếu và xác nhận; ảnh không được lưu. Đã thử trên ảnh tem tự tạo, **chưa thử trên ảnh bao bì thật**.
 
+### Bản tin đầu ngày theo vai trò (`services/briefing.py`)
+
+Bản tin dựng thẳng từ DB, không qua LLM. Mỗi mục có mức `action` (cần quyết), `warn` (cần để ý) hoặc `info` (việc trong ngày).
+
+- **Phân vai:** chỉ Store Manager được duyệt, nên với nhân viên mục đề xuất chờ duyệt là `info` ("đang chờ Store Manager duyệt"), không phải việc của họ. Các việc của ca (rút kệ, kiểm date, kiểm kê, nhận hàng) giữ nguyên cho mọi vai trò.
+- **Nhà cung cấp đến lịch đặt:** một NCC thì ghi tên; nhiều NCC thì gộp thành "N nhà cung cấp đến lịch đặt hàng hôm nay", danh sách tên để ở phần chi tiết.
+- **Lô có nguy cơ hủy trong 3 ngày:** giá vốn rủi ro chỉ cộng đúng các lô được đếm (không lẫn lô trạng thái OK), để số lô và số tiền cùng một tập.
+
+### Việc làm trong chat
+
+Chat là nơi làm việc chính; người dùng chỉ tự thao tác những việc bắt buộc phải do người làm (duyệt, đếm, nhập HSD, xác nhận gỡ kệ).
+
+- Khi người dùng muốn **làm** một việc (duyệt, xử lý cận date, nhận hàng, trả NCC, đếm, kiểm date, rút kệ), agent mở **thẻ việc** tương ứng thay vì mô tả. Thẻ tự tải số liệu hiện tại; mọi nút trên thẻ đi qua REST có kiểm quyền, giống các trang dữ liệu.
+- **Đặt hàng theo lời** ("đặt thêm 50…", "soạn tờ trình đặt…", "gửi email bảo NCC giao thêm") luôn thành đề xuất đặt hàng thật: thêm vào đơn chờ duyệt của NCC đó nếu có, không thì tạo đơn mới rồi sửa. Agent không viết đơn hay email dạng văn bản tự do, không bịa địa chỉ, ngày, và không bảo Store Manager tự liên hệ NCC: đơn chỉ gửi đi sau khi duyệt.
+- **"Hôm nay nên đặt gì":** agent liệt kê mọi đơn đặt hàng đang chờ duyệt trước, chỉ tạo đơn cho NCC đến lịch mà chưa có đơn.
+- **Tồn sau khi hàng về** = các lô còn bán được vào ngày hàng về + số đặt. Lô hết ngày bán trước ngày hàng về (ví dụ hết hôm nay, hàng về mai) không được cộng.
+- **Đơn vị:** danh mục không có đơn vị tính, nên agent ghi số kèm "sản phẩm", không tự đặt ra "thùng", "gói".
+
 ## 4. Định nghĩa KPI (`kpi.py`)
 
 | KPI | Công thức |
@@ -202,7 +220,7 @@ Dòng "sàn nhóm A 80%" cho thấy sàn là một nút chỉnh chứ không ph�
 **Điểm cần nói thẳng:**
 
 - Ở dòng "B chỉ đặt hàng", B hủy **nhiều hơn** A (12,2% so với 11,1%) và lợi nhuận gần như hòa (+0,2%): với sàn mức phục vụ, phần đặt hàng một mình đổi hủy lấy có hàng; giảm giá cận date và trả NCC mới kéo tỷ lệ hủy xuống dưới A.
-- Khi Store Manager chỉ duyệt 60% đề xuất, lợi ích gần như hết (+1,2%). Khi khách phản ứng với giảm giá chỉ bằng 25% giả định, còn +1,8%.
+- Khi Store Manager chỉ duyệt 60% đề xuất, lợi ích gần như hết (+1,1%). Khi khách phản ứng với giảm giá chỉ bằng 25% giả định, còn +1,8%.
 - Hết hàng "cả nhóm hàng tươi trống" (ngày mà mọi món trong nhóm đều hết) được đo nhưng không xảy ra trong mô phỏng ở cả A và B, vì mỗi nhóm có 6–20 món.
 
 **Giới hạn cần nói rõ khi bảo vệ:**
