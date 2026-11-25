@@ -25,7 +25,7 @@ Cửa hàng demo dùng **nhu cầu thật** của điểm bán số 18 trong Fre
 - Trang chủ **Trợ lý** hiện **bản tin đầu ngày**, chia ba nhóm *Cần quyết*, *Cần để ý*, *Việc trong ngày*: đề xuất chờ duyệt, lô cận date, nhà cung cấp đến lịch đặt, đơn đang chờ giao, hàng hết… Nhấn mạnh: bản tin dựng từ dữ liệu thật, **không qua LLM**, nên không thể bịa số.
 - Bấm một dòng của bản tin, ví dụ *lô cận date*: việc đó mở trong popup (không qua LLM). Thẻ lô cận date cho tick chọn lô rồi bấm Giảm giá / Trả NCC / Ghi hủy để tạo đề xuất. Nút bong bóng chat ở cuối dòng thì hỏi Ops Chest về mục đó.
 - Bấm nút **Công việc** cạnh ô chat: lưới việc của ca (Chờ duyệt, Cận date, Rút kệ, Kiểm date, Kiểm kê, Nhận hàng, Trả NCC, Hàng hết, KPI) kèm số đếm. Đây là cách làm việc hằng ngày, không cần vào các trang trong nhóm *Tra cứu*.
-- Trong menu **Công việc**, bấm **Quét đề xuất** (chỉ Store Manager thấy; cũng có nút **"Quét & tạo đề xuất ngay"** ở Hộp duyệt và trang *Tra cứu → Tổng quan*). Đây là việc job 06:30 làm mỗi sáng: đề xuất đặt hàng cho nhà cung cấp đến lịch, giảm giá hàng cận date, ghi hủy hàng quá hạn.
+- Trong menu **Công việc**, bấm **Quét đề xuất** (chỉ Store Manager thấy; cũng có nút **"Quét & tạo đề xuất ngay"** ở Hộp duyệt; ô **Quét giảm giá** cạnh đó chạy việc của job 17:00). Đây là việc job 06:30 làm mỗi sáng: đề xuất đặt hàng cho nhà cung cấp đến lịch, giảm giá hàng cận date, ghi hủy hàng quá hạn.
 - Nhấn mạnh: **chưa có gì được gửi đi.**
 - Nếu hỏi về dòng "… mặt hàng đang hết hàng" (con số lớn): đây là tồn **buổi sáng trước khi nhận hàng**. Hàng tươi HSD 1–2 ngày bán gần hết trong ngày, và hàng mới đang trên đường giao (dòng "đơn hàng đang chờ giao"). Lịch sử 90 ngày được vận hành bằng chính sách "kinh nghiệm", nên hết hàng khoảng 30% số ngày–mặt hàng, sát với thực tế FRN (44% số ngày có giờ hết hàng).
 
@@ -78,7 +78,7 @@ Hỏi lần lượt:
 ## 6. Tua nhanh và giả thuyết (1 phút, tùy chọn)
 
 - Nói *"Thứ Bảy này nhóm tươi 6 bán gấp rưỡi"* (nêu rõ ngày), rồi duyệt đề xuất giả thuyết.
-- **Tra cứu → Tổng quan → Tua nhanh (demo)**: tua được tối đa **7 ngày** (hết dữ liệu FRN vào 02/07/2024; tua quá sẽ báo lỗi rõ ràng). Nhu cầu trong 7 ngày này là nhu cầu thật mà mô hình chưa từng thấy.
+- **Menu tài khoản (góc phải trên) → Cài đặt → Tua nhanh (demo)**: tua được tối đa **7 ngày** (hết dữ liệu FRN vào 02/07/2024; tua quá sẽ báo lỗi rõ ràng). Nhu cầu trong 7 ngày này là nhu cầu thật mà mô hình chưa từng thấy.
 - Tua nhanh **không tự duyệt**: không ai duyệt đơn thì kệ trống dần, lô đã rút kệ nằm chờ ghi hủy.
 
 ## 7. Chứng minh hiệu quả (1 phút)

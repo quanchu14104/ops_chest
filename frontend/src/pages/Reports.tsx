@@ -5,6 +5,7 @@ import ChartView from "../components/ChartView";
 import Segmented from "../components/ui/Segmented";
 import { CardTitle, Chips, InfoTip } from "../components/ui/controls";
 import PageHeader from "../components/ui/PageHeader";
+import { Hypotheses, LearnedAdjustments } from "../components/StoreControls";
 import { Skeleton } from "../components/ui/EmptyState";
 import { abcLabel, dateVi, money, pct } from "../format";
 
@@ -46,6 +47,10 @@ export default function Reports() {
     queryFn: () => api<ChartSpec>(`/charts?metric=${metric}&group_by=${group}&start=${iso(start)}&end=${iso(end)}`),
   });
   const cost = useQuery({ enabled: !!meta.data, queryKey: ["cost", days, meta.data?.today], queryFn: () => api<Cost>(`/reports/cost?start=${iso(start)}&end=${iso(end)}`) });
+  const acc = useQuery({
+    queryKey: ["acceptance"],
+    queryFn: () => api<{ decided: number; approval_rate: number | null; edited_rate: number | null; avg_qty_change_pct: number | null }>("/proposals/stats"),
+  });
   const cands = useQuery({ queryKey: ["delist"], queryFn: () => api<Cand[]>(`/reports/delist`) });
   const delist = useMutation({
     mutationFn: (sku: string) => api<Proposal[]>("/proposals/create", { method: "POST", body: { type: "DELIST", sku } }),
@@ -148,6 +153,28 @@ export default function Reports() {
           </table>
         </div>
       )}
+
+      {/* Từ trang Tổng quan cũ: những gì Ops Chest học được từ cách Store Manager quyết định */}
+      <section className="kpi-group mt-3">
+        <h2 className="section-title">Ops Chest học được gì</h2>
+        <div className="grid cols-3-learn">
+          <div className="card">
+            <CardTitle title="Độ tin đề xuất" info="Tỷ lệ Store Manager duyệt và mức phải sửa số lượng khi duyệt: đo độ tin cậy của Ops Chest. Mọi quyết định cuối cùng thuộc về Store Manager." />
+            {!acc.data ? <Skeleton rows={2} /> : acc.data.decided === 0 ? (
+              <p className="muted small">Chưa có đề xuất nào được quyết định.</p>
+            ) : (
+              <div className="grid cols-3">
+                <div className="kpi"><div className="label">Đã quyết định</div><div className="value">{acc.data.decided}</div></div>
+                <div className="kpi"><div className="label">Tỷ lệ duyệt</div><div className="value">{pct(acc.data.approval_rate, 0)}</div></div>
+                <div className="kpi"><div className="label">Bị sửa khi duyệt</div><div className="value">{pct(acc.data.edited_rate, 0)}</div>
+                  <div className="delta">sửa TB {pct(acc.data.avg_qty_change_pct, 0)} số lượng</div></div>
+              </div>
+            )}
+          </div>
+          <Hypotheses />
+          <LearnedAdjustments />
+        </div>
+      </section>
     </>
   );
 }
