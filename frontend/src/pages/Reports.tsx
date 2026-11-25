@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, ApiError, type ChartSpec, type Proposal } from "../api";
+import { api, type ChartSpec, type Proposal } from "../api";
 import ChartView from "../components/ChartView";
 import Segmented from "../components/ui/Segmented";
 import { CardTitle, Chips, InfoTip } from "../components/ui/controls";
-import FrnBacktest, { type FrnBt } from "../components/FrnBacktest";
-import FrnModelReport from "../components/FrnModelReport";
 import PageHeader from "../components/ui/PageHeader";
 import { Skeleton } from "../components/ui/EmptyState";
 import { abcLabel, dateVi, money, pct } from "../format";
@@ -19,12 +17,6 @@ type Cost = {
   supplier_scorecard: { supplier: string; orders: number; fill_rate: number | null; on_time_rate: number | null; short: number; short_dated: number; rejected: number }[];
 };
 type Cand = { sku: string; name: string; category: string; cell: string; margin_90d: number; waste_rate: number; reasons: string[] };
-type BT = { start: string; days: number; results: Record<string, Record<string, number>>; delta: Record<string, number> };
-type SensRow = {
-  key: string; label: string; note: string; gain: number; gain_pct: number; waste_a: number; waste_b: number; oos_a: number; oos_b: number;
-  oos_traffic_a?: number; oos_traffic_b?: number; oos_class_a_a?: number; oos_class_a_b?: number;
-};
-type Sens = { start: string; days: number; rows: SensRow[] };
 
 const METRICS: [string, string][] = [
   ["stock_flow", "Nhập/xuất (số lượng)"],
@@ -53,13 +45,8 @@ export default function Reports() {
     queryKey: ["chart", metric, group, days, meta.data?.today],
     queryFn: () => api<ChartSpec>(`/charts?metric=${metric}&group_by=${group}&start=${iso(start)}&end=${iso(end)}`),
   });
-  const abc = useQuery({ queryKey: ["chart-abc"], queryFn: () => api<ChartSpec>(`/charts?metric=abc_xyz`) });
   const cost = useQuery({ enabled: !!meta.data, queryKey: ["cost", days, meta.data?.today], queryFn: () => api<Cost>(`/reports/cost?start=${iso(start)}&end=${iso(end)}`) });
   const cands = useQuery({ queryKey: ["delist"], queryFn: () => api<Cand[]>(`/reports/delist`) });
-  const bt = useMutation({ mutationFn: (d: number) => api<BT>(`/reports/backtest?days=${d}`) });
-  const frnBt = useQuery({ queryKey: ["bt-frn"], queryFn: () => api<FrnBt>("/reports/backtest/frn"), retry: false });
-  // Bang do nhay cu chi can khi chua co backtest FRN
-  const sens = useQuery({ enabled: frnBt.isError, queryKey: ["bt-sensitivity"], queryFn: () => api<Sens>("/reports/backtest/sensitivity"), retry: false });
   const delist = useMutation({
     mutationFn: (sku: string) => api<Proposal[]>("/proposals/create", { method: "POST", body: { type: "DELIST", sku } }),
     onSuccess: (r) => { setMsg(`Đã tạo đề xuất #${r[0].id}. Vào Hộp duyệt để quyết định.`); qc.invalidateQueries(); },
@@ -69,7 +56,7 @@ export default function Reports() {
 
   return (
     <>
-      <PageHeader title="Phân tích" desc="Biểu đồ, chi phí, ứng viên ngừng nhập và mô phỏng hiệu quả."
+      <PageHeader title="Phân tích" desc="Biểu đồ, chi phí, hàng hủy, điểm nhà cung cấp và ứng viên ngừng nhập."
         actions={<>
           <Chips label="Khoảng thời gian" value={String(days)} onChange={(v) => v && setDays(Number(v))}
             options={[30, 90, 180, 365].map((d) => ({ value: String(d), label: `${d} ngày` }))} />
@@ -161,96 +148,7 @@ export default function Reports() {
           </table>
         </div>
       )}
-
-      {/* Phần kỹ thuật (mô hình dự báo, mô phỏng A/B): không cần cho việc hằng ngày nên gập sẵn */}
-      <details className="card more">
-        <summary>Mô hình dự báo & mô phỏng</summary>
-        <div className="mt-3">
-      {/* Ma trận ABC-XYZ: thuật ngữ phân tích dữ liệu, chỉ để trong phần kỹ thuật */}
-      {abc.data && <div className="mb-4"><ChartView spec={abc.data} /></div>}
-      <FrnModelReport />
-
-      {frnBt.data ? (
-        <div className="card"><FrnBacktest d={frnBt.data} /></div>
-      ) : frnBt.isPending ? (
-        <div className="card"><p className="muted">Đang tải kết quả mô phỏng…</p></div>
-      ) : (
-      <div className="card">
-        <h2>Mô phỏng A/B (dữ liệu giả lập cũ)</h2>
-        {!(frnBt.error instanceof ApiError && frnBt.error.status === 404) && (
-          <div className="alert error" style={{ marginBottom: 8 }}>Không tải được backtest trên dữ liệu FRN: {(frnBt.error as Error).message}</div>
-        )}
-        <p className="small secondary">
-          Chạy lại cùng cửa hàng với <b>cùng nhu cầu khách</b> (tất định) bằng 2 chính sách đặt hàng. A: mức tồn theo trung bình 4 tuần, cuối ngày giảm 30% hàng hết hạn hôm nay.
-          B: dự báo + newsvendor/order-up-to có sàn mức phục vụ (kéo khách 95%, nhóm A 90%) + trần HSD và sức chứa + giảm giá giờ vàng theo khung bán của nhóm hàng/trả NCC (coi như SM duyệt hết). Trong mô phỏng, khách chỉ phản ứng với giảm giá bằng một nửa mức engine giả định. Mất khoảng 10-30 giây.
-        </p>
-        <div className="row">
-          {[30, 60, 90].map((d) => <button key={d} disabled={bt.isPending} onClick={() => bt.mutate(d)}>Chạy {d} ngày</button>)}
-          {bt.isPending && <span className="muted">Đang mô phỏng…</span>}
-        </div>
-        {bt.error && <div className="alert error">{(bt.error as Error).message}</div>}
-        {bt.data && <Backtest d={bt.data} />}
-        {sens.data && <Sensitivity d={sens.data} />}
-      </div>
-      )}
-        </div>
-      </details>
     </>
   );
 }
 
-function Sensitivity({ d }: { d: Sens }) {
-  const signed = (v: number) => `${v >= 0 ? "+" : ""}${pct(v)}`;
-  const core = d.rows.filter((r) => r.key === "reference" || r.key.startsWith("seed_")).map((r) => r.gain_pct);
-  const oosWorse = d.rows.every((r) => r.oos_b > r.oos_a);
-  const ref = d.rows.find((r) => r.key === "reference");
-  return (
-    <div className="table-wrap" style={{ marginTop: 16 }}>
-      <h2>Kết quả phụ thuộc vào giả định đến đâu</h2>
-      <p className="small secondary">
-        Tính sẵn từ {dateVi(d.start)}, {d.days} ngày. Mỗi dòng chỉ đổi một điều so với dòng tham chiếu. Lợi nhuận gộp của B so với A ở kịch bản tham chiếu và các chuỗi nhu cầu khác: <b>{signed(Math.min(...core))} đến {signed(Math.max(...core))}</b>.
-      </p>
-      <table>
-        <thead><tr><th>Kịch bản</th><th className="num">Lợi nhuận B so với A</th><th className="num">Tỷ lệ hủy A / B</th><th className="num">Hết hàng A / B</th><th className="num">Hàng kéo khách A / B</th><th className="num">Nhóm A A / B</th></tr></thead>
-        <tbody>{d.rows.map((r) => (
-          <tr key={r.key}>
-            <td><b>{r.label}</b><div className="small muted">{r.note}</div></td>
-            <td className="num">{signed(r.gain_pct)}</td>
-            <td className="num">{pct(r.waste_a)} / {pct(r.waste_b)}</td>
-            <td className="num">{pct(r.oos_a)} / {pct(r.oos_b)}</td>
-            <td className="num">{r.oos_traffic_a == null ? "—" : `${pct(r.oos_traffic_a)} / ${pct(r.oos_traffic_b)}`}</td>
-            <td className="num">{r.oos_class_a_a == null ? "—" : `${pct(r.oos_class_a_a)} / ${pct(r.oos_class_a_b)}`}</td>
-          </tr>
-        ))}</tbody>
-      </table>
-      {oosWorse && <div className="alert" style={{ marginTop: 10 }}>Đánh đổi: tỷ lệ hết hàng của B cao hơn A ở mọi kịch bản. Lợi nhuận tăng chủ yếu nhờ hủy ít hơn, không phải nhờ bán được nhiều hơn.</div>}
-      {!oosWorse && ref && ref.oos_b <= ref.oos_a && (
-        <div className="alert" style={{ marginTop: 10 }}>
-          Ở kịch bản tham chiếu, B không hết hàng nhiều hơn A ({pct(ref.oos_b)} so với {pct(ref.oos_a)}) nhờ sàn mức phục vụ. Cái giá là phần lợi nhuận tăng thêm nhỏ hơn cách đặt cũ (dòng "B không có sàn mức phục vụ").
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Backtest({ d }: { d: BT }) {
-  const names = Object.keys(d.results);
-  const rows: [string, string, (v: number) => string][] = [
-    ["revenue", "Doanh thu", money], ["gross_profit", "Lợi nhuận gộp (sau hủy)", money], ["waste_cost", "Giá vốn hàng hủy", money],
-    ["waste_rate", "Tỷ lệ hủy", (v) => pct(v)], ["oos_rate", "Tỷ lệ hết hàng", (v) => pct(v)], ["lost_margin", "Lãi mất do hết hàng", money],
-    ["markdown_loss", "Giảm giá đã chi", money], ["return_credit", "NCC hoàn tiền", money], ["avg_inventory_value", "Tồn kho TB", money],
-  ];
-  return (
-    <div className="table-wrap" style={{ marginTop: 12 }}>
-      <p className="small muted">Từ {dateVi(d.start)}, {d.days} ngày.</p>
-      <table>
-        <thead><tr><th>Chỉ số</th>{names.map((n) => <th key={n} className="num">{n}</th>)}</tr></thead>
-        <tbody>{rows.map(([k, l, f]) => <tr key={k}><td>{l}</td>{names.map((n) => <td key={n} className="num">{f(d.results[n][k])}</td>)}</tr>)}</tbody>
-      </table>
-      <div className="alert ok" style={{ marginTop: 10 }}>
-        B so với A: lợi nhuận gộp <b>{d.delta.gross_profit_gain >= 0 ? "+" : ""}{money(d.delta.gross_profit_gain)}</b>, giảm hàng hủy <b>{money(d.delta.waste_cost_saved)}</b>,
-        tồn kho TB {d.delta.inventory_value_reduction >= 0 ? "giảm" : "tăng"} {money(Math.abs(d.delta.inventory_value_reduction))}.
-      </div>
-    </div>
-  );
-}
