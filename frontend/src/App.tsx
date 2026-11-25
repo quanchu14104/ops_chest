@@ -9,6 +9,7 @@ import { useMediaQuery, useStoredState } from "./components/ui/hooks";
 import { dateVi } from "./format";
 import Approvals from "./pages/Approvals";
 import Audit from "./pages/Audit";
+import ModelReport from "./pages/ModelReport";
 import Catalog from "./pages/Catalog";
 import Dashboard from "./pages/Dashboard";
 import Expiring from "./pages/Expiring";
@@ -152,7 +153,8 @@ const NAV: { section: string; items: [string, string][]; lookup?: boolean }[] = 
 ];
 // Điện thoại: Trợ lý và Duyệt ở thanh đáy, trang tra cứu trong "Thêm"
 const TABBAR: [string, string][] = [["/", "Trợ lý"], ["/approvals", "Duyệt"]];
-const PAGE_TITLE: Record<string, string> = Object.fromEntries(NAV.flatMap((g) => g.items));
+// /model: báo cáo kỹ thuật (mô hình, mô phỏng), không nằm trong menu; mở từ menu tài khoản
+const PAGE_TITLE: Record<string, string> = { ...Object.fromEntries(NAV.flatMap((g) => g.items)), "/model": "Báo cáo mô hình" };
 
 function NavIcon({ to }: { to: keyof typeof ICON }) {
   return (
@@ -211,6 +213,9 @@ function UserMenu({ user, meta, theme, setTheme }: { user: User; meta?: Meta; th
             LLM: {meta?.llm_model}
             {meta?.llm_model_fallback ? ` (phụ: ${meta.llm_model_fallback})` : ""} {meta && !meta.llm_configured && <span className="badge">chưa cấu hình</span>}
           </div>
+          <button className="ghost" onClick={() => { setOpen(false); nav("/model"); }} title="Phân nhóm hàng, độ chính xác dự báo, mô phỏng: phần kỹ thuật">
+            Báo cáo mô hình (kỹ thuật)
+          </button>
           <button onClick={() => { clearSession(); nav("/login"); }}>Đăng xuất</button>
         </div>
       )}
@@ -286,6 +291,7 @@ function Shell({ user }: { user: User }) {
         <Route path="/reports" element={<Reports />} />
         <Route path="/catalog" element={<Catalog />} />
         <Route path="/audit" element={<Audit />} />
+        <Route path="/model" element={<ModelReport />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </ErrorBoundary>
