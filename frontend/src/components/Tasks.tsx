@@ -24,16 +24,17 @@ export const TASKS: { key: string; label: string; icon: IconName; briefing?: str
   { key: "oos", label: "Hàng hết", icon: "note", briefing: "oos" },
   { key: "kpi", label: "KPI", icon: "note" },
   { key: "scan", label: "Quét đề xuất", icon: "scan", manager: true },
+  { key: "scan_evening", label: "Quét giảm giá", icon: "tag", manager: true },
 ];
 
 const TITLES: Record<string, string> = {
   pending: "Đề xuất chờ duyệt", lots: "Hàng cận date", pull: "Rút kệ cuối ngày", date_check: "Kiểm date", count_due: "Kiểm kê",
   orders: "Đơn chờ giao", returns: "Phiếu trả NCC", oos: "Mặt hàng đang hết", kpi: "KPI 30 ngày", hypotheses: "Giả thuyết nhu cầu",
-  scan: "Quét & tạo đề xuất", inventory: "Tồn kho",
+  scan: "Quét & tạo đề xuất", scan_evening: "Quét giảm giá cuối ngày", inventory: "Tồn kho",
 };
 
 // "tên:đối số" -> thẻ sống hoặc khóa truy vấn nhanh
-function resolve(key: string): { title: string; panel?: PanelSpec; quick?: string; scan?: boolean } {
+function resolve(key: string): { title: string; panel?: PanelSpec; quick?: string; scan?: "morning" | "evening" } {
   const [name, arg] = key.split(":");
   const title = TITLES[name] ?? name;
   const panel = (p: PanelSpec["panel"], params: Record<string, unknown> = {}): PanelSpec => ({ kind: "panel", panel: p, title, params });
@@ -41,7 +42,9 @@ function resolve(key: string): { title: string; panel?: PanelSpec; quick?: strin
   if (name === "lots") return { title, panel: panel("lots", { days: arg ? Number(arg) : 3 }) };
   if (name === "orders") return { title, panel: panel("orders") };
   if (name === "returns") return { title, panel: panel("returns") };
-  if (name === "scan") return { title, scan: true, panel: panel("inbox", { type: null }) };
+  // Quét giống job 06:30 (sáng) / 17:00 (giảm giá cuối ngày): chỉ tạo đề xuất chờ duyệt, rồi hiện thẻ duyệt
+  if (name === "scan") return { title, scan: "morning", panel: panel("inbox", { type: null }) };
+  if (name === "scan_evening") return { title, scan: "evening", panel: panel("inbox", { type: "MARKDOWN" }) };
   return { title, quick: key };
 }
 
@@ -110,11 +113,11 @@ function QuickBody({ k }: { k: string }) {
   );
 }
 
-function ScanBody({ panel }: { panel: PanelSpec }) {
+function ScanBody({ panel, kind }: { panel: PanelSpec; kind: "morning" | "evening" }) {
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: ["scan-run"],
-    queryFn: async () => { await api("/proposals/generate", { method: "POST", body: { kind: "morning" } }); await qc.invalidateQueries(); return true; },
+    queryKey: ["scan-run", kind],
+    queryFn: async () => { await api("/proposals/generate", { method: "POST", body: { kind } }); await qc.invalidateQueries(); return true; },
     staleTime: Infinity, gcTime: 0,
   });
   if (q.isLoading) return <><p className="muted">Đang quét…</p><Skeleton rows={4} /></>;
@@ -147,7 +150,7 @@ export function TaskDialog() {
           <button className="icon ghost" aria-label="Đóng" onClick={() => setKey(null)}><Icon name="x" /></button>
         </div>
         <div className="task-dialog-body" key={key}>
-          {t.scan && t.panel ? <ScanBody panel={t.panel} /> : t.panel ? <Panel spec={t.panel} /> : <QuickBody k={t.quick!} />}
+          {t.scan && t.panel ? <ScanBody panel={t.panel} kind={t.scan} /> : t.panel ? <Panel spec={t.panel} /> : <QuickBody k={t.quick!} />}
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getUser, type Proposal } from "../api";
 import { dateVi, money, num, pct } from "../format";
-import { CardTitle, InfoTip, Switch } from "./ui/controls";
+import { CardTitle, Switch } from "./ui/controls";
 
 type Hypothesis = {
   id: number; scope: string; factor: number; start_date: string; end_date: string; reason: string; status: string;
@@ -113,9 +113,9 @@ export function FastForward() {
   if (getUser()?.role !== "manager") return null;
   const r = run.data;
   return (
-    <details className="card more mt-3">
-      <summary>Tua nhanh (demo) <InfoTip text="Giả lập hàng về và khách mua trong những ngày tới. Không tự duyệt, đặt hàng hay ghi hủy: đề xuất không ai duyệt sẽ hết hiệu lực và thấy được hậu quả trên kệ." /></summary>
-      <div className="row mt-2">
+    <section className="settings-section">
+      <CardTitle title="Tua nhanh (demo)" info="Giả lập hàng về và khách mua trong những ngày tới. Không tự duyệt, đặt hàng hay ghi hủy: đề xuất không ai duyệt sẽ hết hiệu lực và thấy được hậu quả trên kệ." />
+      <div className="row">
         {[1, 3, 7].map((d) => <button key={d} disabled={run.isPending} onClick={() => run.mutate(d)}>+{d} ngày</button>)}
         <Switch checked={realize} onChange={setRealize} label="Giả thuyết xảy ra đúng" />
         <span className="spacer" />
@@ -133,6 +133,6 @@ export function FastForward() {
           {r.hypotheses_evaluated.map((h) => <div key={h.id}>Giả thuyết "{h.reason}": <b>{h.verdict_label}</b> (thực tế ×{num(h.ratio, 2)} so với dự báo nền, dự đoán ×{num(h.factor, 2)}).</div>)}
         </div>
       )}
-    </details>
+    </section>
   );
 }

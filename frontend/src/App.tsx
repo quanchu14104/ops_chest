@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { api, clearSession, getToken, getUser, saveSession, type User } from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
 import InboxPanel, { OPEN_INBOX_EVENT } from "./components/InboxPanel";
+import SettingsDialog from "./components/Settings";
 import { TaskDialog } from "./components/Tasks";
 import { useMediaQuery, useStoredState } from "./components/ui/hooks";
 import { dateVi } from "./format";
@@ -11,7 +12,6 @@ import Approvals from "./pages/Approvals";
 import Audit from "./pages/Audit";
 import ModelReport from "./pages/ModelReport";
 import Catalog from "./pages/Catalog";
-import Dashboard from "./pages/Dashboard";
 import Expiring from "./pages/Expiring";
 import Home from "./pages/Home";
 import Orders from "./pages/Orders";
@@ -149,7 +149,7 @@ const ICON: Record<string, string> = {
 const NAV: { section: string; items: [string, string][]; lookup?: boolean }[] = [
   { section: "Làm việc", items: [["/", "Trợ lý"], ["/approvals", "Hộp duyệt"]] },
   { section: "Tra cứu", lookup: true, items: [["/expiring", "Hàng cận date"], ["/orders", "Đặt & nhận hàng"], ["/stockcount", "Kiểm kê"],
-    ["/stats", "Tổng quan"], ["/reports", "Phân tích"], ["/catalog", "Hàng hóa & NCC"], ["/audit", "Nhật ký"]] },
+    ["/reports", "Phân tích"], ["/catalog", "Hàng hóa & NCC"], ["/audit", "Nhật ký"]] },
 ];
 // Điện thoại: Trợ lý và Duyệt ở thanh đáy, trang tra cứu trong "Thêm"
 const TABBAR: [string, string][] = [["/", "Trợ lý"], ["/approvals", "Duyệt"]];
@@ -175,6 +175,8 @@ function weekdayDate(iso?: string): string {
 function UserMenu({ user, meta, theme, setTheme }: { user: User; meta?: Meta; theme: string; setTheme: (t: string) => void }) {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  const [settings, setSettings] = useState(false);
+  const closeSettings = useCallback(() => setSettings(false), []);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -201,24 +203,14 @@ function UserMenu({ user, meta, theme, setTheme }: { user: User; meta?: Meta; th
             <b>{user.full_name}</b>
             <span className="muted">{user.role === "manager" ? "Store Manager" : "Nhân viên"}</span>
           </div>
-          <label className="secondary">
-            Giao diện
-            <select value={theme} onChange={(e) => setTheme(e.target.value)} aria-label="Giao diện">
-              <option value="auto">Theo hệ thống</option>
-              <option value="light">Sáng</option>
-              <option value="dark">Tối</option>
-            </select>
-          </label>
-          <div className="muted small">
-            LLM: {meta?.llm_model}
-            {meta?.llm_model_fallback ? ` (phụ: ${meta.llm_model_fallback})` : ""} {meta && !meta.llm_configured && <span className="badge">chưa cấu hình</span>}
-          </div>
-          <button className="ghost" onClick={() => { setOpen(false); nav("/model"); }} title="Phân nhóm hàng, độ chính xác dự báo, mô phỏng: phần kỹ thuật">
-            Báo cáo mô hình (kỹ thuật)
+          <button className="ghost menu-item" onClick={() => { setOpen(false); setSettings(true); }}>
+            <svg viewBox="0 0 24 24" aria-hidden><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></svg>
+            Cài đặt
           </button>
           <button onClick={() => { clearSession(); nav("/login"); }}>Đăng xuất</button>
         </div>
       )}
+      <SettingsDialog open={settings} onClose={closeSettings} theme={theme} setTheme={setTheme} meta={meta} />
     </div>
   );
 }
@@ -283,7 +275,8 @@ function Shell({ user }: { user: User }) {
         <Route path="/" element={<Home />} />
         <Route path="/chat" element={<Home />} />
         <Route path="/chat/:sid" element={<Home />} />
-        <Route path="/stats" element={<Dashboard />} />
+        {/* Trang Tổng quan cũ chỉ lặp lại thông tin trang khác: địa chỉ cũ chuyển sang Phân tích */}
+        <Route path="/stats" element={<Navigate to="/reports" replace />} />
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/expiring" element={<Expiring />} />
         <Route path="/orders" element={<Orders />} />
