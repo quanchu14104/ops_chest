@@ -222,7 +222,7 @@ function Shell({ user }: { user: User }) {
   const meta = useQuery({ queryKey: ["meta"], queryFn: () => api<Meta>("/meta") });
   const pending = useQuery({
     queryKey: ["pending-count"],
-    queryFn: () => api<unknown[]>("/proposals?status=PENDING&limit=200"),
+    queryFn: () => api<unknown[]>("/proposals?status=PENDING,FAILED&limit=200"),
     refetchInterval: 30_000,
   });
   const pendingN = pending.data?.length ?? 0;

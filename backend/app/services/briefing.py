@@ -21,7 +21,9 @@ def build(db: Session, role: str = "manager") -> dict:
     exp = inventory.expiring_lots(db, days=3, with_options=False)
     risky = [l for l in exp["lots"] if l["status"] != "OK"]
     expired = [l for l in risky if l["status"] == "EXPIRED"]
-    pending = db.scalars(select(Proposal).where(Proposal.status == "PENDING")).all()
+    # Giong Hop duyet: de xuat loi khi thuc hien (FAILED) van cho SM quyet (thu lai / tu choi)
+    pending = db.scalars(select(Proposal).where(Proposal.status.in_(("PENDING", "FAILED")))).all()
+    n_failed = sum(1 for p in pending if p.status == "FAILED")
     due = replenish.suppliers_due(db)
     is_manager = role == "manager"
 
@@ -29,9 +31,10 @@ def build(db: Session, role: str = "manager") -> dict:
     if pending:
         total = sum(p.est_value or 0 for p in pending if p.type == "PURCHASE_ORDER")
         extra = f" (đơn đặt hàng tổng {vnd(total)})" if total else ""
+        failed = f", {n_failed} lỗi khi thực hiện cần thử lại" if n_failed else ""
         who = "anh/chị" if is_manager else "Store Manager"
         items.append({"id": "pending", "level": "action" if is_manager else "info", "count": len(pending),
-                      "text": f"{len(pending)} đề xuất đang chờ {who} duyệt{extra}",
+                      "text": f"{len(pending)} đề xuất đang chờ {who} duyệt{failed}{extra}",
                       "prompt": "Liệt kê các đề xuất đang chờ duyệt và cho biết cái nào nên xử lý trước", "quick": "pending"})
     if expired:
         items.append({"id": "expired", "level": "action", "count": len(expired),

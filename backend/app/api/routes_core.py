@@ -58,7 +58,8 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user))
     summ = inventory.inventory_summary(db)
     kpi = reports.kpi_compare(db, 30)
     exp = inventory.expiring_lots(db, days=3, with_options=False)
-    pending = db.scalars(select(Proposal).where(Proposal.status == "PENDING").order_by(Proposal.id.desc())).all()
+    pending = db.scalars(select(Proposal).where(Proposal.status.in_(("PENDING", "FAILED")))
+                         .order_by(Proposal.id.desc())).all()
     due = replenish.suppliers_due(db)
     return {
         "today": today().isoformat(), "inventory": summ,

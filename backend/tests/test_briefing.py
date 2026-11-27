@@ -18,7 +18,8 @@ def test_briefing_is_deterministic_and_has_prompts(client, manager):
 
 def test_briefing_pending_count_matches_inbox(client, manager, staff):
     d = client.get("/api/briefing", headers=staff).json()  # nhan vien cung xem duoc
-    pend = client.get("/api/proposals?status=PENDING&limit=200", headers=manager).json()
+    # Hop duyet (InboxPanel) lay ca de xuat loi khi thuc hien: SM van phai thu lai hoac tu choi
+    pend = client.get("/api/proposals?status=PENDING,FAILED&limit=200", headers=manager).json()
     item = next((i for i in d["items"] if i["id"] == "pending"), None)
     assert (item["count"] if item else 0) == len(pend)
 

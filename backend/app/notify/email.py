@@ -27,7 +27,21 @@ def render(template: str, **ctx) -> str:
     return _env.get_template(template).render(store=settings, **ctx)
 
 
+class EmailError(Exception):
+    """Khong gui duoc email. Thong diep viet cho Store Manager doc (hien tren the de xuat bi loi)."""
+
+
 def send_email(to: str, subject: str, html: str, attachments: list[tuple[str, bytes, str]] | None = None) -> str:
+    try:
+        return _send(to, subject, html, attachments)
+    except (OSError, smtplib.SMTPException) as e:  # OSError: tu choi ket noi, het gio, sai ten may...
+        raise EmailError(
+            f"Không gửi được email tới {to}: máy chủ thư {settings.smtp_host}:{settings.smtp_port} không phản hồi "
+            f"({type(e).__name__}). Chưa có gì được gửi đi; kiểm tra máy chủ thư rồi bấm Thử lại."
+        ) from e
+
+
+def _send(to: str, subject: str, html: str, attachments: list[tuple[str, bytes, str]] | None) -> str:
     msg = EmailMessage()
     msg["From"] = f"{settings.store_name} <{settings.smtp_from}>"
     msg["To"] = to

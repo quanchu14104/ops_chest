@@ -340,4 +340,7 @@ EXECUTORS = {
 
 
 def execute(db: Session, p: Proposal, user: User) -> dict:
-    return EXECUTORS[p.type](db, p, user)
+    try:
+        return EXECUTORS[p.type](db, p, user)
+    except email.EmailError as e:  # thong diep da viet cho SM doc, khong de lo ten exception tho
+        raise ExecutionError(str(e)) from e

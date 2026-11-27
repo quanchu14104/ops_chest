@@ -68,7 +68,7 @@ def inventory_summary(db: Session) -> dict:
             elif dl <= 3:
                 expiring_3d_value += l.qty_remaining * l.unit_cost
     pulled = db.scalar(select(func.coalesce(func.sum(Lot.qty_remaining * Lot.unit_cost), 0)).where(Lot.status == "PULLED"))
-    pending = db.scalar(select(func.count()).select_from(Proposal).where(Proposal.status == "PENDING"))
+    pending = db.scalar(select(func.count()).select_from(Proposal).where(Proposal.status.in_(("PENDING", "FAILED"))))
     incoming = db.scalar(select(func.count()).select_from(PurchaseOrder).where(PurchaseOrder.status == "SENT"))
     return {
         "as_of": t.isoformat(),

@@ -57,6 +57,35 @@ const REJECT_REASONS: Record<string, string[]> = {
   RETURN: ["NCC không nhận trả", "Tự xử lý tại cửa hàng"],
   DISPOSE: ["Số lượng chưa đúng, cần đếm lại"],
 };
+
+function failedReason(p: Proposal): string {
+  const e = p.execution_result?.error;
+  return e ? String(e) : "Lỗi khi thực hiện";
+}
+
+// Diễn giải một thay đổi trong sm_edits (`lines[SKU].qty`, `items[SKU#lô].markdown_pct`...) thành câu có tên hàng
+type Change = { field: string; from: unknown; to: unknown };
+export function editText(p: Proposal, c: Change): string {
+  const lines = (p.payload?.lines ?? []) as { sku: string; name: string }[];
+  const items = (p.payload?.items ?? []) as { sku: string; lot_id: number; name: string }[];
+  const v = (x: unknown) => (typeof x === "number" ? num(x) : String(x));
+  let m = c.field.match(/^lines\[(.+?)\](?:\.qty)?$/);
+  if (m) {
+    const name = lines.find((l) => l.sku === m![1])?.name ?? m[1];
+    return c.from == null ? `thêm ${name}: ${v(c.to)}` : `${name}: ${v(c.from)} → ${v(c.to)}`;
+  }
+  m = c.field.match(/^items\[(.+?)#(\d+)\]\.(\w+)$/);
+  if (m) {
+    const it = items.find((i) => i.lot_id === Number(m![2]));
+    const name = `${it?.name ?? m[1]} (lô #${m[2]})`;
+    if (m[3] === "include") return `${c.to ? "giữ lại" : "bỏ"} ${name}`;
+    if (m[3] === "markdown_pct") return `${name}: giảm ${pct(Number(c.from), 0)} → ${pct(Number(c.to), 0)}`;
+    return `${name}: ${v(c.from)} → ${v(c.to)}`;
+  }
+  if (c.field === "note") return `ghi chú: "${String(c.to ?? "")}"`;
+  if (c.field === "min_order_ack") return c.to ? "xác nhận đơn dưới tối thiểu đã thỏa thuận với NCC" : "bỏ xác nhận đơn dưới tối thiểu";
+  return `${c.field}: ${v(c.from)} → ${v(c.to)}`;
+}
 const OTHER = "__other__";
 
 export default function ProposalCard({ p: initial, compact = false, expanded, onToggle }: {
@@ -80,7 +109,8 @@ export default function ProposalCard({ p: initial, compact = false, expanded, on
   const [reason, setReason] = useState("");
   const [reasonPick, setReasonPick] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Đề xuất đã lỗi khi thực hiện (mở lại Hộp duyệt sau đó): vẫn cho thấy vì sao lỗi, không chỉ lúc vừa bấm duyệt
+  const [error, setError] = useState<string | null>(initial.status === "FAILED" ? failedReason(initial) : null);
   const [confirmNeg, setConfirmNeg] = useState(false);
   const [filter, setFilter] = useState<LineFilter | null>(null);
   const [search, setSearch] = useState("");
@@ -107,7 +137,7 @@ export default function ProposalCard({ p: initial, compact = false, expanded, on
 
   const done = (np: Proposal) => {
     setP(np);
-    setError(np.status === "FAILED" ? String(np.execution_result?.error ?? "Lỗi") : null);
+    setError(np.status === "FAILED" ? failedReason(np) : null);
     qc.invalidateQueries();
   };
   const approve = useMutation({
@@ -451,7 +481,7 @@ export default function ProposalCard({ p: initial, compact = false, expanded, on
 
       {p.sm_edits?.length > 0 && (
         <p className="small muted mt-2">
-          SM đã sửa: {p.sm_edits.flatMap((e) => e.changes).map((c) => `${c.field}: ${String(c.from)} → ${String(c.to)}`).join("; ")}
+          SM đã sửa: {p.sm_edits.flatMap((e) => e.changes).map((c) => editText(p, c)).join("; ")}
         </p>
       )}
       {p.decided_by && (

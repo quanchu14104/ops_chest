@@ -133,10 +133,38 @@ def test_email_failure_rolls_back_and_can_retry(client, manager, monkeypatch, db
     assert d["status"] == "FAILED" and "SMTP" in d["execution_result"]["error"]
     db.expire_all()
     assert db.scalar(select(func.count()).select_from(PurchaseOrder).where(PurchaseOrder.proposal_id == p["id"])) == 0
+    # De xuat loi van nam trong "cho duyet" cua ban tin (khop Hop duyet), khong bien mat khoi bang tin
+    item = next(i for i in client.get("/api/briefing", headers=manager).json()["items"] if i["id"] == "pending")
+    assert "lỗi khi thực hiện cần thử lại" in item["text"]
     sent = []
     monkeypatch.setattr("app.notify.email.send_email", lambda *a, **k: sent.append(1) or "<id>")
     d = client.post(f"/api/proposals/{p['id']}/approve", json={}, headers=manager).json()
     assert d["status"] == "EXECUTED" and sent == [1]
+
+
+def test_smtp_down_gives_readable_error(monkeypatch):
+    """SMTP that tu choi ket noi: SM thay thong diep doc duoc, khong phai 'ConnectionRefusedError: [WinError ...]'."""
+    import smtplib
+
+    import pytest
+
+    from app.notify import email
+    from app.proposals import executor
+
+    def refuse(*a, **k):
+        raise ConnectionRefusedError(10061, "No connection could be made because the target machine actively refused it")
+
+    monkeypatch.setattr(smtplib, "SMTP", refuse)
+    with pytest.raises(email.EmailError) as ei:
+        email.send_email("ncc@x.test", "s", "<p>h</p>")
+    msg = str(ei.value)
+    assert msg.startswith("Không gửi được email tới ncc@x.test") and "Thử lại" in msg and "refused" not in msg
+    # Executor doi EmailError thanh ExecutionError: service ghi nguyen thong diep, khong tien to ten exception
+    monkeypatch.setitem(executor.EXECUTORS, "PURCHASE_ORDER",
+                        lambda db, p, u: email.send_email("ncc@x.test", "s", "<p>h</p>"))
+    with pytest.raises(executor.ExecutionError) as ee:
+        executor.execute(None, Proposal(type="PURCHASE_ORDER"), None)
+    assert str(ee.value) == msg
 
 
 def test_receive_requires_expiry_date(client, manager, db):

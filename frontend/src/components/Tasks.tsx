@@ -56,7 +56,7 @@ function resolve(key: string): { title: string; panel?: PanelSpec; quick?: strin
 
 // Số đếm trên từng việc lấy từ bản tin (đã tải sẵn ở trang chủ)
 function useCounts(): Record<string, number> {
-  const pending = useQuery({ queryKey: ["pending-count"], queryFn: () => api<unknown[]>("/proposals?status=PENDING&limit=200") });
+  const pending = useQuery({ queryKey: ["pending-count"], queryFn: () => api<unknown[]>("/proposals?status=PENDING,FAILED&limit=200") });
   const brief = useQuery({ queryKey: ["briefing"], queryFn: () => api<{ items: BriefingItem[] }>("/briefing") });
   const out: Record<string, number> = {};
   for (const it of brief.data?.items ?? []) out[it.id] = it.count;

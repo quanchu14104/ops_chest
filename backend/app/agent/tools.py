@@ -275,7 +275,9 @@ def _preview(ctx: ToolContext, supplier: str) -> ToolOutput:
 @tool("list_proposals", "read", "List proposals by status (PENDING, EXECUTED, REJECTED, ...).",
       {"status": {"type": "string", "default": "PENDING"}, "type": {"type": "string"}})
 def _list_props(ctx: ToolContext, status: str = "PENDING", type: str | None = None) -> ToolOutput:
-    q = select(Proposal).where(Proposal.status == status.upper()).order_by(Proposal.id.desc()).limit(20)
+    # "Cho duyet" gom ca de xuat loi khi thuc hien (FAILED): SM van phai thu lai hoac tu choi, giong Hop duyet
+    wanted = ("PENDING", "FAILED") if status.upper() == "PENDING" else (status.upper(),)
+    q = select(Proposal).where(Proposal.status.in_(wanted)).order_by(Proposal.id.desc()).limit(20)
     if type:
         q = q.where(Proposal.type == type.upper())
     rows = [{"id": p.id, "type": p.type, "status": p.status, "title": p.title, "est_value": p.est_value,
